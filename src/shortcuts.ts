@@ -82,17 +82,6 @@ export const SHORTCUTS_SECTIONS: ShortcutSection[] = [
     ],
   },
   {
-    title: "Prompt",
-    entries: [
-      { keys: "Enter", description: "Submit prompt" },
-      { keys: "Tab", description: "Cycle prompt/model/thinking" },
-      { keys: "Left/Right", description: "Change thinking level" },
-      { keys: "Type", description: "Filter model list" },
-      { keys: "Up/Down", description: "Pick model or thinking level" },
-      { keys: "Esc", description: "Close prompt composer" },
-    ],
-  },
-  {
     title: "Chips",
     entries: [
       { keys: "Left/Right", description: "Move selected chip" },
