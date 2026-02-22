@@ -1,4 +1,4 @@
-import type { LineNumberRenderable } from "@opentui/core";
+import type { CodeRenderable, LineNumberRenderable, RGBA } from "@opentui/core";
 
 export type FocusMode = "chips" | "code";
 
@@ -13,6 +13,17 @@ export type CodeFileEntry = {
 
 export type RenderedLineBlock = {
   lineView: LineNumberRenderable;
+  codeView: CodeRenderable;
+  defaultLineNumberFg: string;
+  defaultLineSigns: Map<
+    number,
+    {
+      before?: string;
+      beforeColor?: string | RGBA;
+      after?: string;
+      afterColor?: string | RGBA;
+    }
+  >;
   lineStart: number;
   lineEnd: number;
   filePath: string;

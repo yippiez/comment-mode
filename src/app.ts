@@ -13,6 +13,7 @@ import { LineModel } from "./line-model";
 import { syntaxStyle } from "./theme";
 import type { CodeFileEntry, FocusMode } from "./types";
 import { clamp, clearChildren, makeSlashLine } from "./ui-utils";
+import { VisualHighlightController } from "./visual-highlight-controller";
 
 type DiffSegment =
   | { kind: "collapsed"; lineCount: number }
@@ -76,6 +77,7 @@ export class CodeBrowserApp {
   private readonly cursor: CursorController;
 
   private readonly lineModel = new LineModel();
+  private readonly visualHighlights = new VisualHighlightController();
   private dividerByFilePath = new Map<string, TextRenderable>();
   private pendingGChordAt: number | null = null;
   private collapsedFiles = new Set<string>();
@@ -518,6 +520,7 @@ export class CodeBrowserApp {
   private renderContent(): void {
     clearChildren(this.scrollbox);
     this.lineModel.reset();
+    this.visualHighlights.reset();
     this.dividerByFilePath = new Map();
 
     if (this.entries.length === 0) {
@@ -641,6 +644,9 @@ export class CodeBrowserApp {
     this.scrollbox.add(lineView);
     this.lineModel.addBlock({
       lineView,
+      codeView: code,
+      defaultLineNumberFg: "#d1d5db",
+      defaultLineSigns: new Map(),
       lineStart: nextLineNumber,
       lineCount: 1,
       displayRowStart: nextDisplayRow,
@@ -671,6 +677,7 @@ export class CodeBrowserApp {
     nextLineNumber: number,
     nextDisplayRow: number,
   ): { nextLineNumber: number; nextDisplayRow: number; blockStartLine: number } {
+    const renderedLineCount = Math.max(1, lineCount);
     const code = new CodeRenderable(this.renderer, {
       width: "100%",
       content,
@@ -680,8 +687,6 @@ export class CodeBrowserApp {
       bg: "transparent",
       conceal: false,
     });
-
-    const renderedLineCount = Math.max(1, lineCount);
 
     const lineView = new LineNumberRenderable(this.renderer, {
       width: "100%",
@@ -700,10 +705,14 @@ export class CodeBrowserApp {
         beforeColor: "#22c55e",
       });
     }
+    const defaultLineSigns = new Map(lineView.getLineSigns());
 
     this.scrollbox.add(lineView);
     this.lineModel.addBlock({
       lineView,
+      codeView: code,
+      defaultLineNumberFg: "#e5e7eb",
+      defaultLineSigns,
       lineStart: nextLineNumber,
       lineCount: renderedLineCount,
       displayRowStart: nextDisplayRow,
@@ -775,29 +784,9 @@ export class CodeBrowserApp {
   }
 
   private applyLineHighlights(): void {
-    for (const block of this.lineModel.blocks) {
-      block.lineView.clearAllLineColors();
-    }
-
-    if (this.lineModel.totalLines <= 0) return;
-
     const { start: selectionStart, end: selectionEnd } = this.cursor.selectionRange;
     const cursorLine = this.cursor.cursorLine;
-
-    for (const block of this.lineModel.blocks) {
-      const overlapStart = Math.max(selectionStart, block.lineStart);
-      const overlapEnd = Math.min(selectionEnd, block.lineEnd);
-      if (overlapStart > overlapEnd) continue;
-
-      for (let globalLine = overlapStart; globalLine <= overlapEnd; globalLine += 1) {
-        const localLine = globalLine - block.lineStart;
-        const isCursor = globalLine === cursorLine;
-        block.lineView.setLineColor(localLine, {
-          gutter: isCursor ? "#facc15" : "#f59e0b",
-          content: isCursor ? "#facc15" : "#f59e0b",
-        });
-      }
-    }
+    this.visualHighlights.apply(this.lineModel.blocks, selectionStart, selectionEnd, cursorLine);
   }
 
   private jumpToNextFileStart(): void {

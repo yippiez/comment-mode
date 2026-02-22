@@ -1,4 +1,4 @@
-import type { LineNumberRenderable } from "@opentui/core";
+import type { CodeRenderable, LineNumberRenderable, RGBA } from "@opentui/core";
 import type { RenderedLineBlock } from "./types";
 import { clamp } from "./ui-utils";
 
@@ -10,6 +10,17 @@ export type FileAnchor = {
 
 type AddBlockParams = {
   lineView: LineNumberRenderable;
+  codeView: CodeRenderable;
+  defaultLineNumberFg: string;
+  defaultLineSigns: Map<
+    number,
+    {
+      before?: string;
+      beforeColor?: string | RGBA;
+      after?: string;
+      afterColor?: string | RGBA;
+    }
+  >;
   filePath: string;
   lineStart: number;
   lineCount: number;
@@ -60,12 +71,24 @@ export class LineModel {
   }
 
   public addBlock(params: AddBlockParams): void {
-    const { lineView, filePath, lineStart, lineCount, displayRowStart } = params;
+    const {
+      lineView,
+      codeView,
+      defaultLineNumberFg,
+      defaultLineSigns,
+      filePath,
+      lineStart,
+      lineCount,
+      displayRowStart,
+    } = params;
     const safeLineCount = Math.max(1, lineCount);
     const lineEnd = lineStart + safeLineCount - 1;
 
     this.renderedLineBlocks.push({
       lineView,
+      codeView,
+      defaultLineNumberFg,
+      defaultLineSigns,
       lineStart,
       lineEnd,
       filePath,
