@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import path from "node:path";
 import {
   consumeBufferedLines,
@@ -39,12 +39,8 @@ export type HeadlessAgentRunResult =
     };
 
 export async function listOpencodeModels(rootDir: string): Promise<string[]> {
-  if (!isOpencodeAvailable()) return [];
-
-  const result = spawnSync("opencode", ["models"], {
-    cwd: rootDir,
-    encoding: "utf8",
-  });
+  const result = await runProcessCapture("opencode", ["models"], rootDir);
+  if (result.error) return [];
 
   const merged = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
   const models = new Set<string>();
@@ -61,10 +57,6 @@ export async function listOpencodeModels(rootDir: string): Promise<string[]> {
 export async function startHeadlessAgentRun(
   request: HeadlessAgentRunRequest,
 ): Promise<HeadlessAgentRunResult> {
-  if (!isOpencodeAvailable()) {
-    return { ok: false, error: "opencode is not available on PATH." };
-  }
-
   const runId = createRunId(request.filePath);
   const message = buildRunMessage(request);
 
@@ -250,11 +242,6 @@ function buildRunMessage(request: {
   ].join("\n");
 }
 
-function isOpencodeAvailable(): boolean {
-  const probe = spawnSync("opencode", ["--version"], { encoding: "utf8" });
-  return probe.status === 0;
-}
-
 function createRunId(filePath: string): string {
   const safeStem = path
     .basename(filePath)
@@ -264,4 +251,40 @@ function createRunId(filePath: string): string {
     .slice(0, 24);
   const unique = Date.now().toString(36);
   return `run-${safeStem || "task"}-${unique}`;
+}
+
+async function runProcessCapture(
+  command: string,
+  args: string[],
+  cwd: string,
+): Promise<{ stdout: string; stderr: string; code: number | null; error?: Error }> {
+  return new Promise((resolve) => {
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    const child = spawn(command, args, {
+      cwd,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    child.stdout?.on("data", (chunk: Buffer | string) => {
+      stdout += String(chunk);
+    });
+
+    child.stderr?.on("data", (chunk: Buffer | string) => {
+      stderr += String(chunk);
+    });
+
+    child.on("error", (error) => {
+      if (settled) return;
+      settled = true;
+      resolve({ stdout, stderr, code: null, error });
+    });
+
+    child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      resolve({ stdout, stderr, code });
+    });
+  });
 }
