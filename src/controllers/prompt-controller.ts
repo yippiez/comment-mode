@@ -393,13 +393,11 @@ export class PromptController {
   private getThinkingLevelsForModel(model: string): string[] {
     const levels = [PromptController.DEFAULT_THINKING_LEVEL];
     const configuredVariants = this.modelVariantsById.get(model);
-    const fallbackVariants =
-      configuredVariants && configuredVariants.length > 0
-        ? configuredVariants
-        : this.inferThinkingLevelsFromModel(model);
-    for (const variant of fallbackVariants) {
-      if (variant === PromptController.DEFAULT_THINKING_LEVEL) continue;
-      levels.push(variant);
+    if (configuredVariants) {
+      for (const variant of configuredVariants) {
+        if (variant === PromptController.DEFAULT_THINKING_LEVEL) continue;
+        levels.push(variant);
+      }
     }
     return levels;
   }
