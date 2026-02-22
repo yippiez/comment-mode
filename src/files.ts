@@ -31,7 +31,7 @@ export async function listCodeFiles(root: string): Promise<string[]> {
 
 export async function loadCodeFileEntries(root: string): Promise<CodeFileEntry[]> {
   const files = await listCodeFiles(root);
-  return Promise.all(
+  const entries = await Promise.all(
     files.map(async (relativePath) => {
       const absolutePath = path.join(root, relativePath);
       const content = await readFile(absolutePath, "utf8");
@@ -43,9 +43,17 @@ export async function loadCodeFileEntries(root: string): Promise<CodeFileEntry[]
         filetype,
         typeLabel,
         lineCount: countLogicalLines(content),
+        uncommittedLines: new Set<number>(),
       };
     }),
   );
+
+  const linesByFile = collectUncommittedLinesByFile(root, entries);
+  for (const entry of entries) {
+    entry.uncommittedLines = linesByFile.get(entry.relativePath) ?? new Set<number>();
+  }
+
+  return entries;
 }
 
 export function countLogicalLines(content: string): number {
@@ -91,4 +99,93 @@ function resolveTypeLabel(relativePath: string): string {
   const ext = path.extname(relativePath);
   if (!ext) return "NOEXT";
   return ext.slice(1).toUpperCase();
+}
+
+function collectUncommittedLinesByFile(
+  root: string,
+  entries: CodeFileEntry[],
+): Map<string, Set<number>> {
+  const probe = spawnSync("git", ["-C", root, "rev-parse", "--is-inside-work-tree"], {
+    encoding: "utf8",
+  });
+
+  if (probe.status !== 0 || probe.stdout.trim() !== "true") {
+    return new Map();
+  }
+
+  const trackedOrStagedPatch = spawnSync(
+    "git",
+    ["-C", root, "-c", "core.quotepath=false", "diff", "--no-color", "--unified=0", "--no-ext-diff", "--no-prefix"],
+    { encoding: "utf8" },
+  );
+
+  const stagedPatch = spawnSync(
+    "git",
+    [
+      "-C",
+      root,
+      "-c",
+      "core.quotepath=false",
+      "diff",
+      "--cached",
+      "--no-color",
+      "--unified=0",
+      "--no-ext-diff",
+      "--no-prefix",
+    ],
+    { encoding: "utf8" },
+  );
+
+  const untracked = spawnSync(
+    "git",
+    ["-C", root, "ls-files", "--others", "--exclude-standard", "-z"],
+    { encoding: "utf8" },
+  );
+
+  const linesByFile = new Map<string, Set<number>>();
+  mergePatchChangedLines(linesByFile, trackedOrStagedPatch.stdout ?? "");
+  mergePatchChangedLines(linesByFile, stagedPatch.stdout ?? "");
+
+  if (untracked.status === 0) {
+    const untrackedFiles = new Set((untracked.stdout ?? "").split("\0").filter(Boolean));
+    for (const entry of entries) {
+      if (!untrackedFiles.has(entry.relativePath)) continue;
+      const allLines = new Set<number>();
+      for (let line = 1; line <= entry.lineCount; line += 1) {
+        allLines.add(line);
+      }
+      linesByFile.set(entry.relativePath, allLines);
+    }
+  }
+
+  return linesByFile;
+}
+
+function mergePatchChangedLines(target: Map<string, Set<number>>, patch: string): void {
+  let currentPath: string | null = null;
+  const lines = patch.split("\n");
+
+  for (const line of lines) {
+    if (line.startsWith("+++ ")) {
+      const nextPath = line.slice(4).trim();
+      currentPath = nextPath === "/dev/null" ? null : nextPath;
+      continue;
+    }
+
+    if (!currentPath) continue;
+    if (!line.startsWith("@@ ")) continue;
+
+    const match = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line);
+    if (!match) continue;
+
+    const start = Number.parseInt(match[1] ?? "0", 10);
+    const count = Number.parseInt(match[2] ?? "1", 10);
+    if (count <= 0 || Number.isNaN(start)) continue;
+
+    const fileSet = target.get(currentPath) ?? new Set<number>();
+    for (let lineNo = start; lineNo < start + count; lineNo += 1) {
+      fileSet.add(lineNo);
+    }
+    target.set(currentPath, fileSet);
+  }
 }

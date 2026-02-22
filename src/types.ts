@@ -8,10 +8,12 @@ export type CodeFileEntry = {
   filetype?: string;
   typeLabel: string;
   lineCount: number;
+  uncommittedLines: Set<number>;
 };
 
 export type RenderedLineBlock = {
   lineView: LineNumberRenderable;
   lineStart: number;
   lineEnd: number;
+  filePath: string;
 };
