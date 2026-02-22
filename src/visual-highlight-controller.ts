@@ -16,6 +16,7 @@ export class VisualHighlightController {
   private static readonly SELECTION_LINE_BG = "#8b866c";
   private static readonly HIGHLIGHTED_FG = RGBA.fromValues(0, 0, 0, 0.85);
   private static readonly TRANSPARENT_BG = RGBA.fromValues(0, 0, 0, 0);
+  private static readonly MAX_SELECTION_COL = 8192;
 
   private activeCodeViews = new Set<CodeRenderable>();
 
@@ -93,7 +94,7 @@ export class VisualHighlightController {
       y: codeView.y + selectionStartLine,
     };
     const focus = {
-      x: codeView.x + Math.max(0, codeView.width - 1),
+      x: codeView.x + VisualHighlightController.MAX_SELECTION_COL,
       y: codeView.y + selectionEndLine,
     };
 
