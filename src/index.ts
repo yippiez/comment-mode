@@ -1,20 +1,44 @@
-import {
-  ASCIIFont,
-  Box,
-  createCliRenderer,
-  Text,
-  TextAttributes,
-} from "@opentui/core";
+import { createCliRenderer } from "@opentui/core";
+import { CodeBrowserApp } from "./app";
+import { loadCodeFileEntries } from "./files";
+import { watchWorkspace } from "./live-reload";
+import { ensurePatchedTreeSitterWorkerPath } from "./worker";
 
+await ensurePatchedTreeSitterWorkerPath();
+
+const rootDir = process.cwd();
 const renderer = await createCliRenderer({ exitOnCtrlC: true });
+const entries = await loadCodeFileEntries(rootDir);
 
-renderer.root.add(
-  Box(
-    { alignItems: "center", justifyContent: "center", flexGrow: 1 },
-    Box(
-      { justifyContent: "center", alignItems: "flex-end" },
-      ASCIIFont({ font: "tiny", text: "OpenTUI" }),
-      Text({ content: "What will you build?", attributes: TextAttributes.DIM }),
-    ),
-  ),
-);
+const app = new CodeBrowserApp(renderer, entries);
+app.start();
+
+let refreshRunning = false;
+let refreshPending = false;
+
+const refreshEntries = async () => {
+  if (refreshRunning) {
+    refreshPending = true;
+    return;
+  }
+
+  refreshRunning = true;
+  do {
+    refreshPending = false;
+    try {
+      const nextEntries = await loadCodeFileEntries(rootDir);
+      app.refreshEntries(nextEntries);
+    } catch {
+      // File updates may race with writes; next watch event will re-trigger refresh.
+    }
+  } while (refreshPending);
+  refreshRunning = false;
+};
+
+const watcher = await watchWorkspace(rootDir, () => {
+  void refreshEntries();
+});
+
+renderer.on("destroy", () => {
+  watcher.close();
+});
