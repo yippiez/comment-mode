@@ -391,28 +391,9 @@ export class PromptController {
 
   /** Returns supported thinking levels for the current model. */
   private getThinkingLevelsForModel(model: string): string[] {
-    const levels = [PromptController.DEFAULT_THINKING_LEVEL];
     const configuredVariants = this.modelVariantsById.get(model);
     if (configuredVariants) {
-      for (const variant of configuredVariants) {
-        if (variant === PromptController.DEFAULT_THINKING_LEVEL) continue;
-        levels.push(variant);
-      }
-    }
-    return levels;
-  }
-
-  /** Infers likely thinking levels from model id when metadata is unavailable. */
-  private inferThinkingLevelsFromModel(model: string): string[] {
-    const normalized = model.toLowerCase();
-    if (normalized.includes("gpt-5")) {
-      return ["minimal", "low", "medium", "high"];
-    }
-    if (normalized.includes("big-pickle")) {
-      return ["high", "max"];
-    }
-    if (normalized.includes("reason") || normalized.includes("think")) {
-      return ["low", "medium", "high"];
+      return configuredVariants.slice();
     }
     return [];
   }
