@@ -16,7 +16,11 @@ import {
 import { CameraController } from "./camera-controller";
 import { createAgentRow, type AgentRowDecoration } from "./components/agent-row";
 import { HelpModal } from "./components/help-modal";
-import { PromptComposerBar, type PromptComposerField } from "./components/prompt-composer-bar";
+import {
+  PromptComposerBar,
+  type PromptComposerField,
+  type PromptComposerLayout,
+} from "./components/prompt-composer-bar";
 import { CursorController } from "./cursor-controller";
 import { LineModel } from "./line-model";
 import { SearchModalController } from "./search-modal";
@@ -34,6 +38,7 @@ type PromptComposerTarget = {
   filePath: string;
   selectionStartFileLine: number;
   selectionEndFileLine: number;
+  anchorLine: number;
   selectedText: string;
   prompt: string;
   harness: "opencode";
@@ -47,6 +52,7 @@ type CodeBrowserAppOptions = {
 
 export class CodeBrowserApp {
   private static readonly GG_CHORD_TIMEOUT_MS = 500;
+  private static readonly REPEATED_MOVE_THROTTLE_MS = 14;
 
   private readonly renderer: CliRenderer;
   private readonly rootDir: string;
@@ -85,10 +91,12 @@ export class CodeBrowserApp {
   private promptVisible = false;
   private promptField: PromptComposerField = "prompt";
   private promptTarget: PromptComposerTarget | null = null;
+  private promptAnchorLine: number | null = null;
   private availableHarnesses: Array<"opencode"> = ["opencode"];
   private availableModels: string[] = ["opencode/big-pickle"];
   private promptModelQuery = "";
   private promptModelListLoading = false;
+  private lastRepeatedMoveAt = 0;
 
   constructor(renderer: CliRenderer, entries: CodeFileEntry[], options: CodeBrowserAppOptions) {
     this.renderer = renderer;
@@ -158,7 +166,12 @@ export class CodeBrowserApp {
     });
     this.cursor = new CursorController({
       camera: this.camera,
-      onCursorChanged: () => this.applyLineHighlights(),
+      onCursorChanged: () => {
+        this.applyLineHighlights();
+        if (this.promptVisible) {
+          this.refreshPromptComposerView();
+        }
+      },
     });
 
     this.scrollbox.verticalScrollBar.on("change", (event: { position?: number } | undefined) => {
@@ -314,12 +327,20 @@ export class CodeBrowserApp {
     if (this.handleVimNavigationKeypress(keyName, rawKeyName, key)) return;
 
     if (keyName === "up" || keyName === "k") {
+      if (this.shouldThrottleRepeatedMove(key)) {
+        this.consumeKey(key);
+        return;
+      }
       this.consumeKey(key);
       this.cursor.moveBy(-1);
       return;
     }
 
     if (keyName === "down" || keyName === "j") {
+      if (this.shouldThrottleRepeatedMove(key)) {
+        this.consumeKey(key);
+        return;
+      }
       this.consumeKey(key);
       this.cursor.moveBy(1);
       return;
@@ -375,11 +396,15 @@ export class CodeBrowserApp {
   private async handleEnterOnCodeView(): Promise<void> {
     const update = this.getAgentUpdateAtCursorLine();
     if (update) {
+      const anchorLine =
+        this.lineModel.findGlobalLineForFileLine(update.filePath, update.selectionEndFileLine) ??
+        this.cursor.cursorLine;
       this.openPromptComposer({
         updateId: update.id,
         filePath: update.filePath,
         selectionStartFileLine: update.selectionStartFileLine,
         selectionEndFileLine: update.selectionEndFileLine,
+        anchorLine,
         selectedText: update.selectedText,
         prompt: update.prompt,
         harness: "opencode",
@@ -402,6 +427,7 @@ export class CodeBrowserApp {
     const selectedLines: string[] = [];
     let selectionStartFileLine: number | null = null;
     let selectionEndFileLine: number | null = null;
+    let selectionEndGlobalLine: number | null = null;
 
     for (let globalLine = start; globalLine <= end; globalLine += 1) {
       const lineInfo = this.lineModel.getVisibleLineInfo(globalLine);
@@ -412,6 +438,7 @@ export class CodeBrowserApp {
 
       selectionStartFileLine = selectionStartFileLine ?? lineInfo.fileLine;
       selectionEndFileLine = lineInfo.fileLine;
+      selectionEndGlobalLine = globalLine;
       selectedLines.push(lineInfo.text);
     }
 
@@ -421,6 +448,7 @@ export class CodeBrowserApp {
       filePath: currentFilePath,
       selectionStartFileLine,
       selectionEndFileLine,
+      anchorLine: selectionEndGlobalLine ?? this.cursor.cursorLine,
       selectedText: selectedLines.join("\n"),
       prompt: "",
       harness: "opencode",
@@ -498,7 +526,7 @@ export class CodeBrowserApp {
     const handled = this.promptComposer.promptInput.handleKeyPress(key);
     if (handled) {
       this.consumeKey(key);
-      this.promptComposer.renderable.requestRender();
+      this.refreshPromptComposerView();
     }
   }
 
@@ -636,18 +664,19 @@ export class CodeBrowserApp {
       ...target,
       model: target.model || this.getDefaultModel(),
     };
+    this.promptAnchorLine = target.anchorLine;
     this.promptModelQuery = "";
     this.promptField = "prompt";
     this.promptVisible = true;
     this.focusMode = "prompt";
     this.promptComposer.open(this.promptTarget.prompt);
     this.refreshPromptComposerView();
-    void this.refreshAvailableModels();
   }
 
   private closePromptComposer(): void {
     this.promptVisible = false;
     this.promptTarget = null;
+    this.promptAnchorLine = null;
     this.promptModelQuery = "";
     this.promptComposer.close();
     this.setFocusMode("code");
@@ -804,6 +833,7 @@ export class CodeBrowserApp {
   }
 
   private refreshPromptComposerView(): void {
+    const layout = this.getPromptComposerLayout();
     this.promptComposer.render({
       visible: this.promptVisible && Boolean(this.promptTarget),
       field: this.promptField,
@@ -811,7 +841,8 @@ export class CodeBrowserApp {
       model: this.promptTarget?.model ?? "",
       modelQuery: this.promptModelQuery,
       loading: this.promptModelListLoading,
-    });
+      promptText: this.promptComposer.promptInput.plainText,
+    }, layout);
   }
 
   private openSearchModal(): void {
@@ -931,6 +962,16 @@ export class CodeBrowserApp {
 
   private getKeyName(name: string | undefined): string {
     return (name ?? "").toLowerCase();
+  }
+
+  private shouldThrottleRepeatedMove(key: KeyEvent): boolean {
+    if (!key.repeated) return false;
+    const now = Date.now();
+    if (now - this.lastRepeatedMoveAt < CodeBrowserApp.REPEATED_MOVE_THROTTLE_MS) {
+      return true;
+    }
+    this.lastRepeatedMoveAt = now;
+    return false;
   }
 
   private isHelpToggleKey(keyName: string, rawKeyName: string | undefined, shift?: boolean): boolean {
@@ -1253,6 +1294,9 @@ export class CodeBrowserApp {
 
     this.lineModel.setTotalLines(nextLineNumber - 1);
     this.cursor.configure(this.lineModel.totalLines);
+    if (this.promptVisible) {
+      this.refreshPromptComposerView();
+    }
   }
 
   private addCollapsedPlaceholderBlock(
@@ -1600,6 +1644,37 @@ export class CodeBrowserApp {
     const mappedRows = this.lineModel.mappedDisplayRowCount;
     const totalRows = Math.max(measuredRows, mappedRows);
     return Math.max(0, totalRows - this.getViewportHeight());
+  }
+
+  private getPromptComposerLayout(): PromptComposerLayout {
+    const viewportTop = Math.max(0, this.scrollbox.y);
+    const viewportHeight = this.getViewportHeight();
+    const viewportBottom = viewportTop + viewportHeight - 1;
+    const anchorLine = this.getPromptAnchorLine();
+    const anchorDisplayRow = this.lineModel.getDisplayRowForLine(anchorLine);
+    const rowInViewport = anchorDisplayRow - this.scrollbox.scrollTop;
+    const desiredTop = viewportTop + rowInViewport + 1;
+    const top = clamp(desiredTop, viewportTop, viewportBottom);
+    return {
+      top,
+      maxHeight: Math.max(1, viewportBottom - top + 1),
+    };
+  }
+
+  private getPromptAnchorLine(): number {
+    if (this.promptTarget) {
+      const visibleLine = this.lineModel.findGlobalLineForFileLine(
+        this.promptTarget.filePath,
+        this.promptTarget.selectionEndFileLine,
+      );
+      if (typeof visibleLine === "number") {
+        return visibleLine;
+      }
+    }
+
+    if (this.lineModel.totalLines <= 0) return 1;
+    const fallback = this.promptAnchorLine ?? this.cursor.cursorLine;
+    return clamp(fallback, 1, this.lineModel.totalLines);
   }
 
   private applyLineHighlights(): void {

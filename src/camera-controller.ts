@@ -10,11 +10,15 @@ type CameraBindings = {
 };
 
 export class CameraController {
+  private static readonly PROGRAMMATIC_SCROLL_TTL_MS = 400;
+  private static readonly MAX_PROGRAMMATIC_SCROLL_EVENTS = 64;
+
   private readonly bindings: CameraBindings;
 
   private preferredViewportOffset = 0;
   private lastKnownScrollTop = 0;
   private internalScrollUpdate = false;
+  private pendingProgrammaticScrolls: Array<{ top: number; at: number }> = [];
 
   constructor(bindings: CameraBindings) {
     this.bindings = bindings;
@@ -100,6 +104,13 @@ export class CameraController {
       this.lastKnownScrollTop = normalizedTop;
       return undefined;
     }
+    if (this.consumeProgrammaticScrollEvent(normalizedTop)) {
+      this.lastKnownScrollTop = normalizedTop;
+      return undefined;
+    }
+    if (normalizedTop === this.lastKnownScrollTop) {
+      return undefined;
+    }
 
     const delta = normalizedTop - this.lastKnownScrollTop;
     this.lastKnownScrollTop = normalizedTop;
@@ -159,8 +170,13 @@ export class CameraController {
 
   private scrollTo(nextTop: number): void {
     const bounded = clamp(Math.round(nextTop), 0, this.bindings.getMaxScrollTop());
+    if (bounded === this.bindings.getScrollTop()) {
+      this.lastKnownScrollTop = bounded;
+      return;
+    }
     this.internalScrollUpdate = true;
     try {
+      this.trackProgrammaticScrollEvent(bounded);
       this.bindings.setScrollTop(bounded);
       this.lastKnownScrollTop = this.bindings.getScrollTop();
     } finally {
@@ -182,5 +198,32 @@ export class CameraController {
     const row = this.bindings.getDisplayRowForLine(cursorLine);
     this.preferredViewportOffset = clamp(row - this.bindings.getScrollTop(), 0, viewportHeight - 1);
     this.lastKnownScrollTop = this.bindings.getScrollTop();
+  }
+
+  private trackProgrammaticScrollEvent(top: number): void {
+    this.pruneProgrammaticScrollEvents();
+    this.pendingProgrammaticScrolls.push({ top, at: Date.now() });
+    if (this.pendingProgrammaticScrolls.length <= CameraController.MAX_PROGRAMMATIC_SCROLL_EVENTS) {
+      return;
+    }
+    this.pendingProgrammaticScrolls.splice(
+      0,
+      this.pendingProgrammaticScrolls.length - CameraController.MAX_PROGRAMMATIC_SCROLL_EVENTS,
+    );
+  }
+
+  private consumeProgrammaticScrollEvent(top: number): boolean {
+    this.pruneProgrammaticScrollEvents();
+    const index = this.pendingProgrammaticScrolls.findIndex((entry) => entry.top === top);
+    if (index < 0) return false;
+    this.pendingProgrammaticScrolls.splice(index, 1);
+    return true;
+  }
+
+  private pruneProgrammaticScrollEvents(): void {
+    const cutoff = Date.now() - CameraController.PROGRAMMATIC_SCROLL_TTL_MS;
+    this.pendingProgrammaticScrolls = this.pendingProgrammaticScrolls.filter(
+      (entry) => entry.at >= cutoff,
+    );
   }
 }
