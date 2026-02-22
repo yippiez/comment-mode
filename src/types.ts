@@ -24,6 +24,7 @@ export type AgentUpdate = {
   prompt: string;
   harness: AgentHarness;
   model: AgentModel;
+  variant?: string;
   status: AgentUpdateStatus;
   runId?: string;
   messages: string[];
