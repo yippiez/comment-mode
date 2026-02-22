@@ -75,6 +75,7 @@ export class CodeBrowserApp {
   private readonly cursor: CursorController;
 
   private readonly lineModel = new LineModel();
+  private dividerByFilePath = new Map<string, TextRenderable>();
   private pendingGChordAt: number | null = null;
   private collapsedFiles = new Set<string>();
 
@@ -509,6 +510,7 @@ export class CodeBrowserApp {
   private renderContent(): void {
     clearChildren(this.scrollbox);
     this.lineModel.reset();
+    this.dividerByFilePath = new Map();
 
     if (this.entries.length === 0) {
       this.renderEmptyState("No code files found.");
@@ -530,13 +532,17 @@ export class CodeBrowserApp {
     for (const entry of filteredEntries) {
       const dividerRow = nextDisplayRow;
       this.lineModel.markDivider(nextDisplayRow);
-      this.scrollbox.add(
-        new TextRenderable(this.renderer, {
-          content: makeSlashLine(entry.relativePath, dividerWidth),
-          fg: "#ffffff",
-          bg: "#6b7280",
-        }),
-      );
+      const divider = new TextRenderable(this.renderer, {
+        width: "100%",
+        overflow: "hidden",
+        truncate: true,
+        wrapMode: "none",
+        content: makeSlashLine(entry.relativePath, dividerWidth),
+        fg: "#ffffff",
+        bg: "#6b7280",
+      });
+      this.dividerByFilePath.set(entry.relativePath, divider);
+      this.scrollbox.add(divider);
       nextDisplayRow += 1;
       const fileAnchorLine = nextLineNumber;
 
@@ -791,7 +797,7 @@ export class CodeBrowserApp {
     const currentAnchorIndex = this.lineModel.findCurrentFileAnchorIndex(this.cursor.cursorLine);
     const target = this.lineModel.getFileAnchor(currentAnchorIndex + 1);
     if (!target) return;
-    this.camera.placeDisplayRowAtMinVisibleHeight(target.dividerRow, target.line);
+    this.camera.placeDisplayRowAtMinVisibleHeight(this.getAnchorDividerDisplayRow(target), target.line);
     this.cursor.goToLine(target.line, "keep");
   }
 
@@ -806,8 +812,17 @@ export class CodeBrowserApp {
         ? currentAnchor
         : this.lineModel.getFileAnchor(currentAnchorIndex - 1);
     if (!target) return;
-    this.camera.placeDisplayRowAtMinVisibleHeight(target.dividerRow, target.line);
+    this.camera.placeDisplayRowAtMinVisibleHeight(this.getAnchorDividerDisplayRow(target), target.line);
     this.cursor.goToLine(target.line, "keep");
+  }
+
+  private getAnchorDividerDisplayRow(anchor: { filePath: string; dividerRow: number }): number {
+    const divider = this.dividerByFilePath.get(anchor.filePath);
+    if (!divider) return anchor.dividerRow;
+
+    const resolved = divider.y - this.scrollbox.content.y;
+    if (!Number.isFinite(resolved)) return anchor.dividerRow;
+    return Math.max(0, Math.round(resolved));
   }
 
   private recomputeTypesState(): void {
