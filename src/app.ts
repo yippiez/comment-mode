@@ -1276,7 +1276,24 @@ export class CodeBrowserApp {
       this.typeCounts.set(entry.typeLabel, (this.typeCounts.get(entry.typeLabel) ?? 0) + 1);
     }
 
-    this.sortedTypes = [...this.typeCounts.keys()].sort((a, b) => a.localeCompare(b));
+    const programmingLangs = ["ts", "tsx", "js", "jsx", "py", "go", "rs", "java", "c", "cpp", "h", "hpp", "cs", "rb", "php", "swift", "kt", "scala", "vue", "svelte"];
+    const configFiles = ["json", "yaml", "yml", "toml", "xml", "ini", "conf", "config", "env", "properties"];
+    const textFiles = ["md", "txt", "rst", "log"];
+
+    const getPriority = (type: string): number => {
+      const lower = type.toLowerCase();
+      if (programmingLangs.includes(lower)) return 0;
+      if (configFiles.includes(lower)) return 1;
+      if (textFiles.includes(lower)) return 3;
+      return 2;
+    };
+
+    this.sortedTypes = [...this.typeCounts.keys()].sort((a, b) => {
+      const pa = getPriority(a);
+      const pb = getPriority(b);
+      if (pa !== pb) return pa - pb;
+      return a.localeCompare(b);
+    });
 
     const nextEnabled = new Map<string, boolean>();
     for (const type of this.sortedTypes) {
