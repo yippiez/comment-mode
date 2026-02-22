@@ -77,6 +77,14 @@ export class CursorController {
     this.bindings.camera.onCursorMoved(this.line, this.totalLines, 0);
   }
 
+  public disableVisualMode(): void {
+    if (!this.visualMode) return;
+    this.visualMode = false;
+    this.visualAnchorLine = this.line;
+    this.bindings.onCursorChanged();
+    this.bindings.camera.onCursorMoved(this.line, this.totalLines, 0);
+  }
+
   public handleExternalScroll(nextTop: number): void {
     const nextLine = this.bindings.camera.handleExternalScroll(nextTop, this.totalLines, this.line);
     if (nextLine === undefined) return;

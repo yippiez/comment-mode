@@ -38,6 +38,7 @@ export class CodeBrowserApp {
         { keys: "PageUp", description: "Move cursor one page up" },
         { keys: "PageDown", description: "Move cursor one page down" },
         { keys: "v", description: "Toggle visual selection mode" },
+        { keys: "Esc", description: "Exit visual selection mode" },
         { keys: "gg", description: "Jump to top" },
         { keys: "G", description: "Jump to bottom" },
         { keys: "n", description: "Jump to next file start" },
@@ -295,6 +296,13 @@ export class CodeBrowserApp {
     rawKeyName: string | undefined,
     key: { shift?: boolean; preventDefault?: () => void; stopPropagation?: () => void },
   ): void {
+    if (keyName === "escape") {
+      this.consumeKey(key);
+      this.pendingGChordAt = null;
+      this.cursor.disableVisualMode();
+      return;
+    }
+
     if (this.handleVimNavigationKeypress(keyName, rawKeyName, key)) return;
 
     if (keyName === "up" || keyName === "k") {
