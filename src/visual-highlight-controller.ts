@@ -1,4 +1,5 @@
 import { CodeRenderable, LineNumberRenderable, RGBA, Selection } from "@opentui/core";
+import { theme } from "./theme";
 import type { RenderedLineBlock } from "./types";
 
 type RuntimeCodeSelectionApi = {
@@ -12,10 +13,6 @@ type RuntimeLineViewStyleApi = {
 };
 
 export class VisualHighlightController {
-  private static readonly CURSOR_LINE_BG = "#9c9678";
-  private static readonly SELECTION_LINE_BG = "#8b866c";
-  private static readonly HIGHLIGHTED_FG = RGBA.fromValues(0, 0, 0, 0.85);
-  private static readonly TRANSPARENT_BG = RGBA.fromValues(0, 0, 0, 0);
   private static readonly MAX_SELECTION_COL = 8192;
 
   private activeCodeViews = new Set<CodeRenderable>();
@@ -30,6 +27,9 @@ export class VisualHighlightController {
     selectionEnd: number,
     cursorLine: number,
   ): void {
+    const lineNumberFg = theme.getHighlightedTextColor();
+    const cursorLineBg = theme.getCursorLineHighlightBackgroundColor();
+    const selectionLineBg = theme.getSelectionLineHighlightBackgroundColor();
     const nextActiveCodeViews = new Set<CodeRenderable>();
 
     for (const block of blocks) {
@@ -45,10 +45,10 @@ export class VisualHighlightController {
 
       if (block.codeView) {
         nextActiveCodeViews.add(block.codeView);
-        this.applyCodeSelection(block.codeView, block.lineStart, overlapStart, overlapEnd);
+        this.applyCodeSelection(block.codeView, block.lineStart, overlapStart, overlapEnd, lineNumberFg);
       }
       if (block.lineView) {
-        this.setLineViewFg(block.lineView, VisualHighlightController.HIGHLIGHTED_FG);
+        this.setLineViewFg(block.lineView, lineNumberFg);
       }
 
       for (let globalLine = overlapStart; globalLine <= overlapEnd; globalLine += 1) {
@@ -56,20 +56,16 @@ export class VisualHighlightController {
         const localLine = globalLine - block.lineStart;
         const isCursorLine = globalLine === cursorLine;
         block.lineView.setLineColor(localLine, {
-          gutter: isCursorLine
-            ? VisualHighlightController.CURSOR_LINE_BG
-            : VisualHighlightController.SELECTION_LINE_BG,
-          content: isCursorLine
-            ? VisualHighlightController.CURSOR_LINE_BG
-            : VisualHighlightController.SELECTION_LINE_BG,
+          gutter: isCursorLine ? cursorLineBg : selectionLineBg,
+          content: isCursorLine ? cursorLineBg : selectionLineBg,
         });
 
         const defaultSign = block.defaultLineSigns.get(localLine);
         if (!defaultSign) continue;
         block.lineView.setLineSign(localLine, {
           ...defaultSign,
-          beforeColor: VisualHighlightController.HIGHLIGHTED_FG,
-          afterColor: VisualHighlightController.HIGHLIGHTED_FG,
+          beforeColor: lineNumberFg,
+          afterColor: lineNumberFg,
         });
       }
     }
@@ -87,12 +83,13 @@ export class VisualHighlightController {
     blockLineStart: number,
     overlapStart: number,
     overlapEnd: number,
+    textColor: string,
   ): void {
     const runtimeCodeView = codeView as unknown as RuntimeCodeSelectionApi;
     if (typeof runtimeCodeView.onSelectionChanged !== "function") return;
 
-    runtimeCodeView.selectionFg = VisualHighlightController.HIGHLIGHTED_FG;
-    runtimeCodeView.selectionBg = VisualHighlightController.TRANSPARENT_BG;
+    runtimeCodeView.selectionFg = textColor;
+    runtimeCodeView.selectionBg = theme.getTransparentColor();
 
     const selectionStartLine = overlapStart - blockLineStart;
     const selectionEndLine = overlapEnd - blockLineStart;

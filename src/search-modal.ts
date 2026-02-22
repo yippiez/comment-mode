@@ -6,19 +6,32 @@ import {
   TextRenderable,
   type CliRenderer,
 } from "@opentui/core";
+import { buildSearchIndex, querySearchIndex, type SearchResult, type SearchResultKind } from "./search-index";
+import { theme } from "./theme";
 import type { CodeFileEntry } from "./types";
 import { clamp, clearChildren } from "./ui-utils";
-import { buildSearchIndex, querySearchIndex, type SearchResult, type SearchResultKind } from "./search-index";
 
 type SearchModalControllerOptions = {
   onSelectResult: (result: SearchResult) => void;
+};
+
+type RuntimeInputStyleApi = {
+  backgroundColor?: string;
+  focusedBackgroundColor?: string;
+  textColor?: string;
+  focusedTextColor?: string;
+  selectionBg?: string;
+  selectionFg?: string;
 };
 
 export class SearchModalController {
   private readonly renderer: CliRenderer;
   private readonly onSelectResult: (result: SearchResult) => void;
   private readonly overlay: BoxRenderable;
-  private readonly panel: BoxRenderable;
+  private readonly header: BoxRenderable;
+  private readonly body: BoxRenderable;
+  private readonly backText: TextRenderable;
+  private readonly titleText: TextRenderable;
   private readonly queryInput: InputRenderable;
   private readonly statusText: TextRenderable;
   private readonly resultsBox: BoxRenderable;
@@ -40,43 +53,61 @@ export class SearchModalController {
       left: 0,
       width: "100%",
       height: "100%",
-      justifyContent: "center",
-      alignItems: "center",
-      backgroundColor: "transparent",
+      flexDirection: "column",
+      justifyContent: "flex-start",
+      alignItems: "stretch",
       zIndex: 950,
       visible: false,
     });
 
-    this.panel = new BoxRenderable(renderer, {
-      width: "80%",
-      maxWidth: 96,
-      maxHeight: "85%",
-      border: true,
-      borderStyle: "single",
-      borderColor: "#9ca3af",
-      padding: 1,
-      backgroundColor: "#000000",
+    this.header = new BoxRenderable(renderer, {
+      width: "100%",
+      height: 1,
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingLeft: 1,
+      paddingRight: 1,
+    });
+
+    const backButton = new BoxRenderable(renderer, {
+      onMouseDown: () => {
+        this.close();
+      },
+    });
+    this.backText = new TextRenderable(renderer, {
+      content: "← Back",
+      attributes: TextAttributes.BOLD,
+    });
+    backButton.add(this.backText);
+    this.header.add(backButton);
+    this.titleText = new TextRenderable(renderer, {
+      content: "Search",
+      attributes: TextAttributes.BOLD,
+    });
+    this.header.add(this.titleText);
+    this.header.add(new TextRenderable(renderer, { content: "" }));
+
+    this.body = new BoxRenderable(renderer, {
+      width: "100%",
+      flexGrow: 1,
       flexDirection: "column",
+      paddingLeft: 1,
+      paddingRight: 1,
+      paddingTop: 0,
       gap: 1,
     });
-    this.panel.add(
-      new TextRenderable(renderer, {
-        content: "Search Files + Symbols",
-        fg: "#ffffff",
-        attributes: TextAttributes.BOLD,
-      }),
-    );
 
     this.queryInput = new InputRenderable(renderer, {
       width: "100%",
       value: "",
       placeholder: "Type to search files, functions, variables, headings...",
-      backgroundColor: "#111827",
-      focusedBackgroundColor: "#1f2937",
-      textColor: "#f3f4f6",
-      focusedTextColor: "#ffffff",
-      selectionBg: "#4b5563",
-      selectionFg: "#ffffff",
+      backgroundColor: theme.getSearchInputBackgroundColor(),
+      focusedBackgroundColor: theme.getSearchInputFocusedBackgroundColor(),
+      textColor: theme.getSearchInputTextColor(),
+      focusedTextColor: theme.getSearchInputFocusedTextColor(),
+      selectionBg: theme.getSearchInputSelectionBackgroundColor(),
+      selectionFg: theme.getSearchInputSelectionForegroundColor(),
     });
     this.queryInput.focusable = false;
     this.queryInput.onContentChange = () => {
@@ -84,14 +115,13 @@ export class SearchModalController {
       this.updateResults();
       this.renderResults();
     };
-    this.panel.add(this.queryInput);
+    this.body.add(this.queryInput);
 
     this.statusText = new TextRenderable(renderer, {
       content: "",
-      fg: "#a855f7",
       attributes: TextAttributes.BOLD,
     });
-    this.panel.add(this.statusText);
+    this.body.add(this.statusText);
 
     this.resultsBox = new BoxRenderable(renderer, {
       width: "100%",
@@ -99,9 +129,11 @@ export class SearchModalController {
       flexDirection: "column",
       gap: 0,
     });
-    this.panel.add(this.resultsBox);
+    this.body.add(this.resultsBox);
 
-    this.overlay.add(this.panel);
+    this.overlay.add(this.header);
+    this.overlay.add(this.body);
+    this.applyTheme();
   }
 
   public get renderable(): BoxRenderable {
@@ -194,6 +226,19 @@ export class SearchModalController {
     this.renderResults();
   }
 
+  /** Re-applies full-page search colors for active theme. */
+  public applyTheme(): void {
+    this.overlay.backgroundColor = theme.getModalBackgroundColor();
+    this.header.backgroundColor = theme.getPromptOverlayBackgroundColor();
+    this.body.backgroundColor = theme.getModalBackgroundColor();
+    this.backText.fg = theme.getModalShortcutKeyColor();
+    this.titleText.fg = theme.getModalTitleColor();
+    this.statusText.fg = theme.getSearchStatusColor();
+    this.applyInputTheme();
+    this.renderResults();
+    this.overlay.requestRender();
+  }
+
   private moveSelection(delta: number): void {
     if (this.results.length === 0) return;
     const maxIndex = this.results.length - 1;
@@ -219,7 +264,7 @@ export class SearchModalController {
       this.resultsBox.add(
         new TextRenderable(this.renderer, {
           content: "No matches",
-          fg: "#9ca3af",
+          fg: theme.getEmptyStateColor(),
           attributes: TextAttributes.DIM,
         }),
       );
@@ -227,64 +272,52 @@ export class SearchModalController {
       return;
     }
 
-    for (const [index, result] of this.results.entries()) {
-      const selected = index === this.selectedIndex;
-      const row = new BoxRenderable(this.renderer, {
-        width: "100%",
-        flexDirection: "row",
-        justifyContent: "space-between",
-        backgroundColor: selected ? "#1f2937" : "transparent",
-      });
+    const indexed = this.results.map((result, index) => ({ result, index }));
+    const files = indexed.filter((item) => item.result.kind === "file");
+    const symbols = indexed.filter((item) => item.result.kind !== "file");
 
-      const location =
-        result.kind === "file" ? result.filePath : `${result.name} — ${result.filePath}:${String(result.fileLine)}`;
-      row.add(
-        new TextRenderable(this.renderer, {
-          content: location,
-          fg: selected ? "#ffffff" : "#e5e7eb",
-          width: "82%",
-          overflow: "hidden",
-          truncate: true,
-          wrapMode: "none",
-          attributes: selected ? TextAttributes.BOLD : TextAttributes.NONE,
-        }),
-      );
+    if (files.length > 0) {
+      this.resultsBox.add(this.createGroupHeader("FILES"));
+      for (const item of files) {
+        this.resultsBox.add(this.createResultRow(item.result, item.index));
+      }
+    }
 
-      row.add(
-        new TextRenderable(this.renderer, {
-          content: result.kind.toUpperCase(),
-          fg: this.getKindColor(result.kind),
-          width: "18%",
-          overflow: "hidden",
-          truncate: true,
-          wrapMode: "none",
-          attributes: TextAttributes.BOLD,
-        }),
-      );
+    if (symbols.length > 0) {
+      if (files.length > 0) {
+        this.resultsBox.add(new TextRenderable(this.renderer, { content: "" }));
+      }
+      this.resultsBox.add(this.createGroupHeader("SYMBOLS"));
 
-      this.resultsBox.add(row);
+      const symbolGroups = new Map<string, Array<{ result: SearchResult; index: number }>>();
+      for (const item of symbols) {
+        const existing = symbolGroups.get(item.result.filePath);
+        if (existing) {
+          existing.push(item);
+          continue;
+        }
+        symbolGroups.set(item.result.filePath, [item]);
+      }
+
+      for (const [filePath, group] of symbolGroups.entries()) {
+        this.resultsBox.add(
+          new TextRenderable(this.renderer, {
+            content: filePath,
+            fg: theme.getEmptyStateColor(),
+            attributes: TextAttributes.BOLD,
+          }),
+        );
+        for (const item of group) {
+          this.resultsBox.add(this.createResultRow(item.result, item.index, true));
+        }
+      }
     }
 
     this.overlay.requestRender();
   }
 
   private getKindColor(kind: SearchResultKind): string {
-    switch (kind) {
-      case "file":
-        return "#38bdf8";
-      case "function":
-        return "#22c55e";
-      case "variable":
-        return "#f59e0b";
-      case "class":
-        return "#a78bfa";
-      case "type":
-        return "#f472b6";
-      case "heading":
-        return "#60a5fa";
-      default:
-        return "#cbd5e1";
-    }
+    return theme.getSearchKindColor(kind);
   }
 
   private selectCurrentResult(): void {
@@ -292,5 +325,76 @@ export class SearchModalController {
     if (!result) return;
     this.close();
     this.onSelectResult(result);
+  }
+
+  /** Applies theme colors to runtime input style fields. */
+  private applyInputTheme(): void {
+    const runtimeInput = this.queryInput as unknown as RuntimeInputStyleApi;
+    runtimeInput.backgroundColor = theme.getSearchInputBackgroundColor();
+    runtimeInput.focusedBackgroundColor = theme.getSearchInputFocusedBackgroundColor();
+    runtimeInput.textColor = theme.getSearchInputTextColor();
+    runtimeInput.focusedTextColor = theme.getSearchInputFocusedTextColor();
+    runtimeInput.selectionBg = theme.getSearchInputSelectionBackgroundColor();
+    runtimeInput.selectionFg = theme.getSearchInputSelectionForegroundColor();
+  }
+
+  /** Creates a section header row for grouped search output. */
+  private createGroupHeader(label: string): TextRenderable {
+    return new TextRenderable(this.renderer, {
+      content: ` ${label} `,
+      fg: theme.getDividerForegroundColor(),
+      bg: theme.getDividerBackgroundColor(),
+      attributes: TextAttributes.BOLD,
+    });
+  }
+
+  /** Creates a result row with optional indentation for grouped symbol lists. */
+  private createResultRow(
+    result: SearchResult,
+    index: number,
+    indented = false,
+  ): BoxRenderable {
+    const selected = index === this.selectedIndex;
+    const row = new BoxRenderable(this.renderer, {
+      width: "100%",
+      flexDirection: "row",
+      justifyContent: "space-between",
+      backgroundColor: selected
+        ? theme.getSearchSelectedRowBackgroundColor()
+        : theme.getTransparentColor(),
+      paddingLeft: indented ? 2 : 0,
+    });
+
+    const location =
+      result.kind === "file"
+        ? result.filePath
+        : `${result.name}:${String(result.fileLine)}`;
+    row.add(
+      new TextRenderable(this.renderer, {
+        content: location,
+        fg: selected
+          ? theme.getSearchSelectedRowForegroundColor()
+          : theme.getSearchRowForegroundColor(),
+        width: "82%",
+        overflow: "hidden",
+        truncate: true,
+        wrapMode: "none",
+        attributes: selected ? TextAttributes.BOLD : TextAttributes.NONE,
+      }),
+    );
+
+    row.add(
+      new TextRenderable(this.renderer, {
+        content: result.kind.toUpperCase(),
+        fg: this.getKindColor(result.kind),
+        width: "18%",
+        overflow: "hidden",
+        truncate: true,
+        wrapMode: "none",
+        attributes: TextAttributes.BOLD,
+      }),
+    );
+
+    return row;
   }
 }
