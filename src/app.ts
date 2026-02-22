@@ -1,7 +1,6 @@
 import {
   BoxRenderable,
   CodeRenderable,
-  InputRenderable,
   KeyEvent,
   LineNumberRenderable,
   ScrollBoxRenderable,
@@ -15,20 +14,21 @@ import {
   type HeadlessAgentRunResult,
 } from "./agent-session";
 import { CameraController } from "./camera-controller";
+import { createAgentRow, type AgentRowDecoration } from "./components/agent-row";
+import { HelpModal } from "./components/help-modal";
+import { PromptComposerBar, type PromptComposerField } from "./components/prompt-composer-bar";
 import { CursorController } from "./cursor-controller";
 import { LineModel } from "./line-model";
 import { SearchModalController } from "./search-modal";
 import type { SearchResult } from "./search-index";
 import { syntaxStyle } from "./theme";
-import type { AgentUpdate, CodeFileEntry, FocusMode } from "./types";
+import type { AgentUpdate, AgentUpdateStatus, CodeFileEntry, FocusMode } from "./types";
 import { clamp, clearChildren, makeSlashLine } from "./ui-utils";
 import { VisualHighlightController } from "./visual-highlight-controller";
 
 type DiffSegment =
   | { kind: "collapsed"; fileLineStart: number; lineCount: number }
   | { kind: "code"; fileLineStart: number; lineCount: number; content: string };
-type ShortcutSection = { title: string; entries: Array<{ keys: string; description: string }> };
-type PromptComposerField = "prompt" | "harness" | "model";
 type PromptComposerTarget = {
   updateId?: string;
   filePath: string;
@@ -47,62 +47,6 @@ type CodeBrowserAppOptions = {
 
 export class CodeBrowserApp {
   private static readonly GG_CHORD_TIMEOUT_MS = 500;
-  private static readonly SHORTCUTS_SECTIONS: ShortcutSection[] = [
-    {
-      title: "Global",
-      entries: [
-        { keys: "?", description: "Toggle this help popup" },
-        { keys: "Tab", description: "Switch focus between chips and code" },
-        { keys: "Esc / q", description: "Close help popup" },
-      ],
-    },
-    {
-      title: "Code",
-      entries: [
-        { keys: "Up / k", description: "Move cursor up" },
-        { keys: "Down / j", description: "Move cursor down" },
-        { keys: "PageUp", description: "Move cursor one page up" },
-        { keys: "PageDown", description: "Move cursor one page down" },
-        { keys: "v", description: "Toggle visual selection mode" },
-        { keys: "Esc", description: "Exit visual selection mode" },
-        { keys: "gg", description: "Jump to top" },
-        { keys: "G", description: "Jump to bottom" },
-        { keys: "n", description: "Jump to next file start" },
-        { keys: "p", description: "Jump to previous file start" },
-        { keys: "a", description: "Jump to next agent prompt" },
-        { keys: "x", description: "Delete current agent prompt" },
-        { keys: "c", description: "Toggle collapse current file" },
-        { keys: "d", description: "Toggle diff collapse mode" },
-        { keys: "s", description: "Open symbol/file search" },
-        { keys: "Enter", description: "Open agent prompt composer" },
-      ],
-    },
-    {
-      title: "Search",
-      entries: [
-        { keys: "Type", description: "Filter files and symbols" },
-        { keys: "Up/Down", description: "Move selected result" },
-        { keys: "Enter", description: "Jump to selected result" },
-        { keys: "Esc", description: "Close search modal" },
-      ],
-    },
-    {
-      title: "Prompt",
-      entries: [
-        { keys: "Enter", description: "Submit prompt" },
-        { keys: "Tab", description: "Cycle prompt/harness/model" },
-        { keys: "Left/Right", description: "Change harness/model value" },
-        { keys: "Esc", description: "Close prompt composer" },
-      ],
-    },
-    {
-      title: "Chips",
-      entries: [
-        { keys: "Left/Right", description: "Move selected chip" },
-        { keys: "Space/Enter", description: "Toggle selected chip" },
-      ],
-    },
-  ];
 
   private readonly renderer: CliRenderer;
   private readonly rootDir: string;
@@ -112,14 +56,9 @@ export class CodeBrowserApp {
   private readonly root: BoxRenderable;
   private readonly chipsRow: BoxRenderable;
   private readonly scrollbox: ScrollBoxRenderable;
-  private readonly helpOverlay: BoxRenderable;
+  private readonly helpModal: HelpModal;
   private readonly searchModal: SearchModalController;
-  private readonly promptOverlay: BoxRenderable;
-  private readonly promptSummaryText: TextRenderable;
-  private readonly promptHarnessText: TextRenderable;
-  private readonly promptModelText: TextRenderable;
-  private readonly promptStatusText: TextRenderable;
-  private readonly promptInput: InputRenderable;
+  private readonly promptComposer: PromptComposerBar;
   private readonly camera: CameraController;
 
   private typeCounts: Map<string, number>;
@@ -140,6 +79,7 @@ export class CodeBrowserApp {
   private agentUpdates: AgentUpdate[] = [];
   private agentLineByUpdateId = new Map<string, number>();
   private updateIdByAgentLine = new Map<number, string>();
+  private agentRowDecorations = new Map<number, AgentRowDecoration>();
   private runningAgentStops = new Map<string, () => void>();
   private agentRenderTimer: ReturnType<typeof setTimeout> | null = null;
   private promptVisible = false;
@@ -147,6 +87,7 @@ export class CodeBrowserApp {
   private promptTarget: PromptComposerTarget | null = null;
   private availableHarnesses: Array<"opencode"> = ["opencode"];
   private availableModels: string[] = ["opencode/big-pickle"];
+  private promptModelQuery = "";
   private promptModelListLoading = false;
 
   constructor(renderer: CliRenderer, entries: CodeFileEntry[], options: CodeBrowserAppOptions) {
@@ -185,198 +126,21 @@ export class CodeBrowserApp {
     this.root.add(this.chipsRow);
     this.root.add(this.scrollbox);
 
-    this.helpOverlay = new BoxRenderable(renderer, {
-      id: "help-overlay",
-      position: "absolute",
-      top: 0,
-      left: 0,
-      width: "100%",
-      height: "100%",
-      justifyContent: "center",
-      alignItems: "center",
-      backgroundColor: "transparent",
-      zIndex: 1000,
-      visible: false,
-      onMouseDown: () => {
+    this.helpModal = new HelpModal(renderer, {
+      onDismiss: () => {
         this.hideHelp();
       },
     });
-
-    const helpPanel = new BoxRenderable(renderer, {
-      width: "80%",
-      maxWidth: 88,
-      border: true,
-      borderStyle: "single",
-      borderColor: "#9ca3af",
-      padding: 1,
-      backgroundColor: "#000000",
-      flexDirection: "column",
-    });
-
-    helpPanel.add(
-      new TextRenderable(renderer, {
-        content: "Shortcuts",
-        fg: "#ffffff",
-        attributes: TextAttributes.BOLD,
-      }),
-    );
-
-    for (const section of CodeBrowserApp.SHORTCUTS_SECTIONS) {
-      helpPanel.add(new TextRenderable(renderer, { content: "" }));
-      helpPanel.add(
-        new TextRenderable(renderer, {
-          content: section.title,
-          fg: "#ffffff",
-          attributes: TextAttributes.BOLD,
-        }),
-      );
-
-      for (const entry of section.entries) {
-        const row = new BoxRenderable(renderer, {
-          flexDirection: "row",
-          width: "100%",
-        });
-
-        row.add(
-          new TextRenderable(renderer, {
-            content: entry.keys.padEnd(12),
-            fg: "#a855f7",
-            attributes: TextAttributes.BOLD,
-          }),
-        );
-
-        row.add(
-          new TextRenderable(renderer, {
-            content: entry.description,
-            fg: "#ffffff",
-          }),
-        );
-
-        helpPanel.add(row);
-      }
-    }
-
-    this.helpOverlay.add(helpPanel);
     this.searchModal = new SearchModalController(renderer, {
       onSelectResult: (result) => {
         this.jumpToSearchResult(result);
       },
     });
+    this.promptComposer = new PromptComposerBar(renderer);
 
-    this.promptOverlay = new BoxRenderable(renderer, {
-      id: "prompt-overlay",
-      position: "absolute",
-      bottom: 0,
-      left: 0,
-      width: "100%",
-      height: 3,
-      flexDirection: "column",
-      backgroundColor: "#6b7280",
-      paddingLeft: 1,
-      paddingRight: 1,
-      zIndex: 900,
-      visible: false,
-    });
-
-    const promptTopRow = new BoxRenderable(renderer, {
-      width: "100%",
-      height: 1,
-      flexDirection: "row",
-      justifyContent: "space-between",
-      backgroundColor: "#6b7280",
-    });
-
-    this.promptSummaryText = new TextRenderable(renderer, {
-      content: "",
-      fg: "#f3f4f6",
-      width: "58%",
-      overflow: "hidden",
-      truncate: true,
-      wrapMode: "none",
-    });
-    promptTopRow.add(this.promptSummaryText);
-
-    this.promptStatusText = new TextRenderable(renderer, {
-      content: "",
-      fg: "#e5e7eb",
-      width: "42%",
-      overflow: "hidden",
-      truncate: true,
-      wrapMode: "none",
-    });
-    promptTopRow.add(this.promptStatusText);
-    this.promptOverlay.add(promptTopRow);
-
-    const promptMiddleRow = new BoxRenderable(renderer, {
-      width: "100%",
-      height: 1,
-      flexDirection: "row",
-      alignItems: "center",
-      backgroundColor: "#6b7280",
-    });
-
-    promptMiddleRow.add(
-      new TextRenderable(renderer, {
-        content: "Prompt ",
-        fg: "#111827",
-        attributes: TextAttributes.BOLD,
-      }),
-    );
-
-    this.promptInput = new InputRenderable(renderer, {
-      width: "100%",
-      value: "",
-      placeholder: "Type instruction and press Enter...",
-      backgroundColor: "#9ca3af",
-      focusedBackgroundColor: "#d1d5db",
-      textColor: "#111827",
-      focusedTextColor: "#111827",
-      selectionBg: "#374151",
-      selectionFg: "#f9fafb",
-    });
-    this.promptInput.focusable = false;
-    this.promptInput.onContentChange = () => {
-      this.updatePromptHintText();
-      this.promptOverlay.requestRender();
-    };
-    promptMiddleRow.add(this.promptInput);
-    this.promptOverlay.add(promptMiddleRow);
-
-    const promptBottomRow = new BoxRenderable(renderer, {
-      width: "100%",
-      height: 1,
-      flexDirection: "row",
-      gap: 1,
-      alignItems: "center",
-      backgroundColor: "#6b7280",
-    });
-
-    this.promptHarnessText = new TextRenderable(renderer, {
-      content: "",
-      fg: "#111827",
-      bg: "#9ca3af",
-      width: "28%",
-      overflow: "hidden",
-      truncate: true,
-      wrapMode: "none",
-    });
-    promptBottomRow.add(this.promptHarnessText);
-
-    this.promptModelText = new TextRenderable(renderer, {
-      content: "",
-      fg: "#111827",
-      bg: "#9ca3af",
-      width: "71%",
-      overflow: "hidden",
-      truncate: true,
-      wrapMode: "none",
-    });
-    promptBottomRow.add(this.promptModelText);
-    this.promptOverlay.add(promptBottomRow);
-
-    this.root.add(this.helpOverlay);
+    this.root.add(this.helpModal.renderable);
     this.root.add(this.searchModal.renderable);
-    this.root.add(this.promptOverlay);
+    this.root.add(this.promptComposer.renderable);
     this.renderer.root.add(this.root);
     this.chipsRow.focusable = false;
     this.scrollbox.focusable = false;
@@ -443,7 +207,7 @@ export class CodeBrowserApp {
       this.agentRenderTimer = null;
     }
     this.promptVisible = false;
-    this.promptInput.blur();
+    this.promptComposer.close();
     this.searchModal.shutdown();
   }
 
@@ -470,7 +234,7 @@ export class CodeBrowserApp {
       }
 
       if (this.promptVisible) {
-        this.handlePromptKeypress(keyName, key);
+        this.handlePromptKeypress(keyName, rawKeyName, key);
         return;
       }
 
@@ -660,11 +424,11 @@ export class CodeBrowserApp {
       selectedText: selectedLines.join("\n"),
       prompt: "",
       harness: "opencode",
-      model: this.availableModels[0] ?? "opencode/big-pickle",
+      model: this.getDefaultModel(),
     };
   }
 
-  private handlePromptKeypress(keyName: string, key: KeyEvent): void {
+  private handlePromptKeypress(keyName: string, rawKeyName: string | undefined, key: KeyEvent): void {
     if (keyName === "escape") {
       this.consumeKey(key);
       this.closePromptComposer();
@@ -696,19 +460,26 @@ export class CodeBrowserApp {
     }
 
     if (this.promptField === "model") {
-      if (keyName === "left" || keyName === "up") {
+      if (keyName === "up") {
         this.consumeKey(key);
         this.cycleModel(-1);
         return;
       }
-      if (keyName === "right" || keyName === "down") {
+      if (keyName === "down") {
         this.consumeKey(key);
         this.cycleModel(1);
+        return;
+      }
+      if (keyName === "left" || keyName === "right") {
+        this.consumeKey(key);
         return;
       }
       if (keyName === "r") {
         this.consumeKey(key);
         void this.refreshAvailableModels();
+        return;
+      }
+      if (this.handleModelQueryInput(keyName, rawKeyName, key)) {
         return;
       }
       if (keyName === "return" || keyName === "enter") {
@@ -724,11 +495,10 @@ export class CodeBrowserApp {
       return;
     }
 
-    const handled = this.promptInput.handleKeyPress(key);
+    const handled = this.promptComposer.promptInput.handleKeyPress(key);
     if (handled) {
       this.consumeKey(key);
-      this.updatePromptHintText();
-      this.promptOverlay.requestRender();
+      this.promptComposer.renderable.requestRender();
     }
   }
 
@@ -753,53 +523,140 @@ export class CodeBrowserApp {
   }
 
   private cycleModel(delta: number): void {
-    if (!this.promptTarget || this.availableModels.length === 0) return;
-    const currentIndex = this.availableModels.indexOf(this.promptTarget.model);
+    if (!this.promptTarget) return;
+    const modelPool = this.getPromptModelCandidates();
+    if (modelPool.length === 0) return;
+    const currentIndex = modelPool.indexOf(this.promptTarget.model);
     const baseIndex = currentIndex >= 0 ? currentIndex : 0;
     const nextIndex =
-      ((baseIndex + delta) % this.availableModels.length + this.availableModels.length) %
-      this.availableModels.length;
-    this.promptTarget.model = this.availableModels[nextIndex] ?? this.promptTarget.model;
+      ((baseIndex + delta) % modelPool.length + modelPool.length) % modelPool.length;
+    this.promptTarget.model = modelPool[nextIndex] ?? this.promptTarget.model;
     this.refreshPromptComposerView();
+  }
+
+  private handleModelQueryInput(
+    keyName: string,
+    rawKeyName: string | undefined,
+    key: KeyEvent,
+  ): boolean {
+    if (!this.promptTarget) return false;
+
+    if (keyName === "backspace") {
+      if (this.promptModelQuery.length === 0) return false;
+      this.consumeKey(key);
+      this.promptModelQuery = this.promptModelQuery.slice(0, -1);
+      this.syncPromptModelFromFilter();
+      this.refreshPromptComposerView();
+      return true;
+    }
+
+    if (keyName === "space") {
+      this.consumeKey(key);
+      this.promptModelQuery += " ";
+      this.syncPromptModelFromFilter();
+      this.refreshPromptComposerView();
+      return true;
+    }
+
+    const typed = this.getPromptTypedCharacter(rawKeyName);
+    if (!typed) return false;
+
+    this.consumeKey(key);
+    this.promptModelQuery += typed;
+    this.syncPromptModelFromFilter();
+    this.refreshPromptComposerView();
+    return true;
+  }
+
+  private getPromptTypedCharacter(rawKeyName: string | undefined): string | null {
+    if (!rawKeyName || rawKeyName.length !== 1) return null;
+    return /[A-Za-z0-9./:_-]/.test(rawKeyName) ? rawKeyName : null;
+  }
+
+  private syncPromptModelFromFilter(): void {
+    if (!this.promptTarget) return;
+    const filtered = this.getPromptModelCandidates();
+    if (filtered.length === 0) return;
+    if (this.promptModelQuery.trim().length > 0) {
+      this.promptTarget.model = filtered[0] ?? this.promptTarget.model;
+      return;
+    }
+    if (filtered.includes(this.promptTarget.model)) return;
+    this.promptTarget.model = filtered[0] ?? this.promptTarget.model;
+  }
+
+  private getPromptModelCandidates(): string[] {
+    if (this.promptModelQuery.trim().length === 0) {
+      return this.availableModels;
+    }
+    const normalizedQuery = this.promptModelQuery.trim().toLowerCase();
+    const matches = this.availableModels
+      .map((model) => ({
+        model,
+        score: this.fuzzyScore(model.toLowerCase(), normalizedQuery),
+      }))
+      .filter((entry) => Number.isFinite(entry.score))
+      .sort((a, b) => a.score - b.score || a.model.localeCompare(b.model))
+      .map((entry) => entry.model);
+    return matches;
+  }
+
+  private getDefaultModel(): string {
+    const preferred = "opencode/big-pickle";
+    if (this.availableModels.includes(preferred)) return preferred;
+    return this.availableModels[0] ?? preferred;
+  }
+
+  private fuzzyScore(candidate: string, query: string): number {
+    if (query.length === 0) return 0;
+    let queryIndex = 0;
+    let score = 0;
+    let lastMatch = -1;
+    for (let i = 0; i < candidate.length; i += 1) {
+      if (candidate[i] !== query[queryIndex]) continue;
+      score += i;
+      if (i === 0 || "/._-:".includes(candidate[i - 1] ?? "")) {
+        score -= 8;
+      }
+      if (lastMatch === i - 1) {
+        score -= 6;
+      }
+      lastMatch = i;
+      queryIndex += 1;
+      if (queryIndex === query.length) {
+        score += candidate.length - query.length;
+        return score;
+      }
+    }
+    return Number.POSITIVE_INFINITY;
   }
 
   private openPromptComposer(target: PromptComposerTarget): void {
     this.promptTarget = {
       ...target,
-      model: target.model || this.availableModels[0] || "opencode/big-pickle",
+      model: target.model || this.getDefaultModel(),
     };
+    this.promptModelQuery = "";
     this.promptField = "prompt";
     this.promptVisible = true;
     this.focusMode = "prompt";
-    this.promptInput.value = this.promptTarget.prompt.replace(/\n+/g, " ");
-    this.promptInput.focus();
+    this.promptComposer.open(this.promptTarget.prompt);
     this.refreshPromptComposerView();
-    this.promptOverlay.visible = true;
-    this.promptOverlay.requestRender();
     void this.refreshAvailableModels();
   }
 
   private closePromptComposer(): void {
     this.promptVisible = false;
     this.promptTarget = null;
-    this.promptOverlay.visible = false;
-    this.promptInput.blur();
-    this.promptInput.value = "";
-    this.promptStatusText.content = "";
-    this.promptStatusText.fg = "#e5e7eb";
-    this.promptOverlay.requestRender();
+    this.promptModelQuery = "";
+    this.promptComposer.close();
     this.setFocusMode("code");
   }
 
   private async submitPromptComposer(): Promise<void> {
     if (!this.promptTarget) return;
-    const promptText = this.promptInput.value.trim();
-    if (!promptText) {
-      this.promptStatusText.content = "Prompt is empty.";
-      this.promptStatusText.fg = "#f87171";
-      this.promptOverlay.requestRender();
-      return;
-    }
+    const promptText = this.promptComposer.promptInput.plainText.trim();
+    if (!promptText) return;
 
     this.promptTarget.prompt = promptText;
 
@@ -853,7 +710,6 @@ export class CodeBrowserApp {
     update.error = undefined;
     update.runId = undefined;
     update.messages = [];
-    this.pushAgentMessage(update, "Starting headless opencode run...");
     this.notifyAgentUpdatesChanged();
     this.renderContent();
 
@@ -878,8 +734,6 @@ export class CodeBrowserApp {
           update.error = success ? undefined : error ?? "Headless opencode run failed.";
           if (update.error) {
             this.pushAgentMessage(update, update.error);
-          } else {
-            this.pushAgentMessage(update, "Run completed.");
           }
           this.notifyAgentUpdatesChanged();
           this.renderContent();
@@ -911,8 +765,10 @@ export class CodeBrowserApp {
   }
 
   private pushAgentMessage(update: AgentUpdate, message: string): void {
-    const trimmed = message.trim();
+    const trimmed = message.replace(/\s+/g, " ").trim();
     if (trimmed.length === 0) return;
+    const previous = update.messages[update.messages.length - 1];
+    if (previous === trimmed) return;
     update.messages.push(trimmed);
     if (update.messages.length > 64) {
       update.messages.splice(0, update.messages.length - 64);
@@ -938,8 +794,9 @@ export class CodeBrowserApp {
         this.availableModels = models;
       }
       if (this.promptTarget && !this.availableModels.includes(this.promptTarget.model)) {
-        this.promptTarget.model = this.availableModels[0] ?? this.promptTarget.model;
+        this.promptTarget.model = this.getDefaultModel();
       }
+      this.syncPromptModelFromFilter();
     } finally {
       this.promptModelListLoading = false;
       this.refreshPromptComposerView();
@@ -947,47 +804,14 @@ export class CodeBrowserApp {
   }
 
   private refreshPromptComposerView(): void {
-    if (!this.promptTarget) {
-      this.promptSummaryText.content = "";
-      this.promptHarnessText.content = "";
-      this.promptModelText.content = "";
-      return;
-    }
-
-    this.promptSummaryText.content =
-      `${this.promptTarget.filePath}:${this.promptTarget.selectionStartFileLine}-${this.promptTarget.selectionEndFileLine} ` +
-      `(${this.promptTarget.selectedText.split("\n").length} selected lines)`;
-
-    const harnessActive = this.promptField === "harness";
-    this.promptHarnessText.content = `[ Harness: ${this.promptTarget.harness} v ]`;
-    this.promptHarnessText.fg = harnessActive ? "#111827" : "#111827";
-    this.promptHarnessText.bg = harnessActive ? "#f3f4f6" : "#9ca3af";
-    this.promptHarnessText.attributes = harnessActive
-      ? TextAttributes.BOLD | TextAttributes.UNDERLINE
-      : TextAttributes.NONE;
-
-    const modelActive = this.promptField === "model";
-    this.promptModelText.content =
-      `[ Model: ${this.promptTarget.model}${this.promptModelListLoading ? " (loading...)" : ""} v ]`;
-    this.promptModelText.fg = modelActive ? "#111827" : "#111827";
-    this.promptModelText.bg = modelActive ? "#f3f4f6" : "#9ca3af";
-    this.promptModelText.attributes = modelActive
-      ? TextAttributes.BOLD | TextAttributes.UNDERLINE
-      : TextAttributes.NONE;
-
-    this.updatePromptHintText();
-    this.promptOverlay.requestRender();
-  }
-
-  private updatePromptHintText(): void {
-    const modeHint =
-      this.promptField === "prompt"
-        ? "Enter submit | Tab chips | Esc close"
-        : this.promptField === "harness"
-          ? "Harness chip active | Left/Right change | Tab next"
-          : "Model selector. Left/Right choose | r refresh models";
-    this.promptStatusText.content = modeHint;
-    this.promptStatusText.fg = "#e5e7eb";
+    this.promptComposer.render({
+      visible: this.promptVisible && Boolean(this.promptTarget),
+      field: this.promptField,
+      harness: this.promptTarget?.harness ?? "",
+      model: this.promptTarget?.model ?? "",
+      modelQuery: this.promptModelQuery,
+      loading: this.promptModelListLoading,
+    });
   }
 
   private openSearchModal(): void {
@@ -1129,14 +953,12 @@ export class CodeBrowserApp {
 
   private showHelp(): void {
     this.helpVisible = true;
-    this.helpOverlay.visible = true;
-    this.helpOverlay.requestRender();
+    this.helpModal.show();
   }
 
   private hideHelp(): void {
     this.helpVisible = false;
-    this.helpOverlay.visible = false;
-    this.helpOverlay.requestRender();
+    this.helpModal.hide();
   }
 
   private isTypeEnabled(type: string): boolean {
@@ -1231,6 +1053,7 @@ export class CodeBrowserApp {
     this.dividerByFilePath = new Map();
     this.agentLineByUpdateId = new Map();
     this.updateIdByAgentLine = new Map();
+    this.agentRowDecorations = new Map();
 
     if (this.entries.length === 0) {
       this.renderEmptyState("No code files found.");
@@ -1561,27 +1384,24 @@ export class CodeBrowserApp {
     nextDisplayRow: number,
   ): { nextLineNumber: number; nextDisplayRow: number; blockStartLine: number } {
     const content = this.formatAgentUpdateLine(update);
-    const code = new CodeRenderable(this.renderer, {
-      width: "100%",
+    const decoration = createAgentRow(this.renderer, {
       content,
-      wrapMode: "none",
-      syntaxStyle,
-      bg: "transparent",
+      baseBg: this.getAgentStatusBg(update.status),
+      baseFg: "#f8fafc",
+      selectedBg: "#334155",
+      selectedFg: "#f8fafc",
+      cursorBg: "#fef08a",
+      cursorFg: "#111827",
+      paddingLeft: 1,
+      paddingRight: 1,
+      bold: true,
     });
 
-    const lineView = new LineNumberRenderable(this.renderer, {
-      width: "100%",
-      target: code,
-      showLineNumbers: false,
-      fg: "#94a3b8",
-      bg: "transparent",
-    });
-
-    this.scrollbox.add(lineView);
+    this.scrollbox.add(decoration.row);
     this.lineModel.addBlock({
-      lineView,
-      codeView: code,
-      defaultLineNumberFg: "#94a3b8",
+      lineView: null,
+      codeView: null,
+      defaultLineNumberFg: "#f8fafc",
       defaultLineSigns: new Map(),
       blockKind: "agent",
       fileLineStart: update.selectionEndFileLine,
@@ -1594,6 +1414,7 @@ export class CodeBrowserApp {
 
     this.agentLineByUpdateId.set(update.id, nextLineNumber);
     this.updateIdByAgentLine.set(nextLineNumber, update.id);
+    this.agentRowDecorations.set(nextLineNumber, decoration);
     return {
       nextLineNumber: nextLineNumber + 1,
       nextDisplayRow: nextDisplayRow + 1,
@@ -1647,28 +1468,24 @@ export class CodeBrowserApp {
     nextLineNumber: number,
     nextDisplayRow: number,
   ): { nextLineNumber: number; nextDisplayRow: number; blockStartLine: number } {
-    const content = `  -> ${message}`;
-    const code = new CodeRenderable(this.renderer, {
-      width: "100%",
+    const content = ` ${message}`;
+    const decoration = createAgentRow(this.renderer, {
       content,
-      wrapMode: "none",
-      syntaxStyle,
-      bg: "transparent",
+      baseBg: "#1f2937",
+      baseFg: "#e5e7eb",
+      selectedBg: "#334155",
+      selectedFg: "#f8fafc",
+      cursorBg: "#fef08a",
+      cursorFg: "#111827",
+      paddingLeft: 2,
+      paddingRight: 1,
     });
 
-    const lineView = new LineNumberRenderable(this.renderer, {
-      width: "100%",
-      target: code,
-      showLineNumbers: false,
-      fg: "#cbd5e1",
-      bg: "transparent",
-    });
-
-    this.scrollbox.add(lineView);
+    this.scrollbox.add(decoration.row);
     this.lineModel.addBlock({
-      lineView,
-      codeView: code,
-      defaultLineNumberFg: "#cbd5e1",
+      lineView: null,
+      codeView: null,
+      defaultLineNumberFg: "#e5e7eb",
       defaultLineSigns: new Map(),
       blockKind: "agent",
       fileLineStart: update.selectionEndFileLine,
@@ -1679,6 +1496,7 @@ export class CodeBrowserApp {
       filePath: update.filePath,
     });
     this.updateIdByAgentLine.set(nextLineNumber, update.id);
+    this.agentRowDecorations.set(nextLineNumber, decoration);
 
     return {
       nextLineNumber: nextLineNumber + 1,
@@ -1690,17 +1508,30 @@ export class CodeBrowserApp {
   private formatAgentUpdateLine(update: AgentUpdate): string {
     const prefix =
       update.status === "running"
-        ? "[agent running]"
+        ? "AGENT RUNNING"
         : update.status === "completed"
-          ? "[agent done]"
+          ? "AGENT DONE"
         : update.status === "failed"
-          ? "[agent failed]"
-          : "[agent draft]";
+          ? "AGENT FAILED"
+          : "AGENT DRAFT";
     const prompt = update.prompt.trim().length > 0 ? update.prompt : "<type prompt>";
     const truncatedPrompt = prompt.length > 88 ? `${prompt.slice(0, 88)}…` : prompt;
-    const runSuffix = update.runId ? ` | run: ${update.runId}` : "";
+    const runSuffix = update.runId ? ` · ${update.runId}` : "";
     const errorSuffix = update.error ? ` | error: ${update.error}` : "";
-    return `${prefix} harness=${update.harness} model=${update.model} | prompt: ${truncatedPrompt}${runSuffix}${errorSuffix}`;
+    return `● ${prefix} · ${update.model} · ${truncatedPrompt}${runSuffix}${errorSuffix}`;
+  }
+
+  private getAgentStatusBg(status: AgentUpdateStatus): string {
+    switch (status) {
+      case "running":
+        return "#1e3a8a";
+      case "completed":
+        return "#14532d";
+      case "failed":
+        return "#7f1d1d";
+      default:
+        return "#312e81";
+    }
   }
 
   private getUpdatesForFile(filePath: string): AgentUpdate[] {
@@ -1775,6 +1606,24 @@ export class CodeBrowserApp {
     const { start: selectionStart, end: selectionEnd } = this.cursor.selectionRange;
     const cursorLine = this.cursor.cursorLine;
     this.visualHighlights.apply(this.lineModel.blocks, selectionStart, selectionEnd, cursorLine);
+    this.applyAgentRowHighlights(selectionStart, selectionEnd, cursorLine);
+  }
+
+  private applyAgentRowHighlights(selectionStart: number, selectionEnd: number, cursorLine: number): void {
+    for (const [line, decoration] of this.agentRowDecorations.entries()) {
+      let bg = decoration.baseBg;
+      let fg = decoration.baseFg;
+      if (line === cursorLine) {
+        bg = decoration.cursorBg;
+        fg = decoration.cursorFg;
+      } else if (line >= selectionStart && line <= selectionEnd) {
+        bg = decoration.selectedBg;
+        fg = decoration.selectedFg;
+      }
+      decoration.row.backgroundColor = bg;
+      decoration.text.fg = fg;
+      decoration.row.requestRender();
+    }
   }
 
   private jumpToNextFileStart(): void {

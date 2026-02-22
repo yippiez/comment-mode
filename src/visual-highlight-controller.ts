@@ -33,19 +33,26 @@ export class VisualHighlightController {
     const nextActiveCodeViews = new Set<CodeRenderable>();
 
     for (const block of blocks) {
-      block.lineView.clearAllLineColors();
-      this.setLineViewFg(block.lineView, block.defaultLineNumberFg);
-      block.lineView.setLineSigns(new Map(block.defaultLineSigns));
+      if (block.lineView) {
+        block.lineView.clearAllLineColors();
+        this.setLineViewFg(block.lineView, block.defaultLineNumberFg);
+        block.lineView.setLineSigns(new Map(block.defaultLineSigns));
+      }
 
       const overlapStart = Math.max(selectionStart, block.lineStart);
       const overlapEnd = Math.min(selectionEnd, block.lineEnd);
       if (overlapStart > overlapEnd) continue;
 
-      nextActiveCodeViews.add(block.codeView);
-      this.setLineViewFg(block.lineView, VisualHighlightController.HIGHLIGHTED_FG);
-      this.applyCodeSelection(block.codeView, block.lineStart, overlapStart, overlapEnd);
+      if (block.codeView) {
+        nextActiveCodeViews.add(block.codeView);
+        this.applyCodeSelection(block.codeView, block.lineStart, overlapStart, overlapEnd);
+      }
+      if (block.lineView) {
+        this.setLineViewFg(block.lineView, VisualHighlightController.HIGHLIGHTED_FG);
+      }
 
       for (let globalLine = overlapStart; globalLine <= overlapEnd; globalLine += 1) {
+        if (!block.lineView) continue;
         const localLine = globalLine - block.lineStart;
         const isCursorLine = globalLine === cursorLine;
         block.lineView.setLineColor(localLine, {

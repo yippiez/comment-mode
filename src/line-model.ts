@@ -9,10 +9,10 @@ export type FileAnchor = {
 };
 
 type AddBlockParams = {
-  lineView: LineNumberRenderable;
-  codeView: CodeRenderable;
-  defaultLineNumberFg: string;
-  defaultLineSigns: Map<
+  lineView?: LineNumberRenderable | null;
+  codeView?: CodeRenderable | null;
+  defaultLineNumberFg?: string;
+  defaultLineSigns?: Map<
     number,
     {
       before?: string;
@@ -105,10 +105,10 @@ export class LineModel {
     const lineEnd = lineStart + safeLineCount - 1;
 
     this.renderedLineBlocks.push({
-      lineView,
-      codeView,
-      defaultLineNumberFg,
-      defaultLineSigns,
+      lineView: lineView ?? null,
+      codeView: codeView ?? null,
+      defaultLineNumberFg: defaultLineNumberFg ?? "#e5e7eb",
+      defaultLineSigns: defaultLineSigns ?? new Map(),
       blockKind,
       fileLineStart,
       renderedLines,

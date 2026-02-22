@@ -31,8 +31,8 @@ export type AgentUpdate = {
 };
 
 export type RenderedLineBlock = {
-  lineView: LineNumberRenderable;
-  codeView: CodeRenderable;
+  lineView: LineNumberRenderable | null;
+  codeView: CodeRenderable | null;
   defaultLineNumberFg: string;
   defaultLineSigns: Map<
     number,
