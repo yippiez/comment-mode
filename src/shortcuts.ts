@@ -3,11 +3,50 @@ export type ShortcutSection = {
   entries: Array<{ keys: string; description: string }>;
 };
 
+export type CodeKeyAction =
+  | "move_up"
+  | "move_down"
+  | "page_up"
+  | "page_down"
+  | "toggle_visual"
+  | "collapse_file"
+  | "toggle_diff"
+  | "open_search"
+  | "open_prompt"
+  | "escape_visual";
+
+export const CODE_KEYMAP: Record<string, CodeKeyAction> = {
+  up: "move_up",
+  k: "move_up",
+  down: "move_down",
+  j: "move_down",
+  pageup: "page_up",
+  pagedown: "page_down",
+  v: "toggle_visual",
+  c: "collapse_file",
+  d: "toggle_diff",
+  s: "open_search",
+  enter: "open_prompt",
+  return: "open_prompt",
+  escape: "escape_visual",
+};
+
+export type ChipKeyAction = "move_left" | "move_right" | "toggle_chip";
+
+export const CHIPS_KEYMAP: Record<string, ChipKeyAction> = {
+  left: "move_left",
+  right: "move_right",
+  space: "toggle_chip",
+  enter: "toggle_chip",
+  return: "toggle_chip",
+};
+
 export const SHORTCUTS_SECTIONS: ShortcutSection[] = [
   {
     title: "Global",
     entries: [
       { keys: "?", description: "Toggle this help popup" },
+      { keys: "t", description: "Toggle color theme" },
       { keys: "Tab", description: "Switch focus between chips and code" },
       { keys: "Esc / q", description: "Close help popup" },
     ],
@@ -46,10 +85,10 @@ export const SHORTCUTS_SECTIONS: ShortcutSection[] = [
     title: "Prompt",
     entries: [
       { keys: "Enter", description: "Submit prompt" },
-      { keys: "Tab", description: "Cycle prompt/harness/model" },
-      { keys: "Left/Right", description: "Change harness value" },
+      { keys: "Tab", description: "Cycle prompt/model/thinking" },
+      { keys: "Left/Right", description: "Change thinking level" },
       { keys: "Type", description: "Filter model list" },
-      { keys: "Up/Down", description: "Pick filtered model" },
+      { keys: "Up/Down", description: "Pick model or thinking level" },
       { keys: "Esc", description: "Close prompt composer" },
     ],
   },
