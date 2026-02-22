@@ -61,6 +61,13 @@ export class CursorController {
     this.bindings.camera.onCursorSet(this.line, this.totalLines, previous, positionMode);
   }
 
+  public goToLineAtMinVisibleHeight(targetLine: number): void {
+    if (this.totalLines <= 0) return;
+    this.line = clamp(targetLine, 1, this.totalLines);
+    this.bindings.onCursorChanged();
+    this.bindings.camera.placeLineAtMinVisibleHeight(this.line, this.totalLines);
+  }
+
   public goToMaxVisibleHeight(): void {
     this.bindings.camera.goToCursorMaxVisibleHeight(this.line, this.totalLines);
   }

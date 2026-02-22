@@ -83,6 +83,12 @@ export class CameraController {
     this.updatePreferredViewportOffset(cursorLine);
   }
 
+  public placeLineAtMinVisibleHeight(line: number, totalLines: number): void {
+    if (totalLines <= 0) return;
+    const displayRow = this.bindings.getDisplayRowForLine(line);
+    this.placeDisplayRowAtMinVisibleHeight(displayRow, line);
+  }
+
   public handleExternalScroll(
     nextTop: number,
     totalLines: number,

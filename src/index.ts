@@ -10,7 +10,7 @@ const rootDir = process.cwd();
 const renderer = await createCliRenderer({ exitOnCtrlC: true });
 const entries = await loadCodeFileEntries(rootDir);
 
-const app = new CodeBrowserApp(renderer, entries);
+const app = new CodeBrowserApp(renderer, entries, { rootDir });
 app.start();
 
 let refreshRunning = false;
@@ -40,5 +40,6 @@ const watcher = await watchWorkspace(rootDir, () => {
 });
 
 renderer.on("destroy", () => {
+  app.shutdown();
   watcher.close();
 });

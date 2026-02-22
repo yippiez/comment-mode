@@ -1,6 +1,10 @@
 import type { CodeRenderable, LineNumberRenderable, RGBA } from "@opentui/core";
 
-export type FocusMode = "chips" | "code";
+export type FocusMode = "chips" | "code" | "prompt" | "search";
+export type BlockKind = "code" | "collapsed" | "agent";
+export type AgentHarness = "opencode";
+export type AgentModel = string;
+export type AgentUpdateStatus = "draft" | "running" | "completed" | "failed";
 
 export type CodeFileEntry = {
   relativePath: string;
@@ -9,6 +13,21 @@ export type CodeFileEntry = {
   typeLabel: string;
   lineCount: number;
   uncommittedLines: Set<number>;
+};
+
+export type AgentUpdate = {
+  id: string;
+  filePath: string;
+  selectionStartFileLine: number;
+  selectionEndFileLine: number;
+  selectedText: string;
+  prompt: string;
+  harness: AgentHarness;
+  model: AgentModel;
+  status: AgentUpdateStatus;
+  runId?: string;
+  messages: string[];
+  error?: string;
 };
 
 export type RenderedLineBlock = {
@@ -24,6 +43,9 @@ export type RenderedLineBlock = {
       afterColor?: string | RGBA;
     }
   >;
+  blockKind: BlockKind;
+  fileLineStart: number | null;
+  renderedLines: string[];
   lineStart: number;
   lineEnd: number;
   filePath: string;

@@ -1,24 +1,49 @@
 import {
   BoxRenderable,
   CodeRenderable,
+  InputRenderable,
+  KeyEvent,
   LineNumberRenderable,
   ScrollBoxRenderable,
   TextAttributes,
   TextRenderable,
   type CliRenderer,
 } from "@opentui/core";
+import {
+  listOpencodeModels,
+  startHeadlessAgentRun,
+  type HeadlessAgentRunResult,
+} from "./agent-session";
 import { CameraController } from "./camera-controller";
 import { CursorController } from "./cursor-controller";
 import { LineModel } from "./line-model";
+import { SearchModalController } from "./search-modal";
+import type { SearchResult } from "./search-index";
 import { syntaxStyle } from "./theme";
-import type { CodeFileEntry, FocusMode } from "./types";
+import type { AgentUpdate, CodeFileEntry, FocusMode } from "./types";
 import { clamp, clearChildren, makeSlashLine } from "./ui-utils";
 import { VisualHighlightController } from "./visual-highlight-controller";
 
 type DiffSegment =
-  | { kind: "collapsed"; lineCount: number }
+  | { kind: "collapsed"; fileLineStart: number; lineCount: number }
   | { kind: "code"; fileLineStart: number; lineCount: number; content: string };
 type ShortcutSection = { title: string; entries: Array<{ keys: string; description: string }> };
+type PromptComposerField = "prompt" | "harness" | "model";
+type PromptComposerTarget = {
+  updateId?: string;
+  filePath: string;
+  selectionStartFileLine: number;
+  selectionEndFileLine: number;
+  selectedText: string;
+  prompt: string;
+  harness: "opencode";
+  model: string;
+};
+type CodeBrowserAppOptions = {
+  rootDir: string;
+  initialAgentUpdates?: AgentUpdate[];
+  onAgentUpdatesChanged?: (updates: AgentUpdate[]) => void;
+};
 
 export class CodeBrowserApp {
   private static readonly GG_CHORD_TIMEOUT_MS = 500;
@@ -44,8 +69,30 @@ export class CodeBrowserApp {
         { keys: "G", description: "Jump to bottom" },
         { keys: "n", description: "Jump to next file start" },
         { keys: "p", description: "Jump to previous file start" },
+        { keys: "a", description: "Jump to next agent prompt" },
+        { keys: "x", description: "Delete current agent prompt" },
         { keys: "c", description: "Toggle collapse current file" },
         { keys: "d", description: "Toggle diff collapse mode" },
+        { keys: "s", description: "Open symbol/file search" },
+        { keys: "Enter", description: "Open agent prompt composer" },
+      ],
+    },
+    {
+      title: "Search",
+      entries: [
+        { keys: "Type", description: "Filter files and symbols" },
+        { keys: "Up/Down", description: "Move selected result" },
+        { keys: "Enter", description: "Jump to selected result" },
+        { keys: "Esc", description: "Close search modal" },
+      ],
+    },
+    {
+      title: "Prompt",
+      entries: [
+        { keys: "Enter", description: "Submit prompt" },
+        { keys: "Tab", description: "Cycle prompt/harness/model" },
+        { keys: "Left/Right", description: "Change harness/model value" },
+        { keys: "Esc", description: "Close prompt composer" },
       ],
     },
     {
@@ -58,12 +105,21 @@ export class CodeBrowserApp {
   ];
 
   private readonly renderer: CliRenderer;
+  private readonly rootDir: string;
+  private readonly onAgentUpdatesChanged?: (updates: AgentUpdate[]) => void;
   private entries: CodeFileEntry[];
 
   private readonly root: BoxRenderable;
   private readonly chipsRow: BoxRenderable;
   private readonly scrollbox: ScrollBoxRenderable;
   private readonly helpOverlay: BoxRenderable;
+  private readonly searchModal: SearchModalController;
+  private readonly promptOverlay: BoxRenderable;
+  private readonly promptSummaryText: TextRenderable;
+  private readonly promptHarnessText: TextRenderable;
+  private readonly promptModelText: TextRenderable;
+  private readonly promptStatusText: TextRenderable;
+  private readonly promptInput: InputRenderable;
   private readonly camera: CameraController;
 
   private typeCounts: Map<string, number>;
@@ -81,10 +137,27 @@ export class CodeBrowserApp {
   private dividerByFilePath = new Map<string, TextRenderable>();
   private pendingGChordAt: number | null = null;
   private collapsedFiles = new Set<string>();
+  private agentUpdates: AgentUpdate[] = [];
+  private agentLineByUpdateId = new Map<string, number>();
+  private updateIdByAgentLine = new Map<number, string>();
+  private runningAgentStops = new Map<string, () => void>();
+  private agentRenderTimer: ReturnType<typeof setTimeout> | null = null;
+  private promptVisible = false;
+  private promptField: PromptComposerField = "prompt";
+  private promptTarget: PromptComposerTarget | null = null;
+  private availableHarnesses: Array<"opencode"> = ["opencode"];
+  private availableModels: string[] = ["opencode/big-pickle"];
+  private promptModelListLoading = false;
 
-  constructor(renderer: CliRenderer, entries: CodeFileEntry[]) {
+  constructor(renderer: CliRenderer, entries: CodeFileEntry[], options: CodeBrowserAppOptions) {
     this.renderer = renderer;
+    this.rootDir = options.rootDir;
+    this.onAgentUpdatesChanged = options.onAgentUpdatesChanged;
     this.entries = entries;
+    this.agentUpdates = (options.initialAgentUpdates ?? []).map((update) => ({
+      ...update,
+      messages: [...(update.messages ?? [])],
+    }));
 
     this.root = new BoxRenderable(renderer, {
       id: "root",
@@ -184,8 +257,126 @@ export class CodeBrowserApp {
     }
 
     this.helpOverlay.add(helpPanel);
+    this.searchModal = new SearchModalController(renderer, {
+      onSelectResult: (result) => {
+        this.jumpToSearchResult(result);
+      },
+    });
+
+    this.promptOverlay = new BoxRenderable(renderer, {
+      id: "prompt-overlay",
+      position: "absolute",
+      bottom: 0,
+      left: 0,
+      width: "100%",
+      height: 3,
+      flexDirection: "column",
+      backgroundColor: "#6b7280",
+      paddingLeft: 1,
+      paddingRight: 1,
+      zIndex: 900,
+      visible: false,
+    });
+
+    const promptTopRow = new BoxRenderable(renderer, {
+      width: "100%",
+      height: 1,
+      flexDirection: "row",
+      justifyContent: "space-between",
+      backgroundColor: "#6b7280",
+    });
+
+    this.promptSummaryText = new TextRenderable(renderer, {
+      content: "",
+      fg: "#f3f4f6",
+      width: "58%",
+      overflow: "hidden",
+      truncate: true,
+      wrapMode: "none",
+    });
+    promptTopRow.add(this.promptSummaryText);
+
+    this.promptStatusText = new TextRenderable(renderer, {
+      content: "",
+      fg: "#e5e7eb",
+      width: "42%",
+      overflow: "hidden",
+      truncate: true,
+      wrapMode: "none",
+    });
+    promptTopRow.add(this.promptStatusText);
+    this.promptOverlay.add(promptTopRow);
+
+    const promptMiddleRow = new BoxRenderable(renderer, {
+      width: "100%",
+      height: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: "#6b7280",
+    });
+
+    promptMiddleRow.add(
+      new TextRenderable(renderer, {
+        content: "Prompt ",
+        fg: "#111827",
+        attributes: TextAttributes.BOLD,
+      }),
+    );
+
+    this.promptInput = new InputRenderable(renderer, {
+      width: "100%",
+      value: "",
+      placeholder: "Type instruction and press Enter...",
+      backgroundColor: "#9ca3af",
+      focusedBackgroundColor: "#d1d5db",
+      textColor: "#111827",
+      focusedTextColor: "#111827",
+      selectionBg: "#374151",
+      selectionFg: "#f9fafb",
+    });
+    this.promptInput.focusable = false;
+    this.promptInput.onContentChange = () => {
+      this.updatePromptHintText();
+      this.promptOverlay.requestRender();
+    };
+    promptMiddleRow.add(this.promptInput);
+    this.promptOverlay.add(promptMiddleRow);
+
+    const promptBottomRow = new BoxRenderable(renderer, {
+      width: "100%",
+      height: 1,
+      flexDirection: "row",
+      gap: 1,
+      alignItems: "center",
+      backgroundColor: "#6b7280",
+    });
+
+    this.promptHarnessText = new TextRenderable(renderer, {
+      content: "",
+      fg: "#111827",
+      bg: "#9ca3af",
+      width: "28%",
+      overflow: "hidden",
+      truncate: true,
+      wrapMode: "none",
+    });
+    promptBottomRow.add(this.promptHarnessText);
+
+    this.promptModelText = new TextRenderable(renderer, {
+      content: "",
+      fg: "#111827",
+      bg: "#9ca3af",
+      width: "71%",
+      overflow: "hidden",
+      truncate: true,
+      wrapMode: "none",
+    });
+    promptBottomRow.add(this.promptModelText);
+    this.promptOverlay.add(promptBottomRow);
 
     this.root.add(this.helpOverlay);
+    this.root.add(this.searchModal.renderable);
+    this.root.add(this.promptOverlay);
     this.renderer.root.add(this.root);
     this.chipsRow.focusable = false;
     this.scrollbox.focusable = false;
@@ -219,18 +410,41 @@ export class CodeBrowserApp {
   }
 
   public start(): void {
+    this.pruneAgentUpdates();
+    this.searchModal.setEntries(this.entries);
     this.renderChips();
     this.renderContent();
     this.registerKeyboardHandlers();
     this.setFocusMode("code");
+    void this.refreshAvailableModels();
   }
 
   public refreshEntries(entries: CodeFileEntry[]): void {
     this.entries = entries;
     this.pruneCollapsedFiles();
+    this.pruneAgentUpdates();
+    this.searchModal.setEntries(this.entries);
     this.recomputeTypesState();
     this.renderChips();
     this.renderContent();
+  }
+
+  public getAgentUpdates(): AgentUpdate[] {
+    return this.agentUpdates.map((update) => ({ ...update, messages: [...update.messages] }));
+  }
+
+  public shutdown(): void {
+    for (const stop of this.runningAgentStops.values()) {
+      stop();
+    }
+    this.runningAgentStops.clear();
+    if (this.agentRenderTimer) {
+      clearTimeout(this.agentRenderTimer);
+      this.agentRenderTimer = null;
+    }
+    this.promptVisible = false;
+    this.promptInput.blur();
+    this.searchModal.shutdown();
   }
 
   private registerKeyboardHandlers(): void {
@@ -255,6 +469,25 @@ export class CodeBrowserApp {
         return;
       }
 
+      if (this.promptVisible) {
+        this.handlePromptKeypress(keyName, key);
+        return;
+      }
+
+      if (this.searchModal.isVisible) {
+        this.searchModal.handleKeypress(keyName, key, (event) => this.consumeKey(event));
+        if (!this.searchModal.isVisible) {
+          this.setFocusMode("code");
+        }
+        return;
+      }
+
+      if (keyName === "s") {
+        this.consumeKey(key);
+        this.openSearchModal();
+        return;
+      }
+
       if (keyName === "tab") {
         this.consumeKey(key);
         this.setFocusMode(this.focusMode === "chips" ? "code" : "chips");
@@ -271,10 +504,7 @@ export class CodeBrowserApp {
     });
   }
 
-  private handleChipsKeypress(
-    keyName: string,
-    key: { preventDefault?: () => void; stopPropagation?: () => void },
-  ): void {
+  private handleChipsKeypress(keyName: string, key: KeyEvent): void {
     if (keyName === "left") {
       this.consumeKey(key);
       this.moveChipSelection(-1);
@@ -296,12 +526,24 @@ export class CodeBrowserApp {
   private handleCodeKeypress(
     keyName: string,
     rawKeyName: string | undefined,
-    key: { shift?: boolean; preventDefault?: () => void; stopPropagation?: () => void },
+    key: KeyEvent,
   ): void {
     if (keyName === "escape") {
       this.consumeKey(key);
       this.pendingGChordAt = null;
       this.cursor.disableVisualMode();
+      return;
+    }
+
+    if (this.handleAgentRowKeypress(keyName, key)) {
+      this.pendingGChordAt = null;
+      return;
+    }
+
+    if (keyName === "return" || keyName === "enter") {
+      this.consumeKey(key);
+      this.pendingGChordAt = null;
+      void this.handleEnterOnCodeView();
       return;
     }
 
@@ -353,10 +595,455 @@ export class CodeBrowserApp {
     }
   }
 
+  private handleAgentRowKeypress(keyName: string, key: KeyEvent): boolean {
+    const update = this.getAgentUpdateAtCursorLine();
+    if (!update) return false;
+
+    if (keyName === "delete") {
+      this.consumeKey(key);
+      this.removeAgentUpdate(update.id);
+      return true;
+    }
+
+    return false;
+  }
+
+  private async handleEnterOnCodeView(): Promise<void> {
+    const update = this.getAgentUpdateAtCursorLine();
+    if (update) {
+      this.openPromptComposer({
+        updateId: update.id,
+        filePath: update.filePath,
+        selectionStartFileLine: update.selectionStartFileLine,
+        selectionEndFileLine: update.selectionEndFileLine,
+        selectedText: update.selectedText,
+        prompt: update.prompt,
+        harness: "opencode",
+        model: update.model,
+      });
+      return;
+    }
+
+    const target = this.createPromptTargetFromSelection();
+    if (!target) return;
+    this.openPromptComposer(target);
+  }
+
+  private createPromptTargetFromSelection(): PromptComposerTarget | null {
+    if (this.lineModel.totalLines <= 0) return null;
+    const currentFilePath = this.lineModel.getCurrentFilePath(this.cursor.cursorLine);
+    if (!currentFilePath) return null;
+
+    const { start, end } = this.cursor.selectionRange;
+    const selectedLines: string[] = [];
+    let selectionStartFileLine: number | null = null;
+    let selectionEndFileLine: number | null = null;
+
+    for (let globalLine = start; globalLine <= end; globalLine += 1) {
+      const lineInfo = this.lineModel.getVisibleLineInfo(globalLine);
+      if (!lineInfo) continue;
+      if (lineInfo.filePath !== currentFilePath) continue;
+      if (lineInfo.blockKind !== "code") continue;
+      if (lineInfo.fileLine === null) continue;
+
+      selectionStartFileLine = selectionStartFileLine ?? lineInfo.fileLine;
+      selectionEndFileLine = lineInfo.fileLine;
+      selectedLines.push(lineInfo.text);
+    }
+
+    if (selectionStartFileLine === null || selectionEndFileLine === null) return null;
+
+    return {
+      filePath: currentFilePath,
+      selectionStartFileLine,
+      selectionEndFileLine,
+      selectedText: selectedLines.join("\n"),
+      prompt: "",
+      harness: "opencode",
+      model: this.availableModels[0] ?? "opencode/big-pickle",
+    };
+  }
+
+  private handlePromptKeypress(keyName: string, key: KeyEvent): void {
+    if (keyName === "escape") {
+      this.consumeKey(key);
+      this.closePromptComposer();
+      return;
+    }
+
+    if (keyName === "tab") {
+      this.consumeKey(key);
+      this.movePromptField(1);
+      return;
+    }
+
+    if (this.promptField === "harness") {
+      if (keyName === "left" || keyName === "up") {
+        this.consumeKey(key);
+        this.cycleHarness(-1);
+        return;
+      }
+      if (keyName === "right" || keyName === "down") {
+        this.consumeKey(key);
+        this.cycleHarness(1);
+        return;
+      }
+      if (keyName === "return" || keyName === "enter") {
+        this.consumeKey(key);
+        this.movePromptField(1);
+      }
+      return;
+    }
+
+    if (this.promptField === "model") {
+      if (keyName === "left" || keyName === "up") {
+        this.consumeKey(key);
+        this.cycleModel(-1);
+        return;
+      }
+      if (keyName === "right" || keyName === "down") {
+        this.consumeKey(key);
+        this.cycleModel(1);
+        return;
+      }
+      if (keyName === "r") {
+        this.consumeKey(key);
+        void this.refreshAvailableModels();
+        return;
+      }
+      if (keyName === "return" || keyName === "enter") {
+        this.consumeKey(key);
+        this.movePromptField(-2);
+      }
+      return;
+    }
+
+    if (keyName === "return" || keyName === "enter") {
+      this.consumeKey(key);
+      void this.submitPromptComposer();
+      return;
+    }
+
+    const handled = this.promptInput.handleKeyPress(key);
+    if (handled) {
+      this.consumeKey(key);
+      this.updatePromptHintText();
+      this.promptOverlay.requestRender();
+    }
+  }
+
+  private movePromptField(delta: number): void {
+    const fields: PromptComposerField[] = ["prompt", "harness", "model"];
+    const currentIndex = fields.indexOf(this.promptField);
+    const nextIndex =
+      ((currentIndex + delta) % fields.length + fields.length) % fields.length;
+    this.promptField = fields[nextIndex] ?? "prompt";
+    this.refreshPromptComposerView();
+  }
+
+  private cycleHarness(delta: number): void {
+    if (!this.promptTarget || this.availableHarnesses.length === 0) return;
+    const currentIndex = this.availableHarnesses.indexOf(this.promptTarget.harness);
+    const baseIndex = currentIndex >= 0 ? currentIndex : 0;
+    const nextIndex =
+      ((baseIndex + delta) % this.availableHarnesses.length + this.availableHarnesses.length) %
+      this.availableHarnesses.length;
+    this.promptTarget.harness = this.availableHarnesses[nextIndex] ?? "opencode";
+    this.refreshPromptComposerView();
+  }
+
+  private cycleModel(delta: number): void {
+    if (!this.promptTarget || this.availableModels.length === 0) return;
+    const currentIndex = this.availableModels.indexOf(this.promptTarget.model);
+    const baseIndex = currentIndex >= 0 ? currentIndex : 0;
+    const nextIndex =
+      ((baseIndex + delta) % this.availableModels.length + this.availableModels.length) %
+      this.availableModels.length;
+    this.promptTarget.model = this.availableModels[nextIndex] ?? this.promptTarget.model;
+    this.refreshPromptComposerView();
+  }
+
+  private openPromptComposer(target: PromptComposerTarget): void {
+    this.promptTarget = {
+      ...target,
+      model: target.model || this.availableModels[0] || "opencode/big-pickle",
+    };
+    this.promptField = "prompt";
+    this.promptVisible = true;
+    this.focusMode = "prompt";
+    this.promptInput.value = this.promptTarget.prompt.replace(/\n+/g, " ");
+    this.promptInput.focus();
+    this.refreshPromptComposerView();
+    this.promptOverlay.visible = true;
+    this.promptOverlay.requestRender();
+    void this.refreshAvailableModels();
+  }
+
+  private closePromptComposer(): void {
+    this.promptVisible = false;
+    this.promptTarget = null;
+    this.promptOverlay.visible = false;
+    this.promptInput.blur();
+    this.promptInput.value = "";
+    this.promptStatusText.content = "";
+    this.promptStatusText.fg = "#e5e7eb";
+    this.promptOverlay.requestRender();
+    this.setFocusMode("code");
+  }
+
+  private async submitPromptComposer(): Promise<void> {
+    if (!this.promptTarget) return;
+    const promptText = this.promptInput.value.trim();
+    if (!promptText) {
+      this.promptStatusText.content = "Prompt is empty.";
+      this.promptStatusText.fg = "#f87171";
+      this.promptOverlay.requestRender();
+      return;
+    }
+
+    this.promptTarget.prompt = promptText;
+
+    let update = this.promptTarget.updateId
+      ? this.agentUpdates.find((entry) => entry.id === this.promptTarget?.updateId)
+      : undefined;
+
+    if (!update) {
+      update = {
+        id: `agent-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+        filePath: this.promptTarget.filePath,
+        selectionStartFileLine: this.promptTarget.selectionStartFileLine,
+        selectionEndFileLine: this.promptTarget.selectionEndFileLine,
+        selectedText: this.promptTarget.selectedText,
+        prompt: this.promptTarget.prompt,
+        harness: this.promptTarget.harness,
+        model: this.promptTarget.model,
+        status: "draft",
+        messages: [],
+      };
+      this.agentUpdates.push(update);
+    } else {
+      update.filePath = this.promptTarget.filePath;
+      update.selectionStartFileLine = this.promptTarget.selectionStartFileLine;
+      update.selectionEndFileLine = this.promptTarget.selectionEndFileLine;
+      update.selectedText = this.promptTarget.selectedText;
+      update.prompt = this.promptTarget.prompt;
+      update.harness = this.promptTarget.harness;
+      update.model = this.promptTarget.model;
+    }
+
+    this.closePromptComposer();
+    this.cursor.disableVisualMode();
+    this.notifyAgentUpdatesChanged();
+    this.renderContent();
+    await this.launchAgentUpdateSession(update);
+    const targetLine = this.agentLineByUpdateId.get(update.id);
+    if (typeof targetLine === "number") {
+      this.cursor.goToLine(targetLine, "keep");
+    }
+  }
+
+  private async launchAgentUpdateSession(update: AgentUpdate): Promise<void> {
+    const existingStop = this.runningAgentStops.get(update.id);
+    if (existingStop) {
+      existingStop();
+      this.runningAgentStops.delete(update.id);
+    }
+
+    update.status = "running";
+    update.error = undefined;
+    update.runId = undefined;
+    update.messages = [];
+    this.pushAgentMessage(update, "Starting headless opencode run...");
+    this.notifyAgentUpdatesChanged();
+    this.renderContent();
+
+    let result: HeadlessAgentRunResult;
+    try {
+      result = await startHeadlessAgentRun({
+        rootDir: this.rootDir,
+        harness: update.harness,
+        model: update.model,
+        filePath: update.filePath,
+        selectionStartFileLine: update.selectionStartFileLine,
+        selectionEndFileLine: update.selectionEndFileLine,
+        prompt: update.prompt,
+        selectedText: update.selectedText,
+        onMessage: (message) => {
+          this.pushAgentMessage(update, message);
+          this.scheduleAgentRender();
+        },
+        onExit: ({ success, error }) => {
+          this.runningAgentStops.delete(update.id);
+          update.status = success ? "completed" : "failed";
+          update.error = success ? undefined : error ?? "Headless opencode run failed.";
+          if (update.error) {
+            this.pushAgentMessage(update, update.error);
+          } else {
+            this.pushAgentMessage(update, "Run completed.");
+          }
+          this.notifyAgentUpdatesChanged();
+          this.renderContent();
+        },
+      });
+    } catch (error) {
+      result = { ok: false, error: error instanceof Error ? error.message : "Failed to start run." };
+    }
+
+    if (!result.ok) {
+      update.status = "failed";
+      update.error = result.error;
+      this.pushAgentMessage(update, result.error);
+      this.notifyAgentUpdatesChanged();
+      this.renderContent();
+      return;
+    }
+
+    update.runId = result.runId;
+    this.runningAgentStops.set(update.id, result.stop);
+    this.notifyAgentUpdatesChanged();
+    this.renderContent();
+  }
+
+  private getAgentUpdateAtCursorLine(): AgentUpdate | undefined {
+    const updateId = this.updateIdByAgentLine.get(this.cursor.cursorLine);
+    if (!updateId) return undefined;
+    return this.agentUpdates.find((entry) => entry.id === updateId);
+  }
+
+  private pushAgentMessage(update: AgentUpdate, message: string): void {
+    const trimmed = message.trim();
+    if (trimmed.length === 0) return;
+    update.messages.push(trimmed);
+    if (update.messages.length > 64) {
+      update.messages.splice(0, update.messages.length - 64);
+    }
+  }
+
+  private scheduleAgentRender(): void {
+    if (this.agentRenderTimer) return;
+    this.agentRenderTimer = setTimeout(() => {
+      this.agentRenderTimer = null;
+      this.notifyAgentUpdatesChanged();
+      this.renderContent();
+    }, 60);
+  }
+
+  private async refreshAvailableModels(): Promise<void> {
+    if (this.promptModelListLoading) return;
+    this.promptModelListLoading = true;
+    this.refreshPromptComposerView();
+    try {
+      const models = await listOpencodeModels(this.rootDir);
+      if (models.length > 0) {
+        this.availableModels = models;
+      }
+      if (this.promptTarget && !this.availableModels.includes(this.promptTarget.model)) {
+        this.promptTarget.model = this.availableModels[0] ?? this.promptTarget.model;
+      }
+    } finally {
+      this.promptModelListLoading = false;
+      this.refreshPromptComposerView();
+    }
+  }
+
+  private refreshPromptComposerView(): void {
+    if (!this.promptTarget) {
+      this.promptSummaryText.content = "";
+      this.promptHarnessText.content = "";
+      this.promptModelText.content = "";
+      return;
+    }
+
+    this.promptSummaryText.content =
+      `${this.promptTarget.filePath}:${this.promptTarget.selectionStartFileLine}-${this.promptTarget.selectionEndFileLine} ` +
+      `(${this.promptTarget.selectedText.split("\n").length} selected lines)`;
+
+    const harnessActive = this.promptField === "harness";
+    this.promptHarnessText.content = `[ Harness: ${this.promptTarget.harness} v ]`;
+    this.promptHarnessText.fg = harnessActive ? "#111827" : "#111827";
+    this.promptHarnessText.bg = harnessActive ? "#f3f4f6" : "#9ca3af";
+    this.promptHarnessText.attributes = harnessActive
+      ? TextAttributes.BOLD | TextAttributes.UNDERLINE
+      : TextAttributes.NONE;
+
+    const modelActive = this.promptField === "model";
+    this.promptModelText.content =
+      `[ Model: ${this.promptTarget.model}${this.promptModelListLoading ? " (loading...)" : ""} v ]`;
+    this.promptModelText.fg = modelActive ? "#111827" : "#111827";
+    this.promptModelText.bg = modelActive ? "#f3f4f6" : "#9ca3af";
+    this.promptModelText.attributes = modelActive
+      ? TextAttributes.BOLD | TextAttributes.UNDERLINE
+      : TextAttributes.NONE;
+
+    this.updatePromptHintText();
+    this.promptOverlay.requestRender();
+  }
+
+  private updatePromptHintText(): void {
+    const modeHint =
+      this.promptField === "prompt"
+        ? "Enter submit | Tab chips | Esc close"
+        : this.promptField === "harness"
+          ? "Harness chip active | Left/Right change | Tab next"
+          : "Model selector. Left/Right choose | r refresh models";
+    this.promptStatusText.content = modeHint;
+    this.promptStatusText.fg = "#e5e7eb";
+  }
+
+  private openSearchModal(): void {
+    this.searchModal.open();
+    this.setFocusMode("search");
+  }
+
+  private closeSearchModal(): void {
+    if (!this.searchModal.isVisible) return;
+    this.searchModal.close();
+    this.setFocusMode("code");
+  }
+
+  private jumpToSearchResult(result: SearchResult): void {
+    this.ensureSearchResultVisible(result);
+
+    const targetLine =
+      result.kind === "file"
+        ? this.lineModel.getFileAnchorByPath(result.filePath)?.line
+        : this.lineModel.findGlobalLineForFileLine(result.filePath, result.fileLine) ??
+          this.lineModel.getFileAnchorByPath(result.filePath)?.line;
+    if (!targetLine) return;
+
+    this.cursor.disableVisualMode();
+    this.cursor.goToLineAtMinVisibleHeight(targetLine);
+  }
+
+  private ensureSearchResultVisible(result: SearchResult): void {
+    const entry = this.entries.find((item) => item.relativePath === result.filePath);
+    if (!entry) return;
+
+    let requiresRerender = false;
+    if (!this.isTypeEnabled(entry.typeLabel)) {
+      this.enabledTypes.set(entry.typeLabel, true);
+      requiresRerender = true;
+    }
+
+    if (this.collapsedFiles.has(entry.relativePath)) {
+      this.collapsedFiles.delete(entry.relativePath);
+      requiresRerender = true;
+    }
+
+    if (this.diffMode && result.kind !== "file") {
+      this.diffMode = false;
+      requiresRerender = true;
+    }
+
+    if (!requiresRerender) return;
+    this.renderChips();
+    this.renderContent();
+  }
+
   private handleVimNavigationKeypress(
     keyName: string,
     rawKeyName: string | undefined,
-    key: { shift?: boolean; preventDefault?: () => void; stopPropagation?: () => void },
+    key: KeyEvent,
   ): boolean {
     const isShiftG = keyName === "g" && (Boolean(key.shift) || rawKeyName === "G");
     if (isShiftG) {
@@ -395,11 +1082,25 @@ export class CodeBrowserApp {
       return true;
     }
 
+    if (keyName === "a") {
+      this.consumeKey(key);
+      this.pendingGChordAt = null;
+      this.jumpToNextAgentPrompt();
+      return true;
+    }
+
+    if (keyName === "x") {
+      this.consumeKey(key);
+      this.pendingGChordAt = null;
+      this.deleteCurrentAgentPrompt();
+      return true;
+    }
+
     this.pendingGChordAt = null;
     return false;
   }
 
-  private consumeKey(key: { preventDefault?: () => void; stopPropagation?: () => void }): void {
+  private consumeKey(key: KeyEvent): void {
     key.preventDefault?.();
     key.stopPropagation?.();
   }
@@ -416,6 +1117,12 @@ export class CodeBrowserApp {
     if (this.helpVisible) {
       this.hideHelp();
       return;
+    }
+    if (this.searchModal.isVisible) {
+      this.closeSearchModal();
+    }
+    if (this.promptVisible) {
+      this.closePromptComposer();
     }
     this.showHelp();
   }
@@ -522,6 +1229,8 @@ export class CodeBrowserApp {
     this.lineModel.reset();
     this.visualHighlights.reset();
     this.dividerByFilePath = new Map();
+    this.agentLineByUpdateId = new Map();
+    this.updateIdByAgentLine = new Map();
 
     if (this.entries.length === 0) {
       this.renderEmptyState("No code files found.");
@@ -541,6 +1250,8 @@ export class CodeBrowserApp {
     let nextDisplayRow = 0;
 
     for (const entry of filteredEntries) {
+      const updatesForFile = this.getUpdatesForFile(entry.relativePath);
+      let nextUpdateIndex = 0;
       const dividerRow = nextDisplayRow;
       this.lineModel.markDivider(nextDisplayRow);
       const divider = new TextRenderable(this.renderer, {
@@ -563,42 +1274,152 @@ export class CodeBrowserApp {
           entry.lineCount,
           "file",
           dividerWidth,
+          1,
           nextLineNumber,
           nextDisplayRow,
         );
         nextLineNumber = result.nextLineNumber;
         nextDisplayRow = result.nextDisplayRow;
+        while (nextUpdateIndex < updatesForFile.length) {
+          const update = updatesForFile[nextUpdateIndex];
+          if (!update) break;
+          const agentResult = this.addAgentUpdateWithMessages(update, nextLineNumber, nextDisplayRow);
+          nextLineNumber = agentResult.nextLineNumber;
+          nextDisplayRow = agentResult.nextDisplayRow;
+          nextUpdateIndex += 1;
+        }
       } else if (!this.diffMode) {
-        const result = this.addCodeBlock(entry, entry.content, 1, entry.lineCount, nextLineNumber, nextDisplayRow);
-        nextLineNumber = result.nextLineNumber;
-        nextDisplayRow = result.nextDisplayRow;
+        const sourceLines = entry.content.split("\n");
+        let fileLineCursor = 1;
+        while (nextUpdateIndex < updatesForFile.length) {
+          const update = updatesForFile[nextUpdateIndex];
+          if (!update) break;
+          const anchorLine = clamp(update.selectionEndFileLine, 1, Math.max(1, entry.lineCount));
+          if (anchorLine >= fileLineCursor) {
+            const chunkLines = sourceLines.slice(fileLineCursor - 1, anchorLine);
+            const result = this.addCodeBlock(
+              entry,
+              chunkLines.join("\n"),
+              fileLineCursor,
+              chunkLines.length,
+              nextLineNumber,
+              nextDisplayRow,
+            );
+            nextLineNumber = result.nextLineNumber;
+            nextDisplayRow = result.nextDisplayRow;
+            fileLineCursor = anchorLine + 1;
+          }
+
+          const agentResult = this.addAgentUpdateWithMessages(update, nextLineNumber, nextDisplayRow);
+          nextLineNumber = agentResult.nextLineNumber;
+          nextDisplayRow = agentResult.nextDisplayRow;
+          nextUpdateIndex += 1;
+        }
+
+        if (fileLineCursor <= entry.lineCount) {
+          const chunkLines = sourceLines.slice(fileLineCursor - 1);
+          const result = this.addCodeBlock(
+            entry,
+            chunkLines.join("\n"),
+            fileLineCursor,
+            chunkLines.length,
+            nextLineNumber,
+            nextDisplayRow,
+          );
+          nextLineNumber = result.nextLineNumber;
+          nextDisplayRow = result.nextDisplayRow;
+        }
       } else {
         const segments = this.buildDiffSegments(entry);
         for (const segment of segments) {
+          const segmentEndLine = segment.fileLineStart + segment.lineCount - 1;
+          while (nextUpdateIndex < updatesForFile.length) {
+            const update = updatesForFile[nextUpdateIndex];
+            if (!update) break;
+            if (update.selectionEndFileLine >= segment.fileLineStart) break;
+            const agentResult = this.addAgentUpdateWithMessages(update, nextLineNumber, nextDisplayRow);
+            nextLineNumber = agentResult.nextLineNumber;
+            nextDisplayRow = agentResult.nextDisplayRow;
+            nextUpdateIndex += 1;
+          }
+
           if (segment.kind === "collapsed") {
             const result = this.addCollapsedPlaceholderBlock(
               entry,
               segment.lineCount,
               "diff",
               dividerWidth,
+              segment.fileLineStart,
               nextLineNumber,
               nextDisplayRow,
             );
             nextLineNumber = result.nextLineNumber;
             nextDisplayRow = result.nextDisplayRow;
+            while (nextUpdateIndex < updatesForFile.length) {
+              const update = updatesForFile[nextUpdateIndex];
+              if (!update) break;
+              if (update.selectionEndFileLine > segmentEndLine) break;
+              const agentResult = this.addAgentUpdateWithMessages(update, nextLineNumber, nextDisplayRow);
+              nextLineNumber = agentResult.nextLineNumber;
+              nextDisplayRow = agentResult.nextDisplayRow;
+              nextUpdateIndex += 1;
+            }
             continue;
           }
 
-          const result = this.addCodeBlock(
-            entry,
-            segment.content,
-            segment.fileLineStart,
-            segment.lineCount,
-            nextLineNumber,
-            nextDisplayRow,
-          );
-          nextLineNumber = result.nextLineNumber;
-          nextDisplayRow = result.nextDisplayRow;
+          const segmentLines = segment.content.split("\n");
+          let fileLineCursor = segment.fileLineStart;
+          while (nextUpdateIndex < updatesForFile.length) {
+            const update = updatesForFile[nextUpdateIndex];
+            if (!update) break;
+            if (update.selectionEndFileLine > segmentEndLine) break;
+
+            if (update.selectionEndFileLine >= fileLineCursor) {
+              const localEnd = update.selectionEndFileLine - segment.fileLineStart + 1;
+              const localStart = fileLineCursor - segment.fileLineStart;
+              const chunkLines = segmentLines.slice(localStart, localEnd);
+              const result = this.addCodeBlock(
+                entry,
+                chunkLines.join("\n"),
+                fileLineCursor,
+                chunkLines.length,
+                nextLineNumber,
+                nextDisplayRow,
+              );
+              nextLineNumber = result.nextLineNumber;
+              nextDisplayRow = result.nextDisplayRow;
+              fileLineCursor = update.selectionEndFileLine + 1;
+            }
+
+            const agentResult = this.addAgentUpdateWithMessages(update, nextLineNumber, nextDisplayRow);
+            nextLineNumber = agentResult.nextLineNumber;
+            nextDisplayRow = agentResult.nextDisplayRow;
+            nextUpdateIndex += 1;
+          }
+
+          if (fileLineCursor <= segmentEndLine) {
+            const localStart = fileLineCursor - segment.fileLineStart;
+            const chunkLines = segmentLines.slice(localStart);
+            const result = this.addCodeBlock(
+              entry,
+              chunkLines.join("\n"),
+              fileLineCursor,
+              chunkLines.length,
+              nextLineNumber,
+              nextDisplayRow,
+            );
+            nextLineNumber = result.nextLineNumber;
+            nextDisplayRow = result.nextDisplayRow;
+          }
+        }
+
+        while (nextUpdateIndex < updatesForFile.length) {
+          const update = updatesForFile[nextUpdateIndex];
+          if (!update) break;
+          const agentResult = this.addAgentUpdateWithMessages(update, nextLineNumber, nextDisplayRow);
+          nextLineNumber = agentResult.nextLineNumber;
+          nextDisplayRow = agentResult.nextDisplayRow;
+          nextUpdateIndex += 1;
         }
       }
 
@@ -616,6 +1437,7 @@ export class CodeBrowserApp {
     collapsedLineCount: number,
     kind: "file" | "diff",
     dividerWidth: number,
+    fileLineStart: number,
     nextLineNumber: number,
     nextDisplayRow: number,
   ): { nextLineNumber: number; nextDisplayRow: number; blockStartLine: number } {
@@ -647,6 +1469,9 @@ export class CodeBrowserApp {
       codeView: code,
       defaultLineNumberFg: "#d1d5db",
       defaultLineSigns: new Map(),
+      blockKind: "collapsed",
+      fileLineStart,
+      renderedLines: [content],
       lineStart: nextLineNumber,
       lineCount: 1,
       displayRowStart: nextDisplayRow,
@@ -678,6 +1503,7 @@ export class CodeBrowserApp {
     nextDisplayRow: number,
   ): { nextLineNumber: number; nextDisplayRow: number; blockStartLine: number } {
     const renderedLineCount = Math.max(1, lineCount);
+    const renderedLines = content.split("\n");
     const code = new CodeRenderable(this.renderer, {
       width: "100%",
       content,
@@ -713,6 +1539,9 @@ export class CodeBrowserApp {
       codeView: code,
       defaultLineNumberFg: "#e5e7eb",
       defaultLineSigns,
+      blockKind: "code",
+      fileLineStart,
+      renderedLines,
       lineStart: nextLineNumber,
       lineCount: renderedLineCount,
       displayRowStart: nextDisplayRow,
@@ -726,10 +1555,169 @@ export class CodeBrowserApp {
     };
   }
 
+  private addAgentUpdateBlock(
+    update: AgentUpdate,
+    nextLineNumber: number,
+    nextDisplayRow: number,
+  ): { nextLineNumber: number; nextDisplayRow: number; blockStartLine: number } {
+    const content = this.formatAgentUpdateLine(update);
+    const code = new CodeRenderable(this.renderer, {
+      width: "100%",
+      content,
+      wrapMode: "none",
+      syntaxStyle,
+      bg: "transparent",
+    });
+
+    const lineView = new LineNumberRenderable(this.renderer, {
+      width: "100%",
+      target: code,
+      showLineNumbers: false,
+      fg: "#94a3b8",
+      bg: "transparent",
+    });
+
+    this.scrollbox.add(lineView);
+    this.lineModel.addBlock({
+      lineView,
+      codeView: code,
+      defaultLineNumberFg: "#94a3b8",
+      defaultLineSigns: new Map(),
+      blockKind: "agent",
+      fileLineStart: update.selectionEndFileLine,
+      renderedLines: [content],
+      lineStart: nextLineNumber,
+      lineCount: 1,
+      displayRowStart: nextDisplayRow,
+      filePath: update.filePath,
+    });
+
+    this.agentLineByUpdateId.set(update.id, nextLineNumber);
+    this.updateIdByAgentLine.set(nextLineNumber, update.id);
+    return {
+      nextLineNumber: nextLineNumber + 1,
+      nextDisplayRow: nextDisplayRow + 1,
+      blockStartLine: nextLineNumber,
+    };
+  }
+
+  private addAgentUpdateWithMessages(
+    update: AgentUpdate,
+    nextLineNumber: number,
+    nextDisplayRow: number,
+  ): { nextLineNumber: number; nextDisplayRow: number; blockStartLine: number } {
+    const main = this.addAgentUpdateBlock(update, nextLineNumber, nextDisplayRow);
+    return this.addAgentMessageBlocks(update, main.nextLineNumber, main.nextDisplayRow);
+  }
+
+  private addAgentMessageBlocks(
+    update: AgentUpdate,
+    nextLineNumber: number,
+    nextDisplayRow: number,
+  ): { nextLineNumber: number; nextDisplayRow: number; blockStartLine: number } {
+    const recentMessages = update.messages.slice(-3);
+    if (recentMessages.length === 0) {
+      return {
+        nextLineNumber,
+        nextDisplayRow,
+        blockStartLine: nextLineNumber,
+      };
+    }
+
+    let lineCursor = nextLineNumber;
+    let rowCursor = nextDisplayRow;
+    let blockStartLine = nextLineNumber;
+    for (const message of recentMessages) {
+      const result = this.addAgentMessageBlock(update, message, lineCursor, rowCursor);
+      lineCursor = result.nextLineNumber;
+      rowCursor = result.nextDisplayRow;
+      blockStartLine = result.blockStartLine;
+    }
+
+    return {
+      nextLineNumber: lineCursor,
+      nextDisplayRow: rowCursor,
+      blockStartLine,
+    };
+  }
+
+  private addAgentMessageBlock(
+    update: AgentUpdate,
+    message: string,
+    nextLineNumber: number,
+    nextDisplayRow: number,
+  ): { nextLineNumber: number; nextDisplayRow: number; blockStartLine: number } {
+    const content = `  -> ${message}`;
+    const code = new CodeRenderable(this.renderer, {
+      width: "100%",
+      content,
+      wrapMode: "none",
+      syntaxStyle,
+      bg: "transparent",
+    });
+
+    const lineView = new LineNumberRenderable(this.renderer, {
+      width: "100%",
+      target: code,
+      showLineNumbers: false,
+      fg: "#cbd5e1",
+      bg: "transparent",
+    });
+
+    this.scrollbox.add(lineView);
+    this.lineModel.addBlock({
+      lineView,
+      codeView: code,
+      defaultLineNumberFg: "#cbd5e1",
+      defaultLineSigns: new Map(),
+      blockKind: "agent",
+      fileLineStart: update.selectionEndFileLine,
+      renderedLines: [content],
+      lineStart: nextLineNumber,
+      lineCount: 1,
+      displayRowStart: nextDisplayRow,
+      filePath: update.filePath,
+    });
+    this.updateIdByAgentLine.set(nextLineNumber, update.id);
+
+    return {
+      nextLineNumber: nextLineNumber + 1,
+      nextDisplayRow: nextDisplayRow + 1,
+      blockStartLine: nextLineNumber,
+    };
+  }
+
+  private formatAgentUpdateLine(update: AgentUpdate): string {
+    const prefix =
+      update.status === "running"
+        ? "[agent running]"
+        : update.status === "completed"
+          ? "[agent done]"
+        : update.status === "failed"
+          ? "[agent failed]"
+          : "[agent draft]";
+    const prompt = update.prompt.trim().length > 0 ? update.prompt : "<type prompt>";
+    const truncatedPrompt = prompt.length > 88 ? `${prompt.slice(0, 88)}…` : prompt;
+    const runSuffix = update.runId ? ` | run: ${update.runId}` : "";
+    const errorSuffix = update.error ? ` | error: ${update.error}` : "";
+    return `${prefix} harness=${update.harness} model=${update.model} | prompt: ${truncatedPrompt}${runSuffix}${errorSuffix}`;
+  }
+
+  private getUpdatesForFile(filePath: string): AgentUpdate[] {
+    return this.agentUpdates
+      .filter((update) => update.filePath === filePath)
+      .sort((a, b) => {
+        if (a.selectionEndFileLine !== b.selectionEndFileLine) {
+          return a.selectionEndFileLine - b.selectionEndFileLine;
+        }
+        return a.id.localeCompare(b.id);
+      });
+  }
+
   private buildDiffSegments(entry: CodeFileEntry): DiffSegment[] {
     if (entry.lineCount <= 0) return [];
     if (entry.uncommittedLines.size === 0) {
-      return [{ kind: "collapsed", lineCount: entry.lineCount }];
+      return [{ kind: "collapsed", fileLineStart: 1, lineCount: entry.lineCount }];
     }
 
     const lines = entry.content.split("\n");
@@ -746,7 +1734,7 @@ export class CodeBrowserApp {
       const rangeCount = rangeEnd - rangeStart + 1;
 
       if (!changed) {
-        segments.push({ kind: "collapsed", lineCount: rangeCount });
+        segments.push({ kind: "collapsed", fileLineStart: rangeStart, lineCount: rangeCount });
         continue;
       }
 
@@ -813,6 +1801,36 @@ export class CodeBrowserApp {
     this.cursor.goToLine(target.line, "keep");
   }
 
+  private jumpToNextAgentPrompt(): void {
+    if (this.lineModel.totalLines <= 0) return;
+    const lines = [...this.agentLineByUpdateId.values()].sort((a, b) => a - b);
+    if (lines.length === 0) return;
+    const currentLine = this.cursor.cursorLine;
+    const next = lines.find((line) => line > currentLine) ?? lines[0];
+    if (typeof next !== "number") return;
+    this.cursor.goToLine(next, "auto");
+  }
+
+  private deleteCurrentAgentPrompt(): void {
+    const update = this.getAgentUpdateAtCursorLine();
+    if (!update) return;
+    this.removeAgentUpdate(update.id);
+  }
+
+  private removeAgentUpdate(updateId: string): void {
+    const stop = this.runningAgentStops.get(updateId);
+    if (stop) {
+      stop();
+      this.runningAgentStops.delete(updateId);
+    }
+
+    const previousLength = this.agentUpdates.length;
+    this.agentUpdates = this.agentUpdates.filter((entry) => entry.id !== updateId);
+    if (this.agentUpdates.length === previousLength) return;
+    this.notifyAgentUpdatesChanged();
+    this.renderContent();
+  }
+
   private getAnchorDividerDisplayRow(anchor: { filePath: string; dividerRow: number }): number {
     const divider = this.dividerByFilePath.get(anchor.filePath);
     if (!divider) return anchor.dividerRow;
@@ -844,6 +1862,30 @@ export class CodeBrowserApp {
     }
 
     this.selectedChipIndex = clamp(this.selectedChipIndex, 0, this.sortedTypes.length - 1);
+  }
+
+  private notifyAgentUpdatesChanged(): void {
+    this.onAgentUpdatesChanged?.(this.getAgentUpdates());
+  }
+
+  private pruneAgentUpdates(): void {
+    const existing = new Set(this.entries.map((entry) => entry.relativePath));
+    const removedIds = new Set<string>();
+    for (const update of this.agentUpdates) {
+      if (existing.has(update.filePath)) continue;
+      removedIds.add(update.id);
+    }
+    for (const updateId of removedIds) {
+      const stop = this.runningAgentStops.get(updateId);
+      if (!stop) continue;
+      stop();
+      this.runningAgentStops.delete(updateId);
+    }
+    const previousLength = this.agentUpdates.length;
+    this.agentUpdates = this.agentUpdates.filter((update) => existing.has(update.filePath));
+    if (this.agentUpdates.length !== previousLength) {
+      this.notifyAgentUpdatesChanged();
+    }
   }
 
   private pruneCollapsedFiles(): void {

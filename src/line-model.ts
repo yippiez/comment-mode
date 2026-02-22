@@ -1,5 +1,5 @@
 import type { CodeRenderable, LineNumberRenderable, RGBA } from "@opentui/core";
-import type { RenderedLineBlock } from "./types";
+import type { BlockKind, RenderedLineBlock } from "./types";
 import { clamp } from "./ui-utils";
 
 export type FileAnchor = {
@@ -21,10 +21,21 @@ type AddBlockParams = {
       afterColor?: string | RGBA;
     }
   >;
+  blockKind: BlockKind;
+  fileLineStart: number | null;
+  renderedLines: string[];
   filePath: string;
   lineStart: number;
   lineCount: number;
   displayRowStart: number;
+};
+
+type VisibleLineInfo = {
+  globalLine: number;
+  filePath: string;
+  fileLine: number | null;
+  text: string;
+  blockKind: BlockKind;
 };
 
 export class LineModel {
@@ -32,6 +43,7 @@ export class LineModel {
   private fileAnchors: FileAnchor[] = [];
   private lineToDisplayRow: number[] = [0];
   private displayRowToLine: Array<number | undefined> = [];
+  private visibleLineInfo: Array<VisibleLineInfo | undefined> = [];
   private totalVisibleLines = 0;
 
   public reset(): void {
@@ -39,6 +51,7 @@ export class LineModel {
     this.fileAnchors = [];
     this.lineToDisplayRow = [0];
     this.displayRowToLine = [];
+    this.visibleLineInfo = [];
     this.totalVisibleLines = 0;
   }
 
@@ -70,12 +83,19 @@ export class LineModel {
     return this.fileAnchors[index];
   }
 
+  public getFileAnchorByPath(filePath: string): FileAnchor | undefined {
+    return this.fileAnchors.find((anchor) => anchor.filePath === filePath);
+  }
+
   public addBlock(params: AddBlockParams): void {
     const {
       lineView,
       codeView,
       defaultLineNumberFg,
       defaultLineSigns,
+      blockKind,
+      fileLineStart,
+      renderedLines,
       filePath,
       lineStart,
       lineCount,
@@ -89,6 +109,9 @@ export class LineModel {
       codeView,
       defaultLineNumberFg,
       defaultLineSigns,
+      blockKind,
+      fileLineStart,
+      renderedLines,
       lineStart,
       lineEnd,
       filePath,
@@ -99,7 +122,31 @@ export class LineModel {
       const displayRow = displayRowStart + lineOffset;
       this.lineToDisplayRow[globalLine] = displayRow;
       this.displayRowToLine[displayRow] = globalLine;
+      this.visibleLineInfo[globalLine] = {
+        globalLine,
+        filePath,
+        fileLine: fileLineStart === null ? null : fileLineStart + lineOffset,
+        text: renderedLines[lineOffset] ?? "",
+        blockKind,
+      };
     }
+  }
+
+  public getVisibleLineInfo(globalLine: number): VisibleLineInfo | undefined {
+    return this.visibleLineInfo[globalLine];
+  }
+
+  public findGlobalLineForFileLine(filePath: string, fileLine: number): number | undefined {
+    for (const block of this.renderedLineBlocks) {
+      if (block.filePath !== filePath) continue;
+      if (block.fileLineStart === null) continue;
+      const localLine = fileLine - block.fileLineStart;
+      if (localLine < 0) continue;
+      const blockLength = block.lineEnd - block.lineStart + 1;
+      if (localLine >= blockLength) continue;
+      return block.lineStart + localLine;
+    }
+    return undefined;
   }
 
   public getDisplayRowForLine(globalLine: number): number {
