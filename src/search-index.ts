@@ -48,21 +48,37 @@ export function querySearchIndex(
 ): SearchResult[] {
   const normalizedQuery = query.trim().toLowerCase();
   if (normalizedQuery.length === 0) {
-    return index
-      .slice()
-      .sort((a, b) => compareKindPriority(a.kind, b.kind) || a.sortText.localeCompare(b.sortText))
-      .slice(0, limit);
+    const files: SearchResult[] = [];
+    const symbols: SearchResult[] = [];
+    for (const result of index) {
+      if (result.kind === "file") {
+        files.push(result);
+      } else {
+        symbols.push(result);
+      }
+    }
+    files.sort((a, b) => a.sortText.localeCompare(b.sortText));
+    symbols.sort((a, b) => compareKindPriority(a.kind, b.kind) || a.sortText.localeCompare(b.sortText));
+    return [...files, ...symbols].slice(0, limit);
   }
 
-  const withScore = index
-    .map((result) => ({
-      result,
-      score: scoreResult(result, normalizedQuery),
-    }))
-    .filter((entry) => entry.score < Number.POSITIVE_INFINITY)
-    .sort((a, b) => a.score - b.score || a.result.sortText.localeCompare(b.result.sortText));
+  const fileMatches: Array<{ result: SearchResult; score: number }> = [];
+  const symbolMatches: Array<{ result: SearchResult; score: number }> = [];
 
-  return withScore.slice(0, limit).map((entry) => entry.result);
+  for (const result of index) {
+    const score = scoreResult(result, normalizedQuery);
+    if (!Number.isFinite(score)) continue;
+    if (result.kind === "file") {
+      fileMatches.push({ result, score });
+    } else {
+      symbolMatches.push({ result, score });
+    }
+  }
+
+  fileMatches.sort((a, b) => a.score - b.score || a.result.sortText.localeCompare(b.result.sortText));
+  symbolMatches.sort((a, b) => a.score - b.score || a.result.sortText.localeCompare(b.result.sortText));
+
+  return [...fileMatches, ...symbolMatches].slice(0, limit).map((entry) => entry.result);
 }
 
 function extractSymbols(entry: CodeFileEntry): SearchResult[] {
@@ -172,19 +188,48 @@ function scoreResult(result: SearchResult, query: string): number {
   const name = result.name.toLowerCase();
 
   if (result.kind === "file") {
-    const exact = filePath === query ? 0 : Number.POSITIVE_INFINITY;
-    if (exact === 0) return exact;
-    const starts = filePath.startsWith(query) ? 6 : Number.POSITIVE_INFINITY;
-    if (starts !== Number.POSITIVE_INFINITY) return starts;
-    const includes = filePath.includes(query) ? 16 : Number.POSITIVE_INFINITY;
-    if (includes !== Number.POSITIVE_INFINITY) return includes;
-    return Number.POSITIVE_INFINITY;
+    if (filePath === query) return -200;
+    return fuzzySubsequenceScore(filePath, query);
   }
 
-  if (name === query) return 1;
-  if (name.startsWith(query)) return 4;
-  if (name.includes(query)) return 10;
-  if (filePath.includes(query)) return 24;
+  if (name === query) return -180;
+  const nameScore = fuzzySubsequenceScore(name, query);
+  const pathScore = fuzzySubsequenceScore(filePath, query);
+  const best = Math.min(nameScore, pathScore + 45);
+  if (!Number.isFinite(best)) return Number.POSITIVE_INFINITY;
+  return best + 20;
+}
+
+function fuzzySubsequenceScore(candidate: string, query: string): number {
+  if (query.length === 0) return 0;
+  let queryIndex = 0;
+  let score = 0;
+  let lastMatch = -1;
+  let startIndex = -1;
+
+  for (let index = 0; index < candidate.length; index += 1) {
+    if (candidate[index] !== query[queryIndex]) continue;
+
+    if (startIndex < 0) {
+      startIndex = index;
+      score += index * 2;
+    }
+    score += index;
+    if (index === 0 || "/._-:#".includes(candidate[index - 1] ?? "")) {
+      score -= 10;
+    }
+    if (lastMatch === index - 1) {
+      score -= 6;
+    }
+    lastMatch = index;
+    queryIndex += 1;
+
+    if (queryIndex === query.length) {
+      score += candidate.length - query.length;
+      return score;
+    }
+  }
+
   return Number.POSITIVE_INFINITY;
 }
 

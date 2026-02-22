@@ -53,16 +53,16 @@ export class SearchModalController {
       maxHeight: "85%",
       border: true,
       borderStyle: "single",
-      borderColor: "#475569",
+      borderColor: "#9ca3af",
       padding: 1,
-      backgroundColor: "#020617",
+      backgroundColor: "#000000",
       flexDirection: "column",
       gap: 1,
     });
     this.panel.add(
       new TextRenderable(renderer, {
         content: "Search Files + Symbols",
-        fg: "#f8fafc",
+        fg: "#ffffff",
         attributes: TextAttributes.BOLD,
       }),
     );
@@ -71,12 +71,12 @@ export class SearchModalController {
       width: "100%",
       value: "",
       placeholder: "Type to search files, functions, variables, headings...",
-      backgroundColor: "#0f172a",
-      focusedBackgroundColor: "#111827",
-      textColor: "#e2e8f0",
-      focusedTextColor: "#f8fafc",
-      selectionBg: "#334155",
-      selectionFg: "#f8fafc",
+      backgroundColor: "#111827",
+      focusedBackgroundColor: "#1f2937",
+      textColor: "#f3f4f6",
+      focusedTextColor: "#ffffff",
+      selectionBg: "#4b5563",
+      selectionFg: "#ffffff",
     });
     this.queryInput.focusable = false;
     this.queryInput.onContentChange = () => {
@@ -88,7 +88,8 @@ export class SearchModalController {
 
     this.statusText = new TextRenderable(renderer, {
       content: "",
-      fg: "#93c5fd",
+      fg: "#a855f7",
+      attributes: TextAttributes.BOLD,
     });
     this.panel.add(this.statusText);
 
@@ -207,7 +208,8 @@ export class SearchModalController {
     } else {
       this.selectedIndex = clamp(this.selectedIndex, 0, this.results.length - 1);
     }
-    this.statusText.content = `${String(this.results.length)} result(s)`;
+    const fileCount = this.results.filter((result) => result.kind === "file").length;
+    this.statusText.content = `${String(this.results.length)} result(s) · ${String(fileCount)} file(s) first`;
   }
 
   private renderResults(): void {
@@ -217,7 +219,7 @@ export class SearchModalController {
       this.resultsBox.add(
         new TextRenderable(this.renderer, {
           content: "No matches",
-          fg: "#64748b",
+          fg: "#9ca3af",
           attributes: TextAttributes.DIM,
         }),
       );
@@ -231,7 +233,7 @@ export class SearchModalController {
         width: "100%",
         flexDirection: "row",
         justifyContent: "space-between",
-        backgroundColor: selected ? "#1e293b" : "transparent",
+        backgroundColor: selected ? "#1f2937" : "transparent",
       });
 
       const location =
@@ -239,11 +241,12 @@ export class SearchModalController {
       row.add(
         new TextRenderable(this.renderer, {
           content: location,
-          fg: selected ? "#f8fafc" : "#cbd5e1",
+          fg: selected ? "#ffffff" : "#e5e7eb",
           width: "82%",
           overflow: "hidden",
           truncate: true,
           wrapMode: "none",
+          attributes: selected ? TextAttributes.BOLD : TextAttributes.NONE,
         }),
       );
 
