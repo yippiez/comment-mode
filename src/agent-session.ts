@@ -18,6 +18,7 @@ export type HeadlessAgentRunRequest = {
   rootDir: string;
   harness: AgentHarness;
   model: AgentModel;
+  variant?: string;
   filePath: string;
   selectionStartFileLine: number;
   selectionEndFileLine: number;
@@ -38,7 +39,17 @@ export type HeadlessAgentRunResult =
       error: string;
     };
 
-export async function listOpencodeModels(rootDir: string): Promise<string[]> {
+export type OpencodeModelCatalogItem = {
+  model: string;
+  variants: string[];
+};
+
+/** Lists models plus per-model thinking variants from opencode CLI metadata. */
+export async function listOpencodeModelCatalog(rootDir: string): Promise<OpencodeModelCatalogItem[]> {
+  const verboseResult = await runProcessCapture("opencode", ["models", "--verbose"], rootDir);
+  const verboseItems = parseVerboseModelCatalog(`${verboseResult.stdout ?? ""}\n${verboseResult.stderr ?? ""}`);
+  if (verboseItems.length > 0) return verboseItems;
+
   const result = await runProcessCapture("opencode", ["models"], rootDir);
   if (result.error) return [];
 
@@ -47,27 +58,36 @@ export async function listOpencodeModels(rootDir: string): Promise<string[]> {
   for (const rawLine of merged.split(/\r?\n/)) {
     const line = sanitizeLine(rawLine);
     if (!line) continue;
-    if (!/^[a-z0-9._-]+\/[a-z0-9._-]+$/i.test(line)) continue;
+    if (!isModelIdentifier(line)) continue;
     models.add(line);
   }
 
-  return [...models].sort((a, b) => a.localeCompare(b));
+  return [...models]
+    .sort((a, b) => a.localeCompare(b))
+    .map((model) => ({ model, variants: [] }));
 }
 
+/** Lists model identifiers available to opencode. */
+export async function listOpencodeModels(rootDir: string): Promise<string[]> {
+  const catalog = await listOpencodeModelCatalog(rootDir);
+  return catalog.map((item) => item.model);
+}
+
+/** Starts a streaming headless opencode run. */
 export async function startHeadlessAgentRun(
   request: HeadlessAgentRunRequest,
 ): Promise<HeadlessAgentRunResult> {
   const runId = createRunId(request.filePath);
   const message = buildRunMessage(request);
+  const runArgs = ["run", message, "--format", "json", "--model", request.model];
+  if (request.variant && request.variant !== "auto") {
+    runArgs.push("--variant", request.variant);
+  }
 
-  const child = spawn(
-    "opencode",
-    ["run", message, "--format", "json", "--model", request.model],
-    {
-      cwd: request.rootDir,
-      stdio: ["ignore", "pipe", "pipe"],
-    },
-  );
+  const child = spawn("opencode", runArgs, {
+    cwd: request.rootDir,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
 
   let handledExit = false;
   let hadRuntimeError = false;
@@ -253,6 +273,7 @@ function createRunId(filePath: string): string {
   return `run-${safeStem || "task"}-${unique}`;
 }
 
+/** Runs a process and collects stdout/stderr buffers. */
 async function runProcessCapture(
   command: string,
   args: string[],
@@ -287,4 +308,70 @@ async function runProcessCapture(
       resolve({ stdout, stderr, code });
     });
   });
+}
+
+/** Parses `opencode models --verbose` output into model + variants records. */
+function parseVerboseModelCatalog(rawText: string): OpencodeModelCatalogItem[] {
+  const items = new Map<string, OpencodeModelCatalogItem>();
+  const lines = rawText.split(/\r?\n/);
+  let currentModel: string | null = null;
+  let jsonBuffer: string[] = [];
+  let depth = 0;
+
+  const flushJsonBuffer = () => {
+    if (!currentModel || jsonBuffer.length === 0) return;
+    const rawJson = jsonBuffer.join("\n");
+    jsonBuffer = [];
+    try {
+      const parsed = JSON.parse(rawJson) as { variants?: Record<string, unknown> };
+      const variants = parsed.variants ? Object.keys(parsed.variants).sort((a, b) => a.localeCompare(b)) : [];
+      items.set(currentModel, { model: currentModel, variants });
+    } catch {
+      items.set(currentModel, { model: currentModel, variants: [] });
+    }
+  };
+
+  for (const rawLine of lines) {
+    const line = sanitizeLine(rawLine);
+    if (!line) continue;
+
+    if (isModelIdentifier(line)) {
+      if (depth > 0) {
+        depth = 0;
+        jsonBuffer = [];
+      }
+      currentModel = line;
+      if (!items.has(line)) {
+        items.set(line, { model: line, variants: [] });
+      }
+      continue;
+    }
+
+    if (!currentModel) continue;
+    if (!line.includes("{") && depth === 0) continue;
+
+    jsonBuffer.push(line);
+    depth += countChar(line, "{");
+    depth -= countChar(line, "}");
+    if (depth <= 0) {
+      depth = 0;
+      flushJsonBuffer();
+    }
+  }
+
+  return [...items.values()].sort((a, b) => a.model.localeCompare(b.model));
+}
+
+/** Returns true when line matches provider/model identifier format. */
+function isModelIdentifier(line: string): boolean {
+  return /^[a-z0-9._-]+\/[a-z0-9._-]+$/i.test(line);
+}
+
+/** Counts occurrences of a single character in a string. */
+function countChar(text: string, char: string): number {
+  let count = 0;
+  for (const candidate of text) {
+    if (candidate === char) count += 1;
+  }
+  return count;
 }
