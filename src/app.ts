@@ -9,8 +9,9 @@ import {
 } from "@opentui/core";
 import { CameraController } from "./camera-controller";
 import { CursorController } from "./cursor-controller";
+import { LineModel } from "./line-model";
 import { syntaxStyle } from "./theme";
-import type { CodeFileEntry, FocusMode, RenderedLineBlock } from "./types";
+import type { CodeFileEntry, FocusMode } from "./types";
 import { clamp, clearChildren, makeSlashLine } from "./ui-utils";
 
 type DiffSegment =
@@ -73,11 +74,7 @@ export class CodeBrowserApp {
   private helpVisible = false;
   private readonly cursor: CursorController;
 
-  private renderedLineBlocks: RenderedLineBlock[] = [];
-  private fileStartLines: number[] = [];
-  private lineToDisplayRow: number[] = [0];
-  private displayRowToLine: Array<number | undefined> = [];
-  private totalVisibleLines = 0;
+  private readonly lineModel = new LineModel();
   private pendingGChordAt: number | null = null;
   private collapsedFiles = new Set<string>();
 
@@ -196,8 +193,9 @@ export class CodeBrowserApp {
       setScrollTop: (top) => {
         this.scrollbox.scrollTo(top);
       },
-      getDisplayRowForLine: (line) => this.getDisplayRowForLine(line),
-      getLineForDisplayRow: (row, movementDelta) => this.findLineForDisplayRow(row, movementDelta),
+      getDisplayRowForLine: (line) => this.lineModel.getDisplayRowForLine(line),
+      getLineForDisplayRow: (row, movementDelta) =>
+        this.lineModel.findLineForDisplayRow(row, movementDelta),
     });
     this.cursor = new CursorController({
       camera: this.camera,
@@ -353,7 +351,7 @@ export class CodeBrowserApp {
     if (isShiftG) {
       this.consumeKey(key);
       this.pendingGChordAt = null;
-      this.cursor.goToLine(this.totalVisibleLines, "bottom");
+      this.cursor.goToLine(this.lineModel.totalLines, "bottom");
       return true;
     }
 
@@ -455,7 +453,7 @@ export class CodeBrowserApp {
   }
 
   private toggleCurrentFileCollapse(): void {
-    const currentFilePath = this.getCurrentFilePath();
+    const currentFilePath = this.lineModel.getCurrentFilePath(this.cursor.cursorLine);
     if (!currentFilePath) return;
 
     if (this.collapsedFiles.has(currentFilePath)) {
@@ -510,11 +508,7 @@ export class CodeBrowserApp {
 
   private renderContent(): void {
     clearChildren(this.scrollbox);
-    this.renderedLineBlocks = [];
-    this.fileStartLines = [];
-    this.lineToDisplayRow = [0];
-    this.displayRowToLine = [];
-    this.totalVisibleLines = 0;
+    this.lineModel.reset();
 
     if (this.entries.length === 0) {
       this.renderEmptyState("No code files found.");
@@ -534,7 +528,8 @@ export class CodeBrowserApp {
     let nextDisplayRow = 0;
 
     for (const entry of filteredEntries) {
-      this.displayRowToLine[nextDisplayRow] = undefined;
+      const dividerRow = nextDisplayRow;
+      this.lineModel.markDivider(nextDisplayRow);
       this.scrollbox.add(
         new TextRenderable(this.renderer, {
           content: makeSlashLine(entry.relativePath, dividerWidth),
@@ -591,12 +586,12 @@ export class CodeBrowserApp {
       }
 
       if (nextLineNumber > fileAnchorLine) {
-        this.fileStartLines.push(fileAnchorLine);
+        this.lineModel.addFileAnchor({ line: fileAnchorLine, dividerRow, filePath: entry.relativePath });
       }
     }
 
-    this.totalVisibleLines = nextLineNumber - 1;
-    this.cursor.configure(this.totalVisibleLines);
+    this.lineModel.setTotalLines(nextLineNumber - 1);
+    this.cursor.configure(this.lineModel.totalLines);
   }
 
   private addCollapsedPlaceholderBlock(
@@ -630,15 +625,13 @@ export class CodeBrowserApp {
     });
 
     this.scrollbox.add(lineView);
-    this.renderedLineBlocks.push({
+    this.lineModel.addBlock({
       lineView,
       lineStart: nextLineNumber,
-      lineEnd: nextLineNumber,
+      lineCount: 1,
+      displayRowStart: nextDisplayRow,
       filePath: entry.relativePath,
     });
-
-    this.lineToDisplayRow[nextLineNumber] = nextDisplayRow;
-    this.displayRowToLine[nextDisplayRow] = nextLineNumber;
 
     return {
       nextLineNumber: nextLineNumber + 1,
@@ -671,8 +664,10 @@ export class CodeBrowserApp {
       syntaxStyle,
       wrapMode: "none",
       bg: "transparent",
-      conceal: entry.filetype === "markdown",
+      conceal: false,
     });
+
+    const renderedLineCount = Math.max(1, lineCount);
 
     const lineView = new LineNumberRenderable(this.renderer, {
       width: "100%",
@@ -683,7 +678,7 @@ export class CodeBrowserApp {
       bg: "transparent",
     });
 
-    for (let lineOffset = 0; lineOffset < lineCount; lineOffset += 1) {
+    for (let lineOffset = 0; lineOffset < renderedLineCount; lineOffset += 1) {
       const fileLine = fileLineStart + lineOffset;
       if (!entry.uncommittedLines.has(fileLine)) continue;
       lineView.setLineSign(lineOffset, {
@@ -693,23 +688,17 @@ export class CodeBrowserApp {
     }
 
     this.scrollbox.add(lineView);
-    this.renderedLineBlocks.push({
+    this.lineModel.addBlock({
       lineView,
       lineStart: nextLineNumber,
-      lineEnd: nextLineNumber + lineCount - 1,
+      lineCount: renderedLineCount,
+      displayRowStart: nextDisplayRow,
       filePath: entry.relativePath,
     });
 
-    for (let lineOffset = 0; lineOffset < lineCount; lineOffset += 1) {
-      const displayRow = nextDisplayRow + lineOffset;
-      const globalLine = nextLineNumber + lineOffset;
-      this.lineToDisplayRow[globalLine] = displayRow;
-      this.displayRowToLine[displayRow] = globalLine;
-    }
-
     return {
-      nextLineNumber: nextLineNumber + lineCount,
-      nextDisplayRow: nextDisplayRow + lineCount,
+      nextLineNumber: nextLineNumber + renderedLineCount,
+      nextDisplayRow: nextDisplayRow + renderedLineCount,
       blockStartLine: nextLineNumber,
     };
   }
@@ -749,16 +738,6 @@ export class CodeBrowserApp {
     return segments;
   }
 
-  private getCurrentFilePath(): string | undefined {
-    const cursorLine = this.cursor.cursorLine;
-    if (cursorLine <= 0) return undefined;
-    for (const block of this.renderedLineBlocks) {
-      if (cursorLine < block.lineStart || cursorLine > block.lineEnd) continue;
-      return block.filePath;
-    }
-    return undefined;
-  }
-
   private renderEmptyState(message: string): void {
     clearChildren(this.scrollbox);
     this.scrollbox.add(
@@ -770,32 +749,28 @@ export class CodeBrowserApp {
     );
   }
 
-  private getDisplayRowForLine(globalLine: number): number {
-    const directHit = this.lineToDisplayRow[globalLine];
-    if (directHit !== undefined) return directHit;
-    if (globalLine <= 1) return 0;
-    return Math.max(0, this.scrollbox.scrollHeight - 1);
-  }
-
   private getViewportHeight(): number {
     return Math.max(1, this.scrollbox.viewport.height || this.scrollbox.height || this.renderer.height - 3);
   }
 
   private getMaxScrollTop(): number {
-    return Math.max(0, this.scrollbox.scrollHeight - this.getViewportHeight());
+    const measuredRows = this.scrollbox.scrollHeight;
+    const mappedRows = this.lineModel.mappedDisplayRowCount;
+    const totalRows = Math.max(measuredRows, mappedRows);
+    return Math.max(0, totalRows - this.getViewportHeight());
   }
 
   private applyLineHighlights(): void {
-    for (const block of this.renderedLineBlocks) {
+    for (const block of this.lineModel.blocks) {
       block.lineView.clearAllLineColors();
     }
 
-    if (this.totalVisibleLines <= 0) return;
+    if (this.lineModel.totalLines <= 0) return;
 
     const { start: selectionStart, end: selectionEnd } = this.cursor.selectionRange;
     const cursorLine = this.cursor.cursorLine;
 
-    for (const block of this.renderedLineBlocks) {
+    for (const block of this.lineModel.blocks) {
       const overlapStart = Math.max(selectionStart, block.lineStart);
       const overlapEnd = Math.min(selectionEnd, block.lineEnd);
       if (overlapStart > overlapEnd) continue;
@@ -812,54 +787,27 @@ export class CodeBrowserApp {
   }
 
   private jumpToNextFileStart(): void {
-    if (this.totalVisibleLines <= 0) return;
-    const target = this.fileStartLines.find((line) => line > this.cursor.cursorLine);
+    if (this.lineModel.totalLines <= 0) return;
+    const currentAnchorIndex = this.lineModel.findCurrentFileAnchorIndex(this.cursor.cursorLine);
+    const target = this.lineModel.getFileAnchor(currentAnchorIndex + 1);
     if (!target) return;
-    this.cursor.goToLine(target, "auto");
+    this.camera.placeDisplayRowAtMinVisibleHeight(target.dividerRow, target.line);
+    this.cursor.goToLine(target.line, "keep");
   }
 
   private jumpToPreviousFileStart(): void {
-    if (this.totalVisibleLines <= 0) return;
-    let targetLine: number | null = null;
-    for (const line of this.fileStartLines) {
-      if (line >= this.cursor.cursorLine) break;
-      targetLine = line;
-    }
-    if (targetLine === null) {
-      this.cursor.goToLine(1, "top");
-      return;
-    }
-    this.cursor.goToLine(targetLine, "auto");
-  }
+    if (this.lineModel.totalLines <= 0) return;
+    const currentAnchorIndex = this.lineModel.findCurrentFileAnchorIndex(this.cursor.cursorLine);
+    const currentAnchor = this.lineModel.getFileAnchor(currentAnchorIndex);
+    if (!currentAnchor) return;
 
-  private findLineForDisplayRow(targetRow: number, movementDelta: number): number | undefined {
-    if (this.displayRowToLine.length === 0) return undefined;
-
-    const clampedRow = clamp(Math.round(targetRow), 0, this.displayRowToLine.length - 1);
-    const exactLine = this.displayRowToLine[clampedRow];
-    if (exactLine !== undefined) return exactLine;
-
-    if (movementDelta >= 0) {
-      return this.findLineAtOrBelow(clampedRow) ?? this.findLineAtOrAbove(clampedRow);
-    }
-
-    return this.findLineAtOrAbove(clampedRow) ?? this.findLineAtOrBelow(clampedRow);
-  }
-
-  private findLineAtOrBelow(startRow: number): number | undefined {
-    for (let row = startRow; row < this.displayRowToLine.length; row += 1) {
-      const line = this.displayRowToLine[row];
-      if (line !== undefined) return line;
-    }
-    return undefined;
-  }
-
-  private findLineAtOrAbove(startRow: number): number | undefined {
-    for (let row = startRow; row >= 0; row -= 1) {
-      const line = this.displayRowToLine[row];
-      if (line !== undefined) return line;
-    }
-    return undefined;
+    const target =
+      this.cursor.cursorLine > currentAnchor.line
+        ? currentAnchor
+        : this.lineModel.getFileAnchor(currentAnchorIndex - 1);
+    if (!target) return;
+    this.camera.placeDisplayRowAtMinVisibleHeight(target.dividerRow, target.line);
+    this.cursor.goToLine(target.line, "keep");
   }
 
   private recomputeTypesState(): void {

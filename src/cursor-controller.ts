@@ -49,11 +49,15 @@ export class CursorController {
     this.bindings.camera.onCursorMoved(this.line, this.totalLines, delta);
   }
 
-  public goToLine(targetLine: number, positionMode: "auto" | "top" | "bottom" = "auto"): void {
+  public goToLine(
+    targetLine: number,
+    positionMode: "auto" | "top" | "bottom" | "keep" = "auto",
+  ): void {
     if (this.totalLines <= 0) return;
     const previous = this.line;
     this.line = clamp(targetLine, 1, this.totalLines);
     this.bindings.onCursorChanged();
+    if (positionMode === "keep") return;
     this.bindings.camera.onCursorSet(this.line, this.totalLines, previous, positionMode);
   }
 

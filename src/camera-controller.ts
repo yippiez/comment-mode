@@ -76,6 +76,13 @@ export class CameraController {
     this.updatePreferredViewportOffset(cursorLine);
   }
 
+  public placeDisplayRowAtMinVisibleHeight(displayRow: number, cursorLine: number): void {
+    const normalizedRow = Math.max(0, Math.round(displayRow));
+    this.scrollTo(normalizedRow - this.minVisibleOffset());
+    this.ensureInViewport(normalizedRow);
+    this.updatePreferredViewportOffset(cursorLine);
+  }
+
   public handleExternalScroll(
     nextTop: number,
     totalLines: number,
