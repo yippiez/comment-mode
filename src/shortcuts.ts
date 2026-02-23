@@ -13,7 +13,8 @@ export type CodeKeyAction =
   | "toggle_diff"
   | "open_search"
   | "open_prompt"
-  | "escape_visual";
+  | "escape_visual"
+  | "quit";
 
 export const CODE_KEYMAP: Record<string, CodeKeyAction> = {
   up: "move_up",
@@ -29,6 +30,7 @@ export const CODE_KEYMAP: Record<string, CodeKeyAction> = {
   enter: "open_prompt",
   return: "open_prompt",
   escape: "escape_visual",
+  q: "quit",
 };
 
 export type ChipKeyAction = "move_left" | "move_right" | "toggle_chip";
@@ -45,10 +47,11 @@ export const SHORTCUTS_SECTIONS: ShortcutSection[] = [
   {
     title: "Global",
     entries: [
+      { keys: "q", description: "Quit the application" },
       { keys: "?", description: "Toggle this help popup" },
       { keys: "t", description: "Toggle color theme" },
       { keys: "Tab", description: "Switch focus between chips and code" },
-      { keys: "Esc / q", description: "Close help popup" },
+      { keys: "Esc", description: "Close help popup" },
     ],
   },
   {
