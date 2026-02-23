@@ -110,6 +110,9 @@ export class CodeBrowserApp {
       onSelectResult: (result) => {
         this.jumpToSearchResult(result);
       },
+      onClose: () => {
+        this.setFocusMode("code");
+      },
     });
     this.promptComposer = new PromptComposerBar(renderer);
 
@@ -254,6 +257,13 @@ export class CodeBrowserApp {
         return;
       }
 
+      if (this.isSearchOpenKey(keyName, rawKeyName, key)) {
+        this.consumeKey(key);
+        this.navigationController.resetChordState();
+        this.openSearchModal();
+        return;
+      }
+
       if (keyName === "tab") {
         this.consumeKey(key);
         this.setFocusMode(this.state.focusMode === "chips" ? "code" : "chips");
@@ -378,10 +388,12 @@ export class CodeBrowserApp {
       return;
     }
 
-    if (mappedAction === "open_search") {
+    if (mappedAction === "quit") {
       this.consumeKey(key);
-      this.openSearchModal();
+      this.renderer.destroy();
+      return;
     }
+
   }
 
   private handleAgentRowKeypress(keyName: string, key: KeyEvent): boolean {
@@ -547,6 +559,16 @@ export class CodeBrowserApp {
 
   private isHelpToggleKey(keyName: string, rawKeyName: string | undefined, shift?: boolean): boolean {
     return keyName === "?" || rawKeyName === "?" || (keyName === "/" && Boolean(shift));
+  }
+
+  private isSearchOpenKey(
+    keyName: string,
+    rawKeyName: string | undefined,
+    key: KeyEvent,
+  ): boolean {
+    if (key.ctrl || key.meta || key.option) return false;
+    if (keyName === "s" || rawKeyName === "s" || rawKeyName === "S") return true;
+    return key.sequence === "s" || key.sequence === "S";
   }
 
   private toggleHelp(): void {
