@@ -11,6 +11,7 @@ export type CodeKeyAction =
   | "toggle_visual"
   | "collapse_file"
   | "toggle_diff"
+  | "yank_selection"
   | "open_search"
   | "open_prompt"
   | "escape_visual"
@@ -26,6 +27,7 @@ export const CODE_KEYMAP: Record<string, CodeKeyAction> = {
   v: "toggle_visual",
   c: "collapse_file",
   d: "toggle_diff",
+  y: "yank_selection",
   s: "open_search",
   enter: "open_prompt",
   return: "open_prompt",
@@ -50,6 +52,7 @@ export const SHORTCUTS_SECTIONS: ShortcutSection[] = [
       { keys: "q", description: "Quit the application" },
       { keys: "?", description: "Toggle this help popup" },
       { keys: "t", description: "Toggle color theme" },
+      { keys: "m", description: "Switch view mode" },
       { keys: "Tab", description: "Switch focus between chips and code" },
       { keys: "Esc", description: "Close help popup" },
     ],
@@ -70,7 +73,9 @@ export const SHORTCUTS_SECTIONS: ShortcutSection[] = [
       { keys: "a", description: "Jump to next agent prompt" },
       { keys: "x", description: "Delete current agent prompt" },
       { keys: "c", description: "Toggle collapse current file" },
+      { keys: "Space (FILES)", description: "Toggle collapse current folder" },
       { keys: "d", description: "Toggle diff collapse mode" },
+      { keys: "y", description: "Copy selected content to clipboard" },
       { keys: "s", description: "Open symbol/file search" },
       { keys: "Enter", description: "Open agent prompt composer" },
     ],
