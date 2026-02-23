@@ -1,4 +1,5 @@
 import {
+  SyntaxStyle,
   BoxRenderable,
   CodeRenderable,
   KeyEvent,
@@ -20,6 +21,7 @@ import {
 import { createAgentRow, type AgentRowDecoration } from "./components/agent-row";
 import { HelpModal } from "./components/help-modal";
 import { PromptComposerBar, type PromptComposerLayout } from "./components/prompt-composer-bar";
+import { copyToClipboard } from "./clipboard";
 import { CursorController } from "./cursor-controller";
 import { LineModel } from "./line-model";
 import { SearchModalController } from "./search-modal";
@@ -27,8 +29,21 @@ import type { SearchResult } from "./search-index";
 import { CHIPS_KEYMAP, CODE_KEYMAP } from "./shortcuts";
 import { AppStateStore } from "./state/app-state";
 import { theme } from "./theme";
-import type { AgentUpdate, AgentUpdateStatus, CodeFileEntry, FocusMode } from "./types";
+import type {
+  AgentUpdate,
+  AgentUpdateStatus,
+  BlockKind,
+  CodeFileEntry,
+  FocusMode,
+} from "./types";
 import { clamp, clearChildren, makeSlashLine } from "./ui-utils";
+import {
+  buildFileTreeRows,
+  extractSignatureBlocks,
+  getAncestorDirectories,
+  type FileTreeRow,
+  viewModes,
+} from "./view-modes";
 import { VisualHighlightController } from "./visual-highlight-controller";
 type CodeBrowserAppOptions = {
   rootDir: string;
@@ -36,7 +51,20 @@ type CodeBrowserAppOptions = {
   onAgentUpdatesChanged?: (updates: AgentUpdate[]) => void;
 };
 
+type SelectionLineInfo = {
+  globalLine: number;
+  filePath: string;
+  fileLine: number | null;
+  text: string;
+  blockKind: BlockKind;
+};
+
 const ACTION_CHIPS = ["SEARCH", "HELP", "QUIT"] as const;
+const MODE_CHIP_COLORS: Record<"code" | "signatures" | "files", { bg: string; fg: string }> = {
+  code: { bg: "#2563eb", fg: "#f8fafc" },
+  signatures: { bg: "#7c3aed", fg: "#f8fafc" },
+  files: { bg: "#eab308", fg: "#111827" },
+};
 
 export class CodeBrowserApp {
   private readonly renderer: CliRenderer;
@@ -48,7 +76,6 @@ export class CodeBrowserApp {
   private readonly chipsRow: BoxRenderable;
   private readonly scrollbox: ScrollBoxRenderable;
   private readonly bottomBar: BoxRenderable;
-  private readonly bottomBarText: TextRenderable;
   private readonly helpModal: HelpModal;
   private readonly searchModal: SearchModalController;
   private readonly promptComposer: PromptComposerBar;
@@ -56,6 +83,7 @@ export class CodeBrowserApp {
   private readonly navigationController: NavigationController;
   private readonly agentController: AgentController;
   private readonly promptController: PromptController;
+  private focusModeBeforeSearch: FocusMode = "code";
 
   private typeCounts: Map<string, number>;
   private sortedTypes: string[];
@@ -67,6 +95,9 @@ export class CodeBrowserApp {
   private readonly visualHighlights = new VisualHighlightController();
   private dividerByFilePath = new Map<string, TextRenderable>();
   private collapsedFiles = new Set<string>();
+  private collapsedDirectories = new Set<string>();
+  private fileTreeRowsByLine = new Map<number, FileTreeRow>();
+  private signatureLineNumberMinWidth = 2;
   private agentLineByUpdateId = new Map<string, number>();
   private updateIdByAgentLine = new Map<number, string>();
   private agentRowDecorations = new Map<number, AgentRowDecoration>();
@@ -115,12 +146,8 @@ export class CodeBrowserApp {
       paddingRight: 1,
       flexDirection: "row",
       alignItems: "center",
+      gap: 0,
     });
-    this.bottomBarText = new TextRenderable(renderer, {
-      content: "",
-      attributes: TextAttributes.BOLD,
-    });
-    this.bottomBar.add(this.bottomBarText);
 
     this.root.add(this.chipsRow);
     this.root.add(this.scrollbox);
@@ -136,7 +163,11 @@ export class CodeBrowserApp {
         this.jumpToSearchResult(result);
       },
       onClose: () => {
-        this.setFocusMode("code");
+        const nextFocusMode =
+          this.focusModeBeforeSearch === "chips" || this.focusModeBeforeSearch === "code"
+            ? this.focusModeBeforeSearch
+            : "code";
+        this.setFocusMode(nextFocusMode);
       },
     });
     this.promptComposer = new PromptComposerBar(renderer);
@@ -203,6 +234,7 @@ export class CodeBrowserApp {
     this.typeCounts = new Map();
     this.sortedTypes = [];
     this.enabledTypes = new Map();
+    this.state.viewMode = viewModes.getMode();
     this.recomputeTypesState();
     this.applyTheme();
   }
@@ -220,6 +252,7 @@ export class CodeBrowserApp {
   public refreshEntries(entries: CodeFileEntry[]): void {
     this.entries = entries;
     this.pruneCollapsedFiles();
+    this.pruneCollapsedDirectories();
     this.pruneAgentUpdates();
     this.searchModal.setEntries(this.entries);
     this.recomputeTypesState();
@@ -253,6 +286,12 @@ export class CodeBrowserApp {
       if (keyName === "t" && !this.promptController.isVisible && !this.searchModal.isVisible) {
         this.consumeKey(key);
         this.toggleTheme();
+        return;
+      }
+
+      if (keyName === "m" && !this.promptController.isVisible && !this.searchModal.isVisible) {
+        this.consumeKey(key);
+        this.switchViewMode();
         return;
       }
 
@@ -396,10 +435,24 @@ export class CodeBrowserApp {
       return;
     }
 
+    if (mappedAction === "yank_selection") {
+      this.consumeKey(key);
+      this.navigationController.resetChordState();
+      void this.copySelectionToClipboard();
+      return;
+    }
+
+    if (keyName === "space" && this.state.viewMode === "files") {
+      this.consumeKey(key);
+      this.navigationController.resetChordState();
+      this.toggleCurrentDirectoryCollapse();
+      return;
+    }
+
     if (mappedAction === "collapse_file") {
       this.consumeKey(key);
       this.navigationController.resetChordState();
-      this.toggleCurrentFileCollapse();
+      this.toggleCurrentStructureCollapse();
       return;
     }
 
@@ -439,6 +492,7 @@ export class CodeBrowserApp {
         this.cursor.cursorLine;
       this.promptController.open({
         updateId: update.id,
+        viewMode: update.contextMode ?? this.state.viewMode,
         filePath: update.filePath,
         selectionStartFileLine: update.selectionStartFileLine,
         selectionEndFileLine: update.selectionEndFileLine,
@@ -458,37 +512,155 @@ export class CodeBrowserApp {
 
   /** Builds a prompt target payload from current visual selection in active file. */
   private createPromptTargetFromSelection(): PromptControllerTarget | null {
-    if (this.lineModel.totalLines <= 0) return null;
-    const currentFilePath = this.lineModel.getCurrentFilePath(this.cursor.cursorLine);
-    if (!currentFilePath) return null;
+    const selection = this.getSelectionLineInfos();
 
+    if (selection.length === 0) return null;
+
+    if (this.state.viewMode === "files") {
+      return this.createFilesPromptTarget(selection);
+    }
+
+    if (this.state.viewMode === "signatures") {
+      return this.createSignaturesPromptTarget(selection);
+    }
+
+    return this.createCodePromptTarget(selection);
+  }
+
+  private getSelectionLineInfos(): SelectionLineInfo[] {
     const { start, end } = this.cursor.selectionRange;
-    const selectedLines: string[] = [];
-    let selectionStartFileLine: number | null = null;
-    let selectionEndFileLine: number | null = null;
-    let selectionEndGlobalLine: number | null = null;
+    if (start <= 0 || end <= 0) return [];
+    const selection: SelectionLineInfo[] = [];
 
     for (let globalLine = start; globalLine <= end; globalLine += 1) {
       const lineInfo = this.lineModel.getVisibleLineInfo(globalLine);
       if (!lineInfo) continue;
-      if (lineInfo.filePath !== currentFilePath) continue;
-      if (lineInfo.blockKind !== "code") continue;
-      if (lineInfo.fileLine === null) continue;
-
-      selectionStartFileLine = selectionStartFileLine ?? lineInfo.fileLine;
-      selectionEndFileLine = lineInfo.fileLine;
-      selectionEndGlobalLine = globalLine;
-      selectedLines.push(lineInfo.text);
+      selection.push({
+        globalLine,
+        filePath: lineInfo.filePath,
+        fileLine: lineInfo.fileLine,
+        text: lineInfo.text,
+        blockKind: lineInfo.blockKind,
+      });
     }
 
-    if (selectionStartFileLine === null || selectionEndFileLine === null) return null;
+    return selection;
+  }
+
+  private async copySelectionToClipboard(): Promise<void> {
+    const selection = this.getSelectionLineInfos();
+    if (selection.length === 0) return;
+
+    const clipboardText = this.buildClipboardSelectionText(selection);
+    if (!clipboardText) return;
+    await copyToClipboard(clipboardText);
+  }
+
+  private buildClipboardSelectionText(selection: readonly SelectionLineInfo[]): string {
+    if (this.state.viewMode === "files") {
+      const files: string[] = [];
+      const seen = new Set<string>();
+      for (const line of selection) {
+        if (line.blockKind !== "file") continue;
+        const row = this.fileTreeRowsByLine.get(line.globalLine);
+        if (!row || row.kind !== "file") continue;
+        if (seen.has(row.filePath)) continue;
+        seen.add(row.filePath);
+        files.push(row.filePath);
+      }
+      if (files.length > 0) return files.join("\n");
+    }
+
+    return selection.map((line) => line.text).join("\n").trimEnd();
+  }
+
+  private createCodePromptTarget(selection: readonly SelectionLineInfo[]): PromptControllerTarget | null {
+    const selectedCodeLines = selection.filter(
+      (line) => line.blockKind === "code" && typeof line.fileLine === "number",
+    );
+    if (selectedCodeLines.length === 0) return null;
+
+    const byFile = new Map<string, SelectionLineInfo[]>();
+    for (const line of selectedCodeLines) {
+      const existing = byFile.get(line.filePath);
+      if (existing) {
+        existing.push(line);
+      } else {
+        byFile.set(line.filePath, [line]);
+      }
+    }
+
+    const sections: string[] = ["Mode: CODE", "Selected code:"];
+    for (const [filePath, lines] of byFile.entries()) {
+      sections.push(`File: ${filePath}`);
+      for (const line of lines) {
+        sections.push(`${String(line.fileLine)}: ${line.text}`);
+      }
+      sections.push("");
+    }
+
+    const selectedText = sections.join("\n").trim();
+    return this.buildPromptTarget(selectedCodeLines, selectedText);
+  }
+
+  private createSignaturesPromptTarget(selection: readonly SelectionLineInfo[]): PromptControllerTarget | null {
+    const selectedSignatures = selection.filter(
+      (line) => line.blockKind === "signature" && typeof line.fileLine === "number",
+    );
+    if (selectedSignatures.length === 0) return null;
+
+    const sections: string[] = ["Mode: SIGNATURES", "Selected signatures:"];
+    for (const line of selectedSignatures) {
+      sections.push(`- ${line.filePath}:${String(line.fileLine)} ${line.text}`);
+    }
+    const selectedText = sections.join("\n");
+    return this.buildPromptTarget(selectedSignatures, selectedText);
+  }
+
+  private createFilesPromptTarget(selection: readonly SelectionLineInfo[]): PromptControllerTarget | null {
+    const selectedFiles = new Set<string>();
+    const selectedRows: SelectionLineInfo[] = [];
+
+    for (const line of selection) {
+      if (line.blockKind !== "file") continue;
+      const row = this.fileTreeRowsByLine.get(line.globalLine);
+      if (!row || row.kind !== "file") continue;
+      selectedFiles.add(row.filePath);
+      selectedRows.push(line);
+    }
+
+    if (selectedFiles.size === 0 || selectedRows.length === 0) return null;
+
+    const sections: string[] = ["Mode: FILES", "Selected files:"];
+    for (const filePath of selectedFiles) {
+      sections.push(`- ${filePath}`);
+    }
+    const selectedText = sections.join("\n");
+    return this.buildPromptTarget(selectedRows, selectedText);
+  }
+
+  private buildPromptTarget(
+    selection: readonly SelectionLineInfo[],
+    selectedText: string,
+  ): PromptControllerTarget | null {
+    const first = selection[0];
+    const last = selection[selection.length - 1];
+    if (!first || !last) return null;
+
+    const primaryFilePath = first.filePath;
+    const primaryFileLines = selection
+      .filter((line) => line.filePath === primaryFilePath && typeof line.fileLine === "number")
+      .map((line) => line.fileLine as number);
+    const selectionStartFileLine = primaryFileLines.length > 0 ? Math.min(...primaryFileLines) : 1;
+    const selectionEndFileLine = primaryFileLines.length > 0 ? Math.max(...primaryFileLines) : 1;
 
     return {
-      filePath: currentFilePath,
+      viewMode: this.state.viewMode,
+      filePath: primaryFilePath,
       selectionStartFileLine,
       selectionEndFileLine,
-      anchorLine: selectionEndGlobalLine ?? this.cursor.cursorLine,
-      selectedText: selectedLines.join("\n"),
+      anchorLine: last.globalLine,
+      selectedText,
       prompt: "",
       model: "opencode/big-pickle",
     };
@@ -498,6 +670,7 @@ export class CodeBrowserApp {
   private async handlePromptSubmission(submission: PromptSubmission): Promise<void> {
     const upsertPayload: AgentSubmission = {
       updateId: submission.updateId,
+      viewMode: submission.viewMode,
       filePath: submission.filePath,
       selectionStartFileLine: submission.selectionStartFileLine,
       selectionEndFileLine: submission.selectionEndFileLine,
@@ -521,6 +694,10 @@ export class CodeBrowserApp {
   }
 
   private openSearchModal(): void {
+    this.focusModeBeforeSearch =
+      this.state.focusMode === "chips" || this.state.focusMode === "code"
+        ? this.state.focusMode
+        : "code";
     this.searchModal.open();
     this.setFocusMode("search");
   }
@@ -556,6 +733,12 @@ export class CodeBrowserApp {
 
     if (this.collapsedFiles.has(entry.relativePath)) {
       this.collapsedFiles.delete(entry.relativePath);
+      requiresRerender = true;
+    }
+
+    for (const directoryPath of getAncestorDirectories(entry.relativePath)) {
+      if (!this.collapsedDirectories.has(directoryPath)) continue;
+      this.collapsedDirectories.delete(directoryPath);
       requiresRerender = true;
     }
 
@@ -662,7 +845,18 @@ export class CodeBrowserApp {
   }
 
   private toggleDiffMode(): void {
+    if (this.state.viewMode !== "code") return;
     this.state.diffMode = !this.state.diffMode;
+    this.renderContent();
+  }
+
+  private switchViewMode(): void {
+    const nextMode = viewModes.switchMode();
+    this.state.viewMode = nextMode;
+    if (nextMode !== "code") {
+      this.state.diffMode = false;
+    }
+    this.updateBottomBar();
     this.renderContent();
   }
 
@@ -680,12 +874,81 @@ export class CodeBrowserApp {
     this.chipsRow.backgroundColor = theme.getBackgroundColor();
     this.scrollbox.backgroundColor = theme.getBackgroundColor();
     this.bottomBar.backgroundColor = theme.getDividerBackgroundColor();
-    this.bottomBarText.fg = theme.getDividerForegroundColor();
-    this.bottomBarText.content = `Theme: ${theme.getThemeName()}`;
+    this.updateBottomBar();
     this.helpModal.applyTheme();
     this.searchModal.applyTheme();
     this.promptComposer.applyTheme();
     this.root.requestRender();
+  }
+
+  private updateBottomBar(): void {
+    clearChildren(this.bottomBar);
+
+    const currentModeLabel =
+      this.state.viewMode === "code"
+        ? "CODE"
+        : this.state.viewMode === "signatures"
+          ? "SIGNATURES"
+          : "FILES";
+    const currentModeColors = MODE_CHIP_COLORS[this.state.viewMode];
+
+    this.bottomBar.add(this.createBottomChip(currentModeLabel, currentModeColors.bg, currentModeColors.fg, "active"));
+    this.bottomBar.add(
+      new TextRenderable(this.renderer, {
+        content: " · ",
+        fg: theme.getDividerForegroundColor(),
+        attributes: TextAttributes.BOLD,
+      }),
+    );
+
+    this.bottomBar.add(
+      this.createBottomChip(
+        theme.getThemeName().toUpperCase(),
+        theme.getDividerBackgroundColor(),
+        theme.getDividerForegroundColor(),
+        "plain",
+      ),
+    );
+  }
+
+  private createBottomChip(
+    label: string,
+    bg: string,
+    fg: string,
+    variant: "active" | "inactive" | "plain",
+  ): BoxRenderable {
+    const horizontalPadding = variant === "plain" ? 0 : 1;
+    const chip = new BoxRenderable(this.renderer, {
+      paddingLeft: horizontalPadding,
+      paddingRight: horizontalPadding,
+      backgroundColor: bg,
+    });
+    chip.add(
+      new TextRenderable(this.renderer, {
+        content: label,
+        fg,
+        attributes:
+          variant === "active"
+            ? TextAttributes.BOLD | TextAttributes.UNDERLINE
+            : variant === "plain"
+              ? TextAttributes.BOLD
+              : TextAttributes.DIM,
+      }),
+    );
+    return chip;
+  }
+
+  private isSignatureEligibleEntry(entry: CodeFileEntry): boolean {
+    if (entry.filetype === "markdown") return false;
+    return entry.typeLabel !== "MD";
+  }
+
+  private toggleCurrentStructureCollapse(): void {
+    if (this.state.viewMode === "files") {
+      this.toggleCurrentDirectoryCollapse();
+      return;
+    }
+    this.toggleCurrentFileCollapse();
   }
 
   private toggleCurrentFileCollapse(): void {
@@ -698,6 +961,17 @@ export class CodeBrowserApp {
       this.collapsedFiles.add(currentFilePath);
     }
 
+    this.renderContent();
+  }
+
+  private toggleCurrentDirectoryCollapse(): void {
+    const row = this.fileTreeRowsByLine.get(this.cursor.cursorLine);
+    if (!row || row.kind !== "dir") return;
+    if (this.collapsedDirectories.has(row.path)) {
+      this.collapsedDirectories.delete(row.path);
+    } else {
+      this.collapsedDirectories.add(row.path);
+    }
     this.renderContent();
   }
 
@@ -821,6 +1095,7 @@ export class CodeBrowserApp {
     this.agentLineByUpdateId = new Map();
     this.updateIdByAgentLine = new Map();
     this.agentRowDecorations = new Map();
+    this.fileTreeRowsByLine = new Map();
 
     if (this.entries.length === 0) {
       this.renderEmptyState("No code files found.");
@@ -835,11 +1110,42 @@ export class CodeBrowserApp {
       return;
     }
 
+    const entriesToRender =
+      this.state.viewMode === "signatures"
+        ? filteredEntries.filter((entry) => this.isSignatureEligibleEntry(entry))
+        : filteredEntries;
+    if (entriesToRender.length === 0) {
+      if (this.state.viewMode === "signatures") {
+        this.renderEmptyState("No signature-eligible files.");
+      } else {
+        this.renderEmptyState("No files for selected types.");
+      }
+      this.cursor.configure(0);
+      return;
+    }
+
+    if (this.state.viewMode === "signatures") {
+      const maxLineCount = entriesToRender.reduce((maxValue, entry) => {
+        return Math.max(maxValue, entry.lineCount);
+      }, 1);
+      this.signatureLineNumberMinWidth = Math.max(2, String(Math.max(1, maxLineCount)).length);
+    } else {
+      this.signatureLineNumberMinWidth = 2;
+    }
+
+    if (this.state.viewMode === "files") {
+      this.renderFilesModeContent(entriesToRender);
+      if (this.promptController.isVisible) {
+        this.promptController.refreshView();
+      }
+      return;
+    }
+
     const dividerWidth = Math.max(24, this.renderer.width);
     let nextLineNumber = 1;
     let nextDisplayRow = 0;
 
-    for (const entry of filteredEntries) {
+    for (const entry of entriesToRender) {
       const updatesForFile = this.getUpdatesForFile(entry.relativePath);
       let nextUpdateIndex = 0;
       const dividerRow = nextDisplayRow;
@@ -878,6 +1184,17 @@ export class CodeBrowserApp {
           nextDisplayRow = agentResult.nextDisplayRow;
           nextUpdateIndex += 1;
         }
+      } else if (this.state.viewMode === "signatures") {
+        const result = this.renderSignaturesForEntry(
+          entry,
+          updatesForFile,
+          nextUpdateIndex,
+          nextLineNumber,
+          nextDisplayRow,
+        );
+        nextLineNumber = result.nextLineNumber;
+        nextDisplayRow = result.nextDisplayRow;
+        nextUpdateIndex = result.nextUpdateIndex;
       } else if (!this.state.diffMode) {
         const sourceLines = entry.content.split("\n");
         let fileLineCursor = 1;
@@ -1025,6 +1342,187 @@ export class CodeBrowserApp {
     }
   }
 
+  private renderSignaturesForEntry(
+    entry: CodeFileEntry,
+    updatesForFile: readonly AgentUpdate[],
+    startUpdateIndex: number,
+    nextLineNumber: number,
+    nextDisplayRow: number,
+  ): { nextLineNumber: number; nextDisplayRow: number; nextUpdateIndex: number } {
+    const signatures = extractSignatureBlocks(entry.content);
+    let updateIndex = startUpdateIndex;
+    let lineCursor = nextLineNumber;
+    let rowCursor = nextDisplayRow;
+
+    for (const signature of signatures) {
+      const signatureContent = signature.lines.join("\n");
+      const signatureResult = this.addCodeBlock(
+        entry,
+        signatureContent,
+        signature.fileLineStart,
+        signature.lines.length,
+        lineCursor,
+        rowCursor,
+        "signature",
+      );
+      lineCursor = signatureResult.nextLineNumber;
+      rowCursor = signatureResult.nextDisplayRow;
+
+      while (updateIndex < updatesForFile.length) {
+        const update = updatesForFile[updateIndex];
+        if (!update) break;
+        if (update.selectionEndFileLine > signature.anchorFileLine) break;
+        const agentResult = this.addAgentUpdateWithMessages(update, lineCursor, rowCursor);
+        lineCursor = agentResult.nextLineNumber;
+        rowCursor = agentResult.nextDisplayRow;
+        updateIndex += 1;
+      }
+    }
+
+    while (updateIndex < updatesForFile.length) {
+      const update = updatesForFile[updateIndex];
+      if (!update) break;
+      const agentResult = this.addAgentUpdateWithMessages(update, lineCursor, rowCursor);
+      lineCursor = agentResult.nextLineNumber;
+      rowCursor = agentResult.nextDisplayRow;
+      updateIndex += 1;
+    }
+
+    return {
+      nextLineNumber: lineCursor,
+      nextDisplayRow: rowCursor,
+      nextUpdateIndex: updateIndex,
+    };
+  }
+
+  private renderFilesModeContent(entries: readonly CodeFileEntry[]): void {
+    const rows = buildFileTreeRows(entries, this.collapsedDirectories);
+    if (rows.length === 0) {
+      this.renderEmptyState("No files in tree.");
+      this.cursor.configure(0);
+      return;
+    }
+
+    const dividerWidth = Math.max(24, this.renderer.width);
+    let nextDisplayRow = 0;
+    this.lineModel.markDivider(nextDisplayRow);
+    const divider = new TextRenderable(this.renderer, {
+      width: "100%",
+      overflow: "hidden",
+      truncate: true,
+      wrapMode: "none",
+      content: makeSlashLine("FILE TREE", dividerWidth),
+      fg: theme.getDividerForegroundColor(),
+      bg: theme.getDividerBackgroundColor(),
+    });
+    this.scrollbox.add(divider);
+    nextDisplayRow += 1;
+
+    let nextLineNumber = 1;
+    const fileTreeSyntaxStyle = this.getFileTreeSyntaxStyle();
+
+    for (const row of rows) {
+      const rowDisplayStart = nextDisplayRow;
+      const rowResult = this.addFileTreeRowBlock(row, nextLineNumber, nextDisplayRow, fileTreeSyntaxStyle);
+      nextLineNumber = rowResult.nextLineNumber;
+      nextDisplayRow = rowResult.nextDisplayRow;
+
+      if (row.kind === "file") {
+        this.lineModel.addFileAnchor({
+          line: rowResult.blockStartLine,
+          dividerRow: rowDisplayStart,
+          filePath: row.filePath,
+        });
+
+        const updatesForFile = this.getUpdatesForFile(row.filePath);
+        for (const update of updatesForFile) {
+          const agentResult = this.addAgentUpdateWithMessages(update, nextLineNumber, nextDisplayRow);
+          nextLineNumber = agentResult.nextLineNumber;
+          nextDisplayRow = agentResult.nextDisplayRow;
+        }
+      }
+    }
+
+    this.lineModel.setTotalLines(nextLineNumber - 1);
+    this.cursor.configure(this.lineModel.totalLines);
+  }
+
+  private addFileTreeRowBlock(
+    row: FileTreeRow,
+    nextLineNumber: number,
+    nextDisplayRow: number,
+    syntaxStyle: SyntaxStyle,
+  ): { nextLineNumber: number; nextDisplayRow: number; blockStartLine: number } {
+    const rowBackgroundColor =
+      row.kind === "dir" ? this.getDirectoryDepthBackgroundColor(row.depth) : theme.getTransparentColor();
+    const displayedLabel =
+      row.kind === "dir" ? this.padFileTreeLabelToViewportWidth(row.label) : row.label;
+
+    const code = new CodeRenderable(this.renderer, {
+      width: "100%",
+      content: displayedLabel,
+      syntaxStyle,
+      wrapMode: "none",
+      bg: rowBackgroundColor,
+    });
+    code.selectable = false;
+
+    const lineView = new LineNumberRenderable(this.renderer, {
+      width: "100%",
+      target: code,
+      showLineNumbers: false,
+      fg: theme.getDividerForegroundColor(),
+      bg: rowBackgroundColor,
+    });
+    lineView.selectable = false;
+
+    this.scrollbox.add(lineView);
+    this.lineModel.addBlock({
+      lineView,
+      codeView: code,
+      defaultLineNumberFg: theme.getCodeLineNumberColor(),
+      defaultLineSigns: new Map(),
+      blockKind: "file",
+      fileLineStart: null,
+      renderedLines: [displayedLabel],
+      lineStart: nextLineNumber,
+      lineCount: 1,
+      displayRowStart: nextDisplayRow,
+      filePath: row.filePath,
+    });
+
+    this.fileTreeRowsByLine.set(nextLineNumber, row);
+    return {
+      nextLineNumber: nextLineNumber + 1,
+      nextDisplayRow: nextDisplayRow + 1,
+      blockStartLine: nextLineNumber,
+    };
+  }
+
+  private getDirectoryDepthBackgroundColor(depth: number): string {
+    const palette = [
+      theme.getDividerBackgroundColor(),
+      theme.getCollapsedBackgroundColor(),
+      theme.getPromptInputBackgroundColor(),
+      theme.getSearchInputBackgroundColor(),
+    ];
+    return palette[Math.abs(depth) % palette.length] ?? theme.getDividerBackgroundColor();
+  }
+
+  private getFileTreeSyntaxStyle(): SyntaxStyle {
+    const fg = theme.getDividerForegroundColor();
+    return SyntaxStyle.fromTheme([
+      { scope: ["default"], style: { foreground: fg } },
+      { scope: ["text"], style: { foreground: fg } },
+    ]);
+  }
+
+  private padFileTreeLabelToViewportWidth(label: string): string {
+    const targetWidth = Math.max(1, this.renderer.width - 1);
+    if (label.length >= targetWidth) return label;
+    return `${label}${" ".repeat(targetWidth - label.length)}`;
+  }
+
   private addCollapsedPlaceholderBlock(
     entry: CodeFileEntry,
     collapsedLineCount: number,
@@ -1096,6 +1594,7 @@ export class CodeBrowserApp {
     lineCount: number,
     nextLineNumber: number,
     nextDisplayRow: number,
+    blockKind: BlockKind = "code",
   ): { nextLineNumber: number; nextDisplayRow: number; blockStartLine: number } {
     const renderedLineCount = Math.max(1, lineCount);
     const renderedLines = content.split("\n");
@@ -1114,6 +1613,10 @@ export class CodeBrowserApp {
       width: "100%",
       target: code,
       showLineNumbers: true,
+      minWidth:
+        blockKind === "signature"
+          ? this.signatureLineNumberMinWidth
+          : Math.max(2, String(Math.max(1, entry.lineCount)).length),
       lineNumberOffset: fileLineStart - 1,
       fg: theme.getCodeLineNumberColor(),
       bg: theme.getTransparentColor(),
@@ -1136,7 +1639,7 @@ export class CodeBrowserApp {
       codeView: code,
       defaultLineNumberFg: theme.getCodeLineNumberColor(),
       defaultLineSigns,
-      blockKind: "code",
+      blockKind,
       fileLineStart,
       renderedLines,
       lineStart: nextLineNumber,
@@ -1458,6 +1961,20 @@ export class CodeBrowserApp {
     for (const filePath of this.collapsedFiles) {
       if (existing.has(filePath)) continue;
       this.collapsedFiles.delete(filePath);
+    }
+  }
+
+  private pruneCollapsedDirectories(): void {
+    const existingDirectories = new Set<string>();
+    for (const entry of this.entries) {
+      for (const directoryPath of getAncestorDirectories(entry.relativePath)) {
+        existingDirectories.add(directoryPath);
+      }
+    }
+
+    for (const directoryPath of this.collapsedDirectories) {
+      if (existingDirectories.has(directoryPath)) continue;
+      this.collapsedDirectories.delete(directoryPath);
     }
   }
 }

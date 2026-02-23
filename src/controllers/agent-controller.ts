@@ -1,8 +1,9 @@
 import { startHeadlessAgentRun, type HeadlessAgentRunResult } from "../agent-session";
-import type { AgentUpdate } from "../types";
+import type { AgentUpdate, ViewMode } from "../types";
 
 export type AgentSubmission = {
   updateId?: string;
+  viewMode?: ViewMode;
   filePath: string;
   selectionStartFileLine: number;
   selectionEndFileLine: number;
@@ -69,6 +70,7 @@ export class AgentController {
     if (!update) {
       update = {
         id: `agent-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+        contextMode: submission.viewMode,
         filePath: submission.filePath,
         selectionStartFileLine: submission.selectionStartFileLine,
         selectionEndFileLine: submission.selectionEndFileLine,
@@ -82,6 +84,7 @@ export class AgentController {
       };
       this.updates.push(update);
     } else {
+      update.contextMode = submission.viewMode;
       update.filePath = submission.filePath;
       update.selectionStartFileLine = submission.selectionStartFileLine;
       update.selectionEndFileLine = submission.selectionEndFileLine;
@@ -172,6 +175,7 @@ export class AgentController {
         harness: "opencode",
         model: update.model,
         variant: update.variant,
+        contextMode: update.contextMode,
         filePath: update.filePath,
         selectionStartFileLine: update.selectionStartFileLine,
         selectionEndFileLine: update.selectionEndFileLine,

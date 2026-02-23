@@ -1,5 +1,6 @@
 import { KeyEvent } from "@opentui/core";
 import { listOpencodeModelCatalog } from "../agent-session";
+import type { ViewMode } from "../types";
 import {
   PromptComposerBar,
   type PromptComposerField,
@@ -8,6 +9,7 @@ import {
 
 export type PromptControllerTarget = {
   updateId?: string;
+  viewMode?: ViewMode;
   filePath: string;
   selectionStartFileLine: number;
   selectionEndFileLine: number;
@@ -20,6 +22,7 @@ export type PromptControllerTarget = {
 
 export type PromptSubmission = {
   updateId?: string;
+  viewMode?: ViewMode;
   filePath: string;
   selectionStartFileLine: number;
   selectionEndFileLine: number;
@@ -206,6 +209,7 @@ export class PromptController {
     this.target.prompt = promptText;
     const submission: PromptSubmission = {
       updateId: this.target.updateId,
+      viewMode: this.target.viewMode,
       filePath: this.target.filePath,
       selectionStartFileLine: this.target.selectionStartFileLine,
       selectionEndFileLine: this.target.selectionEndFileLine,

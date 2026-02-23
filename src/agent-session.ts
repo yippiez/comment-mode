@@ -12,13 +12,14 @@ import {
   shouldIgnoreStdoutLine,
   type SseState,
 } from "./agent-session-parser";
-import type { AgentHarness, AgentModel } from "./types";
+import type { AgentHarness, AgentModel, ViewMode } from "./types";
 
 export type HeadlessAgentRunRequest = {
   rootDir: string;
   harness: AgentHarness;
   model: AgentModel;
   variant?: string;
+  contextMode?: ViewMode;
   filePath: string;
   selectionStartFileLine: number;
   selectionEndFileLine: number;
@@ -244,13 +245,16 @@ export async function startHeadlessAgentRun(
 }
 
 function buildRunMessage(request: {
+  contextMode?: ViewMode;
   filePath: string;
   selectionStartFileLine: number;
   selectionEndFileLine: number;
   prompt: string;
   selectedText: string;
 }): string {
+  const contextLabel = request.contextMode ? request.contextMode.toUpperCase() : "CODE";
   return [
+    `Context mode: ${contextLabel}`,
     `File: ${request.filePath}`,
     `Selected lines: ${request.selectionStartFileLine}-${request.selectionEndFileLine}`,
     "",
