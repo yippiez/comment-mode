@@ -1,6 +1,6 @@
 import { CodeRenderable, LineNumberRenderable, RGBA, Selection } from "@opentui/core";
-import { theme } from "./theme";
-import type { RenderedLineBlock } from "./types";
+import { theme } from "../theme";
+import type { RenderedLineBlock } from "../types";
 
 type RuntimeCodeSelectionApi = {
   onSelectionChanged?: (selection: Selection | null) => boolean;

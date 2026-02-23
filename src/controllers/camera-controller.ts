@@ -1,4 +1,4 @@
-import { clamp } from "./ui-utils";
+import { clamp } from "../utils/ui";
 
 type CameraBindings = {
   getViewportHeight: () => number;
