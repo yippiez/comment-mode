@@ -32,6 +32,9 @@ export class SearchModalController {
   private readonly body: BoxRenderable;
   private readonly backText: TextRenderable;
   private readonly titleText: TextRenderable;
+  private readonly queryInputContainer: BoxRenderable;
+  private readonly queryInputShell: BoxRenderable;
+  private readonly queryInputIcon: TextRenderable;
   private readonly queryInput: InputRenderable;
   private readonly statusText: TextRenderable;
   private readonly resultsBox: BoxRenderable;
@@ -64,10 +67,11 @@ export class SearchModalController {
       width: "100%",
       height: 1,
       flexDirection: "row",
-      justifyContent: "space-between",
+      justifyContent: "flex-start",
       alignItems: "center",
       paddingLeft: 1,
       paddingRight: 1,
+      gap: 2,
     });
 
     const backButton = new BoxRenderable(renderer, {
@@ -76,7 +80,7 @@ export class SearchModalController {
       },
     });
     this.backText = new TextRenderable(renderer, {
-      content: "← Back",
+      content: "←",
       attributes: TextAttributes.BOLD,
     });
     backButton.add(this.backText);
@@ -86,7 +90,6 @@ export class SearchModalController {
       attributes: TextAttributes.BOLD,
     });
     this.header.add(this.titleText);
-    this.header.add(new TextRenderable(renderer, { content: "" }));
 
     this.body = new BoxRenderable(renderer, {
       width: "100%",
@@ -94,14 +97,38 @@ export class SearchModalController {
       flexDirection: "column",
       paddingLeft: 1,
       paddingRight: 1,
-      paddingTop: 0,
+      paddingTop: 1,
       gap: 1,
     });
 
-    this.queryInput = new InputRenderable(renderer, {
+    this.queryInputContainer = new BoxRenderable(renderer, {
       width: "100%",
+      flexDirection: "row",
+      justifyContent: "center",
+      alignItems: "center",
+    });
+
+    this.queryInputShell = new BoxRenderable(renderer, {
+      width: "80%",
+      flexDirection: "row",
+      alignItems: "center",
+      paddingLeft: 1,
+      paddingRight: 1,
+      gap: 1,
+      backgroundColor: theme.getSearchInputBackgroundColor(),
+    });
+
+    this.queryInputIcon = new TextRenderable(renderer, {
+      content: "⌕",
+      attributes: TextAttributes.DIM,
+      fg: theme.getSearchInputTextColor(),
+    });
+    this.queryInputShell.add(this.queryInputIcon);
+
+    this.queryInput = new InputRenderable(renderer, {
+      flexGrow: 1,
       value: "",
-      placeholder: "Type to search files, functions, variables, headings...",
+      placeholder: "Type to search...",
       backgroundColor: theme.getSearchInputBackgroundColor(),
       focusedBackgroundColor: theme.getSearchInputFocusedBackgroundColor(),
       textColor: theme.getSearchInputTextColor(),
@@ -115,7 +142,9 @@ export class SearchModalController {
       this.updateResults();
       this.renderResults();
     };
-    this.body.add(this.queryInput);
+    this.queryInputShell.add(this.queryInput);
+    this.queryInputContainer.add(this.queryInputShell);
+    this.body.add(this.queryInputContainer);
 
     this.statusText = new TextRenderable(renderer, {
       content: "",
@@ -233,6 +262,8 @@ export class SearchModalController {
     this.body.backgroundColor = theme.getModalBackgroundColor();
     this.backText.fg = theme.getModalShortcutKeyColor();
     this.titleText.fg = theme.getModalTitleColor();
+    this.queryInputIcon.fg = theme.getSearchInputTextColor();
+    this.queryInputShell.backgroundColor = theme.getSearchInputBackgroundColor();
     this.statusText.fg = theme.getSearchStatusColor();
     this.applyInputTheme();
     this.renderResults();
@@ -254,7 +285,8 @@ export class SearchModalController {
       this.selectedIndex = clamp(this.selectedIndex, 0, this.results.length - 1);
     }
     const fileCount = this.results.filter((result) => result.kind === "file").length;
-    this.statusText.content = `${String(this.results.length)} result(s) · ${String(fileCount)} file(s) first`;
+    const referenceCount = this.results.filter((result) => result.kind === "reference").length;
+    this.statusText.content = `${String(this.results.length)} result(s) · ${String(fileCount)} file(s) · ${String(referenceCount)} reference(s)`;
   }
 
   private renderResults(): void {
@@ -274,7 +306,10 @@ export class SearchModalController {
 
     const indexed = this.results.map((result, index) => ({ result, index }));
     const files = indexed.filter((item) => item.result.kind === "file");
-    const symbols = indexed.filter((item) => item.result.kind !== "file");
+    const symbols = indexed.filter(
+      (item) => item.result.kind !== "file" && item.result.kind !== "reference",
+    );
+    const references = indexed.filter((item) => item.result.kind === "reference");
 
     if (files.length > 0) {
       this.resultsBox.add(this.createGroupHeader("FILES"));
@@ -288,32 +323,43 @@ export class SearchModalController {
         this.resultsBox.add(new TextRenderable(this.renderer, { content: "" }));
       }
       this.resultsBox.add(this.createGroupHeader("SYMBOLS"));
+      this.renderResultsByFile(symbols);
+    }
 
-      const symbolGroups = new Map<string, Array<{ result: SearchResult; index: number }>>();
-      for (const item of symbols) {
-        const existing = symbolGroups.get(item.result.filePath);
-        if (existing) {
-          existing.push(item);
-          continue;
-        }
-        symbolGroups.set(item.result.filePath, [item]);
+    if (references.length > 0) {
+      if (files.length > 0 || symbols.length > 0) {
+        this.resultsBox.add(new TextRenderable(this.renderer, { content: "" }));
       }
-
-      for (const [filePath, group] of symbolGroups.entries()) {
-        this.resultsBox.add(
-          new TextRenderable(this.renderer, {
-            content: filePath,
-            fg: theme.getEmptyStateColor(),
-            attributes: TextAttributes.BOLD,
-          }),
-        );
-        for (const item of group) {
-          this.resultsBox.add(this.createResultRow(item.result, item.index, true));
-        }
-      }
+      this.resultsBox.add(this.createGroupHeader("REFERENCE"));
+      this.renderResultsByFile(references);
     }
 
     this.overlay.requestRender();
+  }
+
+  private renderResultsByFile(items: Array<{ result: SearchResult; index: number }>): void {
+    const groups = new Map<string, Array<{ result: SearchResult; index: number }>>();
+    for (const item of items) {
+      const existing = groups.get(item.result.filePath);
+      if (existing) {
+        existing.push(item);
+      } else {
+        groups.set(item.result.filePath, [item]);
+      }
+    }
+
+    for (const [filePath, group] of groups.entries()) {
+      this.resultsBox.add(
+        new TextRenderable(this.renderer, {
+          content: filePath,
+          fg: theme.getEmptyStateColor(),
+          attributes: TextAttributes.BOLD,
+        }),
+      );
+      for (const item of group) {
+        this.resultsBox.add(this.createResultRow(item.result, item.index, true));
+      }
+    }
   }
 
   private getKindColor(kind: SearchResultKind): string {
