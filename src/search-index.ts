@@ -6,7 +6,8 @@ export type SearchResultKind =
   | "class"
   | "variable"
   | "type"
-  | "heading";
+  | "heading"
+  | "reference";
 
 export type SearchResult = {
   id: string;
@@ -18,9 +19,11 @@ export type SearchResult = {
 };
 
 const MAX_SYMBOLS_PER_FILE = 600;
+const MAX_REFERENCES_PER_FILE = 600;
 
 export function buildSearchIndex(entries: readonly CodeFileEntry[]): SearchResult[] {
   const results: SearchResult[] = [];
+  const symbolResults: SearchResult[] = [];
 
   for (const entry of entries) {
     results.push({
@@ -32,10 +35,16 @@ export function buildSearchIndex(entries: readonly CodeFileEntry[]): SearchResul
       sortText: entry.relativePath.toLowerCase(),
     });
 
-    const symbolResults = extractSymbols(entry);
-    for (const symbol of symbolResults) {
+    const symbols = extractSymbols(entry);
+    for (const symbol of symbols) {
+      symbolResults.push(symbol);
       results.push(symbol);
     }
+  }
+
+  const references = extractReferences(entries, symbolResults);
+  for (const reference of references) {
+    results.push(reference);
   }
 
   return results;
@@ -53,7 +62,7 @@ export function querySearchIndex(
     for (const result of index) {
       if (result.kind === "file") {
         files.push(result);
-      } else {
+      } else if (result.kind !== "reference") {
         symbols.push(result);
       }
     }
@@ -62,23 +71,137 @@ export function querySearchIndex(
     return [...files, ...symbols].slice(0, limit);
   }
 
-  const fileMatches: Array<{ result: SearchResult; score: number }> = [];
-  const symbolMatches: Array<{ result: SearchResult; score: number }> = [];
+  const files: Array<{ result: SearchResult; score: number }> = [];
+  const symbols: Array<{ result: SearchResult; score: number }> = [];
+  const references: Array<{ result: SearchResult; score: number }> = [];
 
   for (const result of index) {
     const score = scoreResult(result, normalizedQuery);
     if (!Number.isFinite(score)) continue;
+
     if (result.kind === "file") {
-      fileMatches.push({ result, score });
-    } else {
-      symbolMatches.push({ result, score });
+      files.push({ result, score });
+      continue;
+    }
+    if (result.kind === "reference") {
+      references.push({ result, score });
+      continue;
+    }
+    symbols.push({ result, score });
+  }
+
+  files.sort((a, b) => a.score - b.score || a.result.sortText.localeCompare(b.result.sortText));
+  symbols.sort((a, b) => a.score - b.score || a.result.sortText.localeCompare(b.result.sortText));
+  references.sort((a, b) => a.score - b.score || a.result.sortText.localeCompare(b.result.sortText));
+  const symbolNamePool = new Set(symbols.map((entry) => entry.result.name.toLowerCase()));
+  const filteredReferences = references.filter(
+    (entry) => !symbolNamePool.has(entry.result.name.toLowerCase()),
+  );
+
+  const primary = [...files, ...symbols];
+  if (filteredReferences.length === 0) {
+    return primary.slice(0, limit).map((entry) => entry.result);
+  }
+
+  const shouldPrioritizeReferences = /^[A-Za-z_$][\w$]*$/.test(normalizedQuery);
+  if (!shouldPrioritizeReferences) {
+    return [...primary, ...filteredReferences].slice(0, limit).map((entry) => entry.result);
+  }
+
+  const reservedReferenceSlots = Math.min(4, limit, filteredReferences.length);
+  const primaryLimit = Math.max(0, limit - reservedReferenceSlots);
+  const selectedPrimary = primary.slice(0, primaryLimit);
+  const selectedReferences = filteredReferences.slice(0, limit - selectedPrimary.length);
+  const remainingSlots = limit - selectedPrimary.length - selectedReferences.length;
+  const extraPrimary = remainingSlots > 0 ? primary.slice(primaryLimit, primaryLimit + remainingSlots) : [];
+
+  return [...selectedPrimary, ...selectedReferences, ...extraPrimary].map((entry) => entry.result);
+}
+
+function extractReferences(
+  entries: readonly CodeFileEntry[],
+  symbols: readonly SearchResult[],
+): SearchResult[] {
+  const referenceableNames = new Set<string>();
+  const definitionLines = new Set<string>();
+
+  for (const symbol of symbols) {
+    if (symbol.kind === "heading") continue;
+    if (symbol.kind === "reference") continue;
+    if (symbol.kind === "file") continue;
+    referenceableNames.add(symbol.name);
+    definitionLines.add(`${symbol.filePath}:${String(symbol.fileLine)}:${symbol.name.toLowerCase()}`);
+  }
+
+  if (referenceableNames.size === 0) {
+    return [];
+  }
+
+  const normalizedReferenceNames = new Set<string>();
+  for (const name of referenceableNames) {
+    normalizedReferenceNames.add(name.toLowerCase());
+  }
+
+  const references: SearchResult[] = [];
+  for (const entry of entries) {
+    const lines = entry.content.split("\n");
+    let fileReferenceCount = 0;
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+      if (fileReferenceCount >= MAX_REFERENCES_PER_FILE) break;
+
+      const line = lines[lineIndex] ?? "";
+      const fileLine = lineIndex + 1;
+      const identifiers = extractIdentifiers(line);
+      if (identifiers.length === 0) continue;
+
+      const seenOnLine = new Set<string>();
+      for (const identifier of identifiers) {
+        const normalizedIdentifier = identifier.toLowerCase();
+        if (!normalizedReferenceNames.has(normalizedIdentifier)) continue;
+        if (seenOnLine.has(normalizedIdentifier)) continue;
+        seenOnLine.add(normalizedIdentifier);
+
+        const definitionKey = `${entry.relativePath}:${String(fileLine)}:${normalizedIdentifier}`;
+        if (definitionLines.has(definitionKey)) continue;
+
+        references.push(makeSymbol(entry.relativePath, identifier, "reference", fileLine));
+        fileReferenceCount += 1;
+        if (fileReferenceCount >= MAX_REFERENCES_PER_FILE) break;
+      }
     }
   }
 
-  fileMatches.sort((a, b) => a.score - b.score || a.result.sortText.localeCompare(b.result.sortText));
-  symbolMatches.sort((a, b) => a.score - b.score || a.result.sortText.localeCompare(b.result.sortText));
+  return dedupeSymbols(references);
+}
 
-  return [...fileMatches, ...symbolMatches].slice(0, limit).map((entry) => entry.result);
+function extractIdentifiers(line: string): string[] {
+  const matches = line.match(/[A-Za-z_$][\w$]*/g);
+  if (!matches) return [];
+  return matches;
+}
+
+function scoreResult(result: SearchResult, query: string): number {
+  const filePath = result.filePath.toLowerCase();
+  const name = result.name.toLowerCase();
+
+  if (result.kind === "file") {
+    if (filePath === query) return -200;
+    return fuzzySubsequenceScore(filePath, query);
+  }
+
+  if (result.kind === "reference") {
+    if (name === query) return -120;
+    const referenceScore = fuzzySubsequenceScore(name, query);
+    if (!Number.isFinite(referenceScore)) return Number.POSITIVE_INFINITY;
+    return referenceScore + 60;
+  }
+
+  if (name === query) return -180;
+  const nameScore = fuzzySubsequenceScore(name, query);
+  const pathScore = fuzzySubsequenceScore(filePath, query);
+  const best = Math.min(nameScore, pathScore + 45);
+  if (!Number.isFinite(best)) return Number.POSITIVE_INFINITY;
+  return best + 20;
 }
 
 function extractSymbols(entry: CodeFileEntry): SearchResult[] {
@@ -183,23 +306,6 @@ function dedupeSymbols(results: SearchResult[]): SearchResult[] {
   return deduped;
 }
 
-function scoreResult(result: SearchResult, query: string): number {
-  const filePath = result.filePath.toLowerCase();
-  const name = result.name.toLowerCase();
-
-  if (result.kind === "file") {
-    if (filePath === query) return -200;
-    return fuzzySubsequenceScore(filePath, query);
-  }
-
-  if (name === query) return -180;
-  const nameScore = fuzzySubsequenceScore(name, query);
-  const pathScore = fuzzySubsequenceScore(filePath, query);
-  const best = Math.min(nameScore, pathScore + 45);
-  if (!Number.isFinite(best)) return Number.POSITIVE_INFINITY;
-  return best + 20;
-}
-
 function fuzzySubsequenceScore(candidate: string, query: string): number {
   if (query.length === 0) return 0;
   let queryIndex = 0;
@@ -234,7 +340,15 @@ function fuzzySubsequenceScore(candidate: string, query: string): number {
 }
 
 function compareKindPriority(a: SearchResultKind, b: SearchResultKind): number {
-  const order: SearchResultKind[] = ["file", "function", "class", "type", "variable", "heading"];
+  const order: SearchResultKind[] = [
+    "file",
+    "function",
+    "class",
+    "type",
+    "variable",
+    "heading",
+    "reference",
+  ];
   return order.indexOf(a) - order.indexOf(b);
 }
 

@@ -739,6 +739,8 @@ export class ThemeManager {
         return this.currentTheme.colors.searchTypeKindColor;
       case "heading":
         return this.currentTheme.colors.searchHeadingKindColor;
+      case "reference":
+        return this.currentTheme.colors.searchFunctionKindColor;
       default:
         return this.currentTheme.colors.searchFallbackKindColor;
     }
