@@ -1,5 +1,6 @@
 import {
   BoxRenderable,
+  CodeRenderable,
   InputRenderable,
   KeyEvent,
   ScrollBoxRenderable,
@@ -53,6 +54,7 @@ export class SearchModalController {
   private selectedIndex = 0;
   private index: SearchResult[] = [];
   private fileLinesByPath = new Map<string, string[]>();
+  private fileTypesByPath = new Map<string, string | undefined>();
 
   constructor(renderer: CliRenderer, options: SearchModalControllerOptions) {
     this.renderer = renderer;
@@ -108,11 +110,13 @@ export class SearchModalController {
       paddingLeft: 1,
       paddingRight: 1,
       paddingTop: 1,
-      gap: 1,
+      gap: 0,
     });
 
     this.queryInputContainer = new BoxRenderable(renderer, {
       width: "100%",
+      height: 1,
+      flexShrink: 0,
       flexDirection: "row",
       justifyContent: "center",
       alignItems: "center",
@@ -120,6 +124,8 @@ export class SearchModalController {
 
     this.queryInputShell = new BoxRenderable(renderer, {
       width: "80%",
+      height: 1,
+      flexShrink: 0,
       flexDirection: "row",
       alignItems: "center",
       paddingLeft: 1,
@@ -167,12 +173,16 @@ export class SearchModalController {
 
     this.statusContainer = new BoxRenderable(renderer, {
       width: "100%",
+      height: 1,
+      flexShrink: 0,
       flexDirection: "row",
       justifyContent: "center",
       alignItems: "center",
     });
     this.statusShell = new BoxRenderable(renderer, {
       width: "80%",
+      height: 1,
+      flexShrink: 0,
       paddingLeft: 1,
       paddingRight: 1,
       flexDirection: "row",
@@ -185,6 +195,7 @@ export class SearchModalController {
     this.resultsBox = new ScrollBoxRenderable(renderer, {
       width: "100%",
       flexGrow: 1,
+      minHeight: 0,
       flexDirection: "column",
       gap: 0,
       verticalScrollbarOptions: { visible: false },
@@ -208,6 +219,7 @@ export class SearchModalController {
   public setEntries(entries: readonly CodeFileEntry[]): void {
     this.index = buildSearchIndex(entries);
     this.fileLinesByPath = new Map(entries.map((entry) => [entry.relativePath, entry.content.split("\n")]));
+    this.fileTypesByPath = new Map(entries.map((entry) => [entry.relativePath, entry.filetype]));
     if (!this.visible) return;
     this.updateResults();
     this.renderResults();
@@ -317,7 +329,8 @@ export class SearchModalController {
     if (normalizedQuery.length === 0) {
       this.results = [];
       this.selectedIndex = 0;
-      this.statusText.content = "";
+      this.statusText.content = "0 result(s) · 0 file(s) · 0 reference(s)";
+      this.statusContainer.visible = true;
       return;
     }
 
@@ -327,6 +340,7 @@ export class SearchModalController {
     } else {
       this.selectedIndex = clamp(this.selectedIndex, 0, this.results.length - 1);
     }
+    this.statusContainer.visible = true;
     const fileCount = this.results.filter((result) => result.kind === "file").length;
     const referenceCount = this.results.filter((result) => result.kind === "reference").length;
     this.statusText.content = `${String(this.results.length)} result(s) · ${String(fileCount)} file(s) · ${String(referenceCount)} reference(s)`;
@@ -336,20 +350,6 @@ export class SearchModalController {
     clearChildren(this.resultsBox);
 
     if (this.results.length === 0) {
-      if (this.query.trim().length === 0) {
-        this.overlay.requestRender();
-        return;
-      }
-      this.resultsBox.add(
-        new TextRenderable(this.renderer, {
-          content: "No matches",
-          fg: theme.getEmptyStateColor(),
-          attributes: TextAttributes.DIM,
-          wrapMode: "none",
-          truncate: true,
-          overflow: "hidden",
-        }),
-      );
       this.overlay.requestRender();
       return;
     }
@@ -359,7 +359,7 @@ export class SearchModalController {
     }
 
     const selectedTopRow = this.selectedIndex * SearchModalController.RESULT_HEIGHT;
-    this.resultsBox.scrollTo(Math.max(0, selectedTopRow - 1));
+    this.resultsBox.scrollTo(selectedTopRow);
     this.overlay.requestRender();
   }
 
@@ -387,6 +387,7 @@ export class SearchModalController {
 
   private createResultCard(result: SearchResult, index: number): BoxRenderable {
     const selected = index === this.selectedIndex;
+    const pathColor = theme.getSearchKindColor("variable");
     const card = new BoxRenderable(this.renderer, {
       width: "100%",
       height: SearchModalController.RESULT_HEIGHT,
@@ -403,18 +404,20 @@ export class SearchModalController {
       width: "100%",
       flexDirection: "row",
       justifyContent: "space-between",
+      alignItems: "center",
+      backgroundColor: selected
+        ? theme.getSearchInputFocusedBackgroundColor()
+        : theme.getSearchInputBackgroundColor(),
     });
     header.add(
       new TextRenderable(this.renderer, {
         content: `${result.filePath}:${String(result.fileLine)}`,
-        fg: selected
-          ? theme.getSearchSelectedRowForegroundColor()
-          : theme.getSearchRowForegroundColor(),
+        fg: pathColor,
         width: "82%",
         overflow: "hidden",
         truncate: true,
         wrapMode: "none",
-        attributes: selected ? TextAttributes.BOLD : TextAttributes.NONE,
+        attributes: TextAttributes.BOLD,
       }),
     );
     header.add(
@@ -434,18 +437,36 @@ export class SearchModalController {
     for (const previewLine of previewLines) {
       const lineNumber =
         previewLine.lineNumber === null ? "    " : String(previewLine.lineNumber).padStart(4, " ");
-      card.add(
+      const lineRow = new BoxRenderable(this.renderer, {
+        width: "100%",
+        flexDirection: "row",
+        alignItems: "center",
+      });
+      lineRow.add(
         new TextRenderable(this.renderer, {
-          content: `${previewLine.isAnchor ? ">" : " "} ${lineNumber} | ${previewLine.content}`,
+          content: `${previewLine.isAnchor ? ">" : " "} ${lineNumber} | `,
           fg: selected
             ? theme.getSearchSelectedRowForegroundColor()
             : theme.getSearchRowForegroundColor(),
           wrapMode: "none",
-          truncate: true,
+          truncate: false,
           overflow: "hidden",
           attributes: previewLine.isAnchor ? TextAttributes.BOLD : TextAttributes.NONE,
         }),
       );
+
+      const previewCode = new CodeRenderable(this.renderer, {
+        flexGrow: 1,
+        content: previewLine.content.length > 0 ? previewLine.content : " ",
+        filetype: this.fileTypesByPath.get(result.filePath),
+        syntaxStyle: theme.getSyntaxStyle(),
+        wrapMode: "none",
+        conceal: false,
+        bg: theme.getTransparentColor(),
+      });
+      previewCode.selectable = false;
+      lineRow.add(previewCode);
+      card.add(lineRow);
     }
 
     return card;
