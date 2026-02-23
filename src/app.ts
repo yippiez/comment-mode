@@ -693,6 +693,57 @@ export class CodeBrowserApp {
 
       this.chipsRow.add(chip);
     }
+
+    const searchChip = new BoxRenderable(this.renderer, {
+      paddingLeft: 1,
+      paddingRight: 1,
+      backgroundColor: theme.getChipBackgroundColor(true),
+      onMouseDown: () => {
+        this.openSearchModal();
+      },
+    });
+    searchChip.add(
+      new TextRenderable(this.renderer, {
+        content: "SEARCH",
+        fg: theme.getChipTextColor(false, true),
+        attributes: TextAttributes.BOLD,
+      }),
+    );
+    this.chipsRow.add(searchChip);
+
+    const helpChip = new BoxRenderable(this.renderer, {
+      paddingLeft: 1,
+      paddingRight: 1,
+      backgroundColor: theme.getChipBackgroundColor(true),
+      onMouseDown: () => {
+        this.helpModal.show();
+      },
+    });
+    helpChip.add(
+      new TextRenderable(this.renderer, {
+        content: "HELP",
+        fg: theme.getChipTextColor(false, true),
+        attributes: TextAttributes.BOLD,
+      }),
+    );
+    this.chipsRow.add(helpChip);
+
+    const quitChip = new BoxRenderable(this.renderer, {
+      paddingLeft: 1,
+      paddingRight: 1,
+      backgroundColor: theme.getChipBackgroundColor(true),
+      onMouseDown: () => {
+        this.renderer.destroy();
+      },
+    });
+    quitChip.add(
+      new TextRenderable(this.renderer, {
+        content: "QUIT",
+        fg: theme.getChipTextColor(false, true),
+        attributes: TextAttributes.BOLD,
+      }),
+    );
+    this.chipsRow.add(quitChip);
   }
 
   private renderContent(): void {
