@@ -18,6 +18,8 @@ export type FileTreeRow = {
   filePath: string;
   depth: number;
   label: string;
+  lineCount?: number;
+  childFileCount?: number;
 };
 
 const MODES: ViewModeDescriptor[] = [
@@ -70,7 +72,11 @@ export function extractSignatureBlocks(content: string): SignatureBlock[] {
     const trailingDocs = readTrailingPythonDocstring(lines, signature.endLineIndex, signature.isPythonDef);
 
     const fileLineStart = leadingDocs.startLineIndex + 1;
-    const blockLines = [...leadingDocs.lines, ...signature.lines, ...trailingDocs.lines];
+    const blockLines = stripSharedIndentation([
+      ...leadingDocs.lines,
+      ...signature.lines,
+      ...trailingDocs.lines,
+    ]);
     blocks.push({
       fileLineStart,
       anchorFileLine: signature.startLineIndex + 1,
@@ -264,136 +270,115 @@ function countChar(text: string, char: string): number {
   return count;
 }
 
-type FileTreeDirNode = {
-  kind: "dir";
-  path: string;
-  dirs: Map<string, FileTreeDirNode>;
-  files: FileTreeFileNode[];
-};
-
-type FileTreeFileNode = {
-  path: string;
-  lineCount: number;
-};
-
-type FileTreeChild =
-  | {
-      kind: "dir";
-      name: string;
-      path: string;
-      node: FileTreeDirNode;
+function stripSharedIndentation(lines: readonly string[]): string[] {
+  let minIndent = Number.POSITIVE_INFINITY;
+  for (const line of lines) {
+    if (line.trim().length === 0) continue;
+    let indent = 0;
+    for (const char of line) {
+      if (char !== " " && char !== "\t") break;
+      indent += 1;
     }
-  | {
-      kind: "file";
-      name: string;
-      path: string;
-      lineCount: number;
-    };
+    minIndent = Math.min(minIndent, indent);
+  }
+
+  if (!Number.isFinite(minIndent) || minIndent <= 0) {
+    return [...lines];
+  }
+
+  return lines.map((line) => {
+    if (line.length === 0) return line;
+    const sliceStart = Math.min(minIndent, line.length);
+    return line.slice(sliceStart);
+  });
+}
 
 /** Builds a collapsible tree list from relative file paths. */
 export function buildFileTreeRows(
   entries: readonly CodeFileEntry[],
-  collapsedDirectories: ReadonlySet<string>,
+  currentDirectoryPath: string,
 ): FileTreeRow[] {
-  const root: FileTreeDirNode = {
-    kind: "dir",
-    path: "",
-    dirs: new Map(),
-    files: [],
-  };
+  const directoryPath = normalizeDirectoryPath(currentDirectoryPath);
+  const prefix = directoryPath.length > 0 ? `${directoryPath}/` : "";
+  const rows: FileTreeRow[] = [];
 
-  for (const entry of entries) {
-    const parts = entry.relativePath.split("/").filter(Boolean);
-    if (parts.length === 0) continue;
-    let cursor = root;
-
-    for (let index = 0; index < parts.length; index += 1) {
-      const part = parts[index] ?? "";
-      const isLast = index === parts.length - 1;
-      if (isLast) {
-        cursor.files.push({ path: entry.relativePath, lineCount: entry.lineCount });
-        continue;
-      }
-
-      const nextPath = cursor.path ? `${cursor.path}/${part}` : part;
-      let next = cursor.dirs.get(part);
-      if (!next) {
-        next = {
-          kind: "dir",
-          path: nextPath,
-          dirs: new Map(),
-          files: [],
-        };
-        cursor.dirs.set(part, next);
-      }
-      cursor = next;
-    }
+  if (directoryPath.length > 0) {
+    const parentPath = parentDirectoryPath(directoryPath);
+    rows.push({
+      key: `dir:${parentPath}:up`,
+      kind: "dir",
+      path: parentPath,
+      filePath: parentPath,
+      depth: 0,
+      label: "../",
+    });
   }
 
-  const rows: FileTreeRow[] = [];
-  const visit = (node: FileTreeDirNode, depth: number, parentHasNext: boolean[]) => {
-    const sortedDirs = [...node.dirs.entries()]
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([name, dirNode]) => ({
-        kind: "dir" as const,
-        name,
-        path: dirNode.path,
-        node: dirNode,
-      }));
-    const sortedFiles = [...node.files]
-      .sort((a, b) => a.path.localeCompare(b.path))
-      .map((fileEntry) => ({
-        kind: "file" as const,
-        name: fileEntry.path.split("/").pop() ?? fileEntry.path,
-        path: fileEntry.path,
-        lineCount: fileEntry.lineCount,
-      }));
-    const children: FileTreeChild[] = [...sortedDirs, ...sortedFiles];
+  const childDirectories = new Map<string, number>();
+  const childFiles: Array<{ path: string; name: string; lineCount: number }> = [];
 
-    for (let index = 0; index < children.length; index += 1) {
-      const child = children[index];
-      if (!child) continue;
-      const isLast = index === children.length - 1;
-      const branchPrefix =
-        parentHasNext.map((hasNext) => (hasNext ? "│   " : "    ")).join("") +
-        (isLast ? "└── " : "├── ");
+  for (const entry of entries) {
+    if (prefix.length > 0 && !entry.relativePath.startsWith(prefix)) continue;
+    const relative = prefix.length > 0 ? entry.relativePath.slice(prefix.length) : entry.relativePath;
+    if (!relative) continue;
 
-      if (child.kind === "dir") {
-        const collapsed = collapsedDirectories.has(child.path);
-        const marker = collapsed ? "▸" : "▾";
-        rows.push({
-          key: `dir:${child.path}`,
-          kind: "dir",
-          path: child.path,
-          filePath: child.path,
-          depth,
-          label: `${branchPrefix}${marker} ${child.name}/`,
-        });
-        if (!collapsed) {
-          visit(child.node, depth + 1, [...parentHasNext, !isLast]);
-        }
-        continue;
-      }
-      rows.push({
-        key: `file:${child.path}`,
-        kind: "file",
-        path: child.path,
-        filePath: child.path,
-        depth,
-        label: `${branchPrefix}${child.name} (${String(child.lineCount)})`,
-      });
+    const slashIndex = relative.indexOf("/");
+    if (slashIndex >= 0) {
+      const directoryName = relative.slice(0, slashIndex);
+      const directoryFullPath = prefix.length > 0 ? `${directoryPath}/${directoryName}` : directoryName;
+      childDirectories.set(directoryFullPath, (childDirectories.get(directoryFullPath) ?? 0) + 1);
+      continue;
     }
-  };
 
-  visit(root, 0, []);
+    childFiles.push({
+      path: entry.relativePath,
+      name: relative,
+      lineCount: entry.lineCount,
+    });
+  }
+
+  const sortedDirectories = [...childDirectories.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  for (const [directoryFullPath, fileCount] of sortedDirectories) {
+    const directoryName = directoryFullPath.split("/").pop() ?? directoryFullPath;
+    rows.push({
+      key: `dir:${directoryFullPath}`,
+      kind: "dir",
+      path: directoryFullPath,
+      filePath: directoryFullPath,
+      depth: 0,
+      label: `${directoryName}/`,
+      childFileCount: fileCount,
+    });
+  }
+
+  const sortedFiles = [...childFiles].sort((a, b) => a.path.localeCompare(b.path));
+  for (const file of sortedFiles) {
+    rows.push({
+      key: `file:${file.path}`,
+      kind: "file",
+      path: file.path,
+      filePath: file.path,
+      depth: 0,
+      label: file.name,
+      lineCount: file.lineCount,
+    });
+  }
+
   return rows;
 }
 
-export function getAncestorDirectories(filePath: string): string[] {
-  const parts = filePath.split("/").filter(Boolean);
-  const ancestors: string[] = [];
-  for (let index = 0; index < parts.length - 1; index += 1) {
-    ancestors.push(parts.slice(0, index + 1).join("/"));
-  }
-  return ancestors;
+function normalizeDirectoryPath(directoryPath: string): string {
+  if (!directoryPath) return "";
+  return directoryPath
+    .split("/")
+    .filter(Boolean)
+    .join("/");
+}
+
+function parentDirectoryPath(directoryPath: string): string {
+  const normalized = normalizeDirectoryPath(directoryPath);
+  if (!normalized) return "";
+  const parts = normalized.split("/");
+  if (parts.length <= 1) return "";
+  return parts.slice(0, -1).join("/");
 }
