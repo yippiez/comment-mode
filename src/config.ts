@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 
 export const CODE_EXTENSIONS = new Set([
@@ -25,15 +26,28 @@ export const CODE_EXTENSIONS = new Set([
   ".yml",
 ]);
 
-export const IGNORE_DIRS = new Set([
-  ".git",
-  ".next",
-  ".turbo",
-  "build",
-  "dist",
-  "node_modules",
-  "out",
-]);
+function getIgnoredDirs(): Set<string> {
+  const ignored = new Set<string>();
+  const gitignorePath = path.join(process.cwd(), ".gitignore");
+
+  if (fs.existsSync(gitignorePath)) {
+    const content = fs.readFileSync(gitignorePath, "utf-8");
+    for (const line of content.split("\n")) {
+      const trimmed = line.trim();
+      if (trimmed && !trimmed.startsWith("#")) {
+        const parts = trimmed.split("/");
+        const first = parts[0];
+        if (first && !first.includes("*")) {
+          ignored.add(first);
+        }
+      }
+    }
+  }
+
+  return ignored;
+}
+
+export const IGNORE_DIRS = getIgnoredDirs();
 
 export const CORE_WORKER_PATH = path.join(
   process.cwd(),
