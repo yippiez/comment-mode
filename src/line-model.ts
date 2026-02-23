@@ -1,6 +1,6 @@
 import type { CodeRenderable, LineNumberRenderable, RGBA } from "@opentui/core";
 import type { BlockKind, RenderedLineBlock } from "./types";
-import { clamp } from "./ui-utils";
+import { clamp } from "./utils/ui";
 
 export type FileAnchor = {
   line: number;

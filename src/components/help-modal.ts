@@ -1,7 +1,7 @@
 import { BoxRenderable, TextAttributes, TextRenderable, type CliRenderer } from "@opentui/core";
 import { SHORTCUTS_SECTIONS } from "../shortcuts";
 import { theme } from "../theme";
-import { clearChildren } from "../ui-utils";
+import { clearChildren } from "../utils/ui";
 
 type HelpModalOptions = {
   onDismiss: () => void;

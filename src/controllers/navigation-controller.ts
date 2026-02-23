@@ -1,6 +1,6 @@
 import type { KeyEvent } from "@opentui/core";
-import { CameraController } from "../camera-controller";
-import { CursorController } from "../cursor-controller";
+import { CameraController } from "./camera-controller";
+import { CursorController } from "./cursor-controller";
 import { LineModel } from "../line-model";
 
 type NavigationBindings = {
