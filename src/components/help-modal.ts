@@ -35,10 +35,11 @@ export class HelpModal {
       width: "100%",
       height: 1,
       flexDirection: "row",
-      justifyContent: "space-between",
+      justifyContent: "flex-start",
       alignItems: "center",
       paddingLeft: 1,
       paddingRight: 1,
+      gap: 2,
     });
 
     const backButton = new BoxRenderable(renderer, {
@@ -47,7 +48,7 @@ export class HelpModal {
       },
     });
     this.backText = new TextRenderable(renderer, {
-      content: "← Back",
+      content: "←",
       attributes: TextAttributes.BOLD,
     });
     backButton.add(this.backText);
@@ -58,7 +59,6 @@ export class HelpModal {
       attributes: TextAttributes.BOLD,
     });
     this.topbar.add(this.titleText);
-    this.topbar.add(new TextRenderable(renderer, { content: "" }));
 
     this.body = new BoxRenderable(renderer, {
       width: "100%",
