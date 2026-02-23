@@ -36,6 +36,8 @@ type CodeBrowserAppOptions = {
   onAgentUpdatesChanged?: (updates: AgentUpdate[]) => void;
 };
 
+const ACTION_CHIPS = ["SEARCH", "HELP", "QUIT"] as const;
+
 export class CodeBrowserApp {
   private readonly renderer: CliRenderer;
   private readonly rootDir: string;
@@ -45,6 +47,8 @@ export class CodeBrowserApp {
   private readonly root: BoxRenderable;
   private readonly chipsRow: BoxRenderable;
   private readonly scrollbox: ScrollBoxRenderable;
+  private readonly bottomBar: BoxRenderable;
+  private readonly bottomBarText: TextRenderable;
   private readonly helpModal: HelpModal;
   private readonly searchModal: SearchModalController;
   private readonly promptComposer: PromptComposerBar;
@@ -91,6 +95,7 @@ export class CodeBrowserApp {
       id: "content",
       flexGrow: 1,
       width: "100%",
+      marginBottom: 1,
       verticalScrollbarOptions: { visible: false },
       horizontalScrollbarOptions: { visible: false },
       onMouseDown: () => {
@@ -98,8 +103,28 @@ export class CodeBrowserApp {
       },
     });
 
+    this.bottomBar = new BoxRenderable(renderer, {
+      id: "bottom-bar",
+      position: "absolute",
+      bottom: 0,
+      left: 0,
+      zIndex: 800,
+      width: "100%",
+      height: 1,
+      paddingLeft: 1,
+      paddingRight: 1,
+      flexDirection: "row",
+      alignItems: "center",
+    });
+    this.bottomBarText = new TextRenderable(renderer, {
+      content: "",
+      attributes: TextAttributes.BOLD,
+    });
+    this.bottomBar.add(this.bottomBarText);
+
     this.root.add(this.chipsRow);
     this.root.add(this.scrollbox);
+    this.root.add(this.bottomBar);
 
     this.helpModal = new HelpModal(renderer, {
       onDismiss: () => {
@@ -251,9 +276,6 @@ export class CodeBrowserApp {
 
       if (this.searchModal.isVisible) {
         this.searchModal.handleKeypress(keyName, key, (event) => this.consumeKey(event));
-        if (!this.searchModal.isVisible) {
-          this.setFocusMode("code");
-        }
         return;
       }
 
@@ -506,7 +528,6 @@ export class CodeBrowserApp {
   private closeSearchModal(): void {
     if (!this.searchModal.isVisible) return;
     this.searchModal.close();
-    this.setFocusMode("code");
   }
 
   private jumpToSearchResult(result: SearchResult): void {
@@ -605,20 +626,39 @@ export class CodeBrowserApp {
   }
 
   private moveChipSelection(delta: number): void {
-    if (this.sortedTypes.length === 0) return;
+    const chipCount = this.sortedTypes.length + ACTION_CHIPS.length;
+    if (chipCount === 0) return;
     const nextIndex = this.state.selectedChipIndex + delta;
     this.state.selectedChipIndex =
-      ((nextIndex % this.sortedTypes.length) + this.sortedTypes.length) % this.sortedTypes.length;
+      ((nextIndex % chipCount) + chipCount) % chipCount;
     this.renderChips();
   }
 
   private toggleSelectedChip(): void {
-    if (this.sortedTypes.length === 0) return;
-    const selectedType = this.sortedTypes[this.state.selectedChipIndex];
-    if (!selectedType) return;
-    this.enabledTypes.set(selectedType, !this.isTypeEnabled(selectedType));
-    this.renderChips();
-    this.renderContent();
+    const selectedChipIndex = this.state.selectedChipIndex;
+
+    if (selectedChipIndex < this.sortedTypes.length) {
+      const selectedType = this.sortedTypes[selectedChipIndex];
+      if (!selectedType) return;
+      this.enabledTypes.set(selectedType, !this.isTypeEnabled(selectedType));
+      this.renderChips();
+      this.renderContent();
+      return;
+    }
+
+    const actionChipIndex = selectedChipIndex - this.sortedTypes.length;
+    const action = ACTION_CHIPS[actionChipIndex];
+    if (action === "SEARCH") {
+      this.openSearchModal();
+      return;
+    }
+    if (action === "HELP") {
+      this.showHelp();
+      return;
+    }
+    if (action === "QUIT") {
+      this.renderer.destroy();
+    }
   }
 
   private toggleDiffMode(): void {
@@ -639,6 +679,9 @@ export class CodeBrowserApp {
     this.root.backgroundColor = theme.getBackgroundColor();
     this.chipsRow.backgroundColor = theme.getBackgroundColor();
     this.scrollbox.backgroundColor = theme.getBackgroundColor();
+    this.bottomBar.backgroundColor = theme.getDividerBackgroundColor();
+    this.bottomBarText.fg = theme.getDividerForegroundColor();
+    this.bottomBarText.content = `Theme: ${theme.getThemeName()}`;
     this.helpModal.applyTheme();
     this.searchModal.applyTheme();
     this.promptComposer.applyTheme();
@@ -660,11 +703,11 @@ export class CodeBrowserApp {
 
   private renderChips(): void {
     clearChildren(this.chipsRow);
+    const chipsFocused = this.state.focusMode === "chips";
 
     for (const [index, type] of this.sortedTypes.entries()) {
       const enabled = this.isTypeEnabled(type);
       const selected = index === this.state.selectedChipIndex;
-      const chipsFocused = this.state.focusMode === "chips";
 
       const chip = new BoxRenderable(this.renderer, {
         paddingLeft: 1,
@@ -697,16 +740,24 @@ export class CodeBrowserApp {
     const searchChip = new BoxRenderable(this.renderer, {
       paddingLeft: 1,
       paddingRight: 1,
-      backgroundColor: theme.getChipBackgroundColor(true),
+      backgroundColor:
+        this.state.selectedChipIndex === this.sortedTypes.length
+          ? theme.getChipSelectedBackgroundColor(chipsFocused)
+          : theme.getChipBackgroundColor(true),
       onMouseDown: () => {
+        this.state.selectedChipIndex = this.sortedTypes.length;
+        this.setFocusMode("chips");
         this.openSearchModal();
       },
     });
     searchChip.add(
       new TextRenderable(this.renderer, {
         content: "SEARCH",
-        fg: theme.getChipTextColor(false, true),
-        attributes: TextAttributes.BOLD,
+        fg: theme.getChipTextColor(this.state.selectedChipIndex === this.sortedTypes.length, true),
+        attributes:
+          this.state.selectedChipIndex === this.sortedTypes.length
+            ? TextAttributes.BOLD | TextAttributes.UNDERLINE
+            : TextAttributes.BOLD,
       }),
     );
     this.chipsRow.add(searchChip);
@@ -714,16 +765,24 @@ export class CodeBrowserApp {
     const helpChip = new BoxRenderable(this.renderer, {
       paddingLeft: 1,
       paddingRight: 1,
-      backgroundColor: theme.getChipBackgroundColor(true),
+      backgroundColor:
+        this.state.selectedChipIndex === this.sortedTypes.length + 1
+          ? theme.getChipSelectedBackgroundColor(chipsFocused)
+          : theme.getChipBackgroundColor(true),
       onMouseDown: () => {
-        this.helpModal.show();
+        this.state.selectedChipIndex = this.sortedTypes.length + 1;
+        this.setFocusMode("chips");
+        this.showHelp();
       },
     });
     helpChip.add(
       new TextRenderable(this.renderer, {
         content: "HELP",
-        fg: theme.getChipTextColor(false, true),
-        attributes: TextAttributes.BOLD,
+        fg: theme.getChipTextColor(this.state.selectedChipIndex === this.sortedTypes.length + 1, true),
+        attributes:
+          this.state.selectedChipIndex === this.sortedTypes.length + 1
+            ? TextAttributes.BOLD | TextAttributes.UNDERLINE
+            : TextAttributes.BOLD,
       }),
     );
     this.chipsRow.add(helpChip);
@@ -731,16 +790,24 @@ export class CodeBrowserApp {
     const quitChip = new BoxRenderable(this.renderer, {
       paddingLeft: 1,
       paddingRight: 1,
-      backgroundColor: theme.getChipBackgroundColor(true),
+      backgroundColor:
+        this.state.selectedChipIndex === this.sortedTypes.length + 2
+          ? theme.getChipSelectedBackgroundColor(chipsFocused)
+          : theme.getChipBackgroundColor(true),
       onMouseDown: () => {
+        this.state.selectedChipIndex = this.sortedTypes.length + 2;
+        this.setFocusMode("chips");
         this.renderer.destroy();
       },
     });
     quitChip.add(
       new TextRenderable(this.renderer, {
         content: "QUIT",
-        fg: theme.getChipTextColor(false, true),
-        attributes: TextAttributes.BOLD,
+        fg: theme.getChipTextColor(this.state.selectedChipIndex === this.sortedTypes.length + 2, true),
+        attributes:
+          this.state.selectedChipIndex === this.sortedTypes.length + 2
+            ? TextAttributes.BOLD | TextAttributes.UNDERLINE
+            : TextAttributes.BOLD,
       }),
     );
     this.chipsRow.add(quitChip);
@@ -1374,15 +1441,10 @@ export class CodeBrowserApp {
     }
     this.enabledTypes = nextEnabled;
 
-    if (this.sortedTypes.length === 0) {
-      this.state.selectedChipIndex = 0;
-      return;
-    }
-
     this.state.selectedChipIndex = clamp(
       this.state.selectedChipIndex,
       0,
-      this.sortedTypes.length - 1,
+      Math.max(0, this.sortedTypes.length + ACTION_CHIPS.length - 1),
     );
   }
 
