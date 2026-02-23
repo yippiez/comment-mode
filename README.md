@@ -1,15 +1,39 @@
-# core
+# comment-mode
 
-To install dependencies:
+A review-based workflow to work with coding agents.
+
+It provides:
+- keyboard-first file/code navigation
+- inline agent prompt rows
+- in-app search modal with previews
+- multiple visual themes
+
+## Run
 
 ```bash
 bun install
-```
-
-To run:
-
-```bash
 bun dev
 ```
 
-This project was created using `bun create tui`. [create-tui](https://git.new/create-tui) is the easiest way to get started with OpenTUI.
+## Themes
+
+- Vague
+- OpenCode
+- Tokyo Night
+- Soda
+
+### Vague
+
+![Vague theme preview](assets/vague.jpg)
+
+### OpenCode
+
+![OpenCode theme preview](assets/opencode.jpg)
+
+### Tokyo Night
+
+![Tokyo Night theme preview](assets/tokyo-night.jpg)
+
+### Soda
+
+![Soda theme preview](assets/soda.jpg)
