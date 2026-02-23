@@ -13,6 +13,7 @@ import { clamp, clearChildren } from "./ui-utils";
 
 type SearchModalControllerOptions = {
   onSelectResult: (result: SearchResult) => void;
+  onClose?: () => void;
 };
 
 type RuntimeInputStyleApi = {
@@ -27,6 +28,7 @@ type RuntimeInputStyleApi = {
 export class SearchModalController {
   private readonly renderer: CliRenderer;
   private readonly onSelectResult: (result: SearchResult) => void;
+  private readonly onClose?: () => void;
   private readonly overlay: BoxRenderable;
   private readonly header: BoxRenderable;
   private readonly body: BoxRenderable;
@@ -48,6 +50,7 @@ export class SearchModalController {
   constructor(renderer: CliRenderer, options: SearchModalControllerOptions) {
     this.renderer = renderer;
     this.onSelectResult = options.onSelectResult;
+    this.onClose = options.onClose;
 
     this.overlay = new BoxRenderable(renderer, {
       id: "search-overlay",
@@ -193,10 +196,12 @@ export class SearchModalController {
   }
 
   public close(): void {
+    if (!this.visible) return;
     this.visible = false;
     this.overlay.visible = false;
     this.queryInput.blur();
     this.overlay.requestRender();
+    this.onClose?.();
   }
 
   public shutdown(): void {
