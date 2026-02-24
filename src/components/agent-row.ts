@@ -41,7 +41,7 @@ export function createAgentRow(
     fg: options.baseFg,
     width: "100%",
     overflow: "hidden",
-    truncate: true,
+    truncate: false,
     wrapMode: "none",
     attributes: options.bold ? TextAttributes.BOLD : TextAttributes.NONE,
   });

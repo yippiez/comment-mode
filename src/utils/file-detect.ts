@@ -1,67 +1,25 @@
+import { COMMON_FILE_EXTENSIONS, COMMON_FILE_NAMES } from "../config";
+
 export type FileReference = {
   path: string;
   line?: number;
   column?: number;
 };
 
-const COMMON_FILE_NAMES = new Set([
-  "dockerfile",
-  "makefile",
-  "readme",
-  "license",
-  "changelog",
-  "package.json",
-  "bun.lock",
-  "bun.lockb",
-  "tsconfig.json",
-  "vite.config.ts",
-]);
-
-const COMMON_FILE_EXTENSIONS = new Set([
-  "c",
-  "cc",
-  "cpp",
-  "cs",
-  "css",
-  "env",
-  "go",
-  "h",
-  "hpp",
-  "html",
-  "ini",
-  "java",
-  "js",
-  "json",
-  "jsx",
-  "kt",
-  "kts",
-  "less",
-  "lock",
-  "md",
-  "php",
-  "py",
-  "rb",
-  "rs",
-  "sass",
-  "scala",
-  "scss",
-  "sh",
-  "sql",
-  "swift",
-  "toml",
-  "ts",
-  "tsx",
-  "txt",
-  "xml",
-  "yaml",
-  "yml",
-  "zsh",
-]);
-
+/**
+ * Checks if the given value looks like a file path (with optional line/column reference).
+ */
 export function looksLikeFilePath(value: string): boolean {
   return detectFileReference(value) !== undefined;
 }
 
+/**
+ * Detects if the given string is a file path with optional line/column reference.
+ * Supports various formats: plain paths, quoted paths, hash-style line references (#L10),
+ * and colon-style line/column references (file.ts:10:5).
+ * @param value - The string to check
+ * @returns A FileReference object if detected, undefined otherwise
+ */
 export function detectFileReference(value: string): FileReference | undefined {
   const unwrapped = unwrapPathText(value);
   if (!unwrapped || /\s/.test(unwrapped)) return undefined;
@@ -97,6 +55,12 @@ export function detectFileReference(value: string): FileReference | undefined {
   return { path: candidate, line, column };
 }
 
+/**
+ * Removes surrounding quotes and trailing punctuation from a string.
+ * Handles double quotes, single quotes, and backticks.
+ * @param value - The string to unwrap
+ * @returns The unwrapped string
+ */
 function unwrapPathText(value: string): string {
   const trimmed = value.trim().replace(/[),.;!?]+$/, "");
   if (trimmed.length < 1) return "";
@@ -111,6 +75,12 @@ function unwrapPathText(value: string): string {
   return matchingQuotes ? trimmed.slice(1, -1).trim() : trimmed;
 }
 
+/**
+ * Determines if a string is likely to be a file path based on common patterns.
+ * Checks for valid length, allowed characters, known extensions, and path prefixes.
+ * @param value - The string to check
+ * @returns True if the string appears to be a valid file path
+ */
 function isLikelyPath(value: string): boolean {
   if (value.length === 0 || value.length > 512) return false;
   if (/[<>|"?*\u0000]/.test(value)) return false;

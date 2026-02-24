@@ -1,3 +1,12 @@
+/**
+ * Patches the OpenTUI tree-sitter parser worker to use the correct WASM file path.
+ *
+ * This worker is used during initialization in src/index.ts to ensure the
+ * tree-sitter parser can locate its WASM files. The core OpenTUI worker
+ * references "tree-sitter.wasm" but we need it to use "web-tree-sitter.wasm".
+ * This module patches the worker file and sets the OTUI_TREE_SITTER_WORKER_PATH
+ * environment variable to point to the patched version.
+ */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { CORE_WORKER_PATH, PATCHED_WORKER_PATH } from "./config";

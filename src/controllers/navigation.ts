@@ -1,4 +1,3 @@
-import type { KeyEvent } from "@opentui/core";
 import { Camera } from "./camera";
 import { Cursor } from "./cursor";
 import { LineModel } from "../line-model";
@@ -12,16 +11,10 @@ type NavigationBindings = {
   onDeleteCurrentAgentPrompt: () => void;
 };
 
-type HandleResult = {
-  handled: boolean;
-};
-
 export class Navigation {
-  private static readonly GG_CHORD_TIMEOUT_MS = 500;
   private static readonly REPEATED_MOVE_THROTTLE_MS = 14;
 
   private readonly bindings: NavigationBindings;
-  private pendingGChordAt: number | null = null;
   private lastRepeatedMoveAt = 0;
 
   /** Creates navigation coordinator for vim-style movement and file jumps. */
@@ -29,14 +22,9 @@ export class Navigation {
     this.bindings = bindings;
   }
 
-  /** Clears pending multi-key chord state like `gg`. */
-  public resetChordState(): void {
-    this.pendingGChordAt = null;
-  }
-
   /** Throttles repeated keypress bursts to avoid queued jump spikes. */
-  public shouldThrottleRepeatedMove(key: KeyEvent): boolean {
-    if (!key.repeated) return false;
+  public shouldThrottleRepeatedMove(repeated: boolean): boolean {
+    if (!repeated) return false;
     const now = Date.now();
     if (now - this.lastRepeatedMoveAt < Navigation.REPEATED_MOVE_THROTTLE_MS) {
       return true;
@@ -45,66 +33,28 @@ export class Navigation {
     return false;
   }
 
-  /** Handles vim navigation keys and dispatches cursor/file/agent jumps. */
-  public handleVimNavigationKeypress(
-    keyName: string,
-    rawKeyName: string | undefined,
-    key: KeyEvent,
-    consumeKey: (event: KeyEvent) => void,
-  ): HandleResult {
-    const isShiftG = keyName === "g" && (Boolean(key.shift) || rawKeyName === "G");
-    if (isShiftG) {
-      consumeKey(key);
-      this.pendingGChordAt = null;
-      this.bindings.cursor.goToLine(this.bindings.lineModel.totalLines, "bottom");
-      return { handled: true };
-    }
+  public jumpToTop(): void {
+    this.bindings.cursor.goToLine(1, "top");
+  }
 
-    if (keyName === "g" && !key.shift) {
-      consumeKey(key);
-      const now = Date.now();
-      if (
-        this.pendingGChordAt !== null &&
-        now - this.pendingGChordAt <= Navigation.GG_CHORD_TIMEOUT_MS
-      ) {
-        this.pendingGChordAt = null;
-        this.bindings.cursor.goToLine(1, "top");
-      } else {
-        this.pendingGChordAt = now;
-      }
-      return { handled: true };
-    }
+  public jumpToBottom(): void {
+    this.bindings.cursor.goToLine(this.bindings.lineModel.totalLines, "bottom");
+  }
 
-    if (keyName === "n") {
-      consumeKey(key);
-      this.pendingGChordAt = null;
-      this.jumpToNextFileStart();
-      return { handled: true };
-    }
+  public jumpToNextFile(): void {
+    this.jumpToNextFileStart();
+  }
 
-    if (keyName === "p") {
-      consumeKey(key);
-      this.pendingGChordAt = null;
-      this.jumpToPreviousFileStart();
-      return { handled: true };
-    }
+  public jumpToPreviousFile(): void {
+    this.jumpToPreviousFileStart();
+  }
 
-    if (keyName === "a") {
-      consumeKey(key);
-      this.pendingGChordAt = null;
-      this.jumpToNextAgentPrompt();
-      return { handled: true };
-    }
+  public jumpToNextAgent(): void {
+    this.jumpToNextAgentPrompt();
+  }
 
-    if (keyName === "x") {
-      consumeKey(key);
-      this.pendingGChordAt = null;
-      this.bindings.onDeleteCurrentAgentPrompt();
-      return { handled: true };
-    }
-
-    this.pendingGChordAt = null;
-    return { handled: false };
+  public deleteCurrentAgentPrompt(): void {
+    this.bindings.onDeleteCurrentAgentPrompt();
   }
 
   /** Moves cursor/camera to next file anchor and places divider near top band. */

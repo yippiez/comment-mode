@@ -6,6 +6,7 @@ import {
   type CliRenderer,
 } from "@opentui/core";
 import { theme } from "../theme";
+import { clearChildren, truncateLeftLabel } from "../utils/ui";
 
 type RuntimeTextareaStyleApi = {
   backgroundColor?: string;
@@ -23,7 +24,8 @@ export type PromptComposerViewState = {
   field: PromptComposerField;
   model: string;
   thinkingLevel: string;
-  modelQuery: string;
+  modelOptions: string[];
+  thinkingOptions: string[];
   loading: boolean;
   promptText: string;
 };
@@ -41,6 +43,7 @@ export class PromptComposerBar {
   private readonly row: BoxRenderable;
   private readonly promptShell: BoxRenderable;
   private readonly chipsRow: BoxRenderable;
+  private readonly dropdownBox: BoxRenderable;
   private readonly modelText: TextRenderable;
   private readonly thinkingText: TextRenderable;
   private readonly input: TextareaRenderable;
@@ -67,14 +70,15 @@ export class PromptComposerBar {
 
     this.row = new BoxRenderable(renderer, {
       width: "100%",
-      height: 1,
-      flexDirection: "row",
-      alignItems: "flex-start",
-      gap: 1,
+      height: 2,
+      flexDirection: "column",
+      alignItems: "stretch",
+      gap: 0,
       backgroundColor: theme.getPromptOverlayBackgroundColor(),
     });
 
     this.promptShell = new BoxRenderable(renderer, {
+      width: "100%",
       flexGrow: 1,
       height: 1,
       backgroundColor: theme.getPromptInputBackgroundColor(),
@@ -97,7 +101,7 @@ export class PromptComposerBar {
       height: 1,
       minHeight: 1,
       maxHeight: 8,
-      wrapMode: "word",
+      wrapMode: "char",
       backgroundColor: theme.getPromptInputBackgroundColor(),
       focusedBackgroundColor: theme.getPromptInputFocusedBackgroundColor(),
       textColor: theme.getPromptTextColor(),
@@ -110,8 +114,9 @@ export class PromptComposerBar {
     this.row.add(this.promptShell);
 
     this.chipsRow = new BoxRenderable(renderer, {
+      width: "100%",
       flexDirection: "row",
-      alignItems: "flex-start",
+      alignItems: "center",
       gap: 1,
       height: 1,
       backgroundColor: theme.getPromptOverlayBackgroundColor(),
@@ -142,6 +147,17 @@ export class PromptComposerBar {
     this.chipsRow.add(this.thinkingText);
 
     this.row.add(this.chipsRow);
+
+    this.dropdownBox = new BoxRenderable(renderer, {
+      width: "100%",
+      flexDirection: "column",
+      alignItems: "stretch",
+      gap: 0,
+      visible: false,
+      backgroundColor: theme.getPromptOverlayBackgroundColor(),
+    });
+    this.row.add(this.dropdownBox);
+
     this.overlay.add(this.row);
     this.applyTheme();
   }
@@ -178,31 +194,45 @@ export class PromptComposerBar {
     if (!state.visible) {
       this.modelText.content = "";
       this.thinkingText.content = "";
+      this.dropdownBox.visible = false;
+      clearChildren(this.dropdownBox);
       this.overlay.requestRender();
       return;
     }
 
     const modelLabel = this.getModelLabel(state);
     const thinkingLabel = this.getThinkingLabel(state);
-    const promptLineCount = this.computePromptLineCount(
-      state.promptText,
-      modelLabel,
-      thinkingLabel,
-      layout,
-    );
+    const promptLineCount = this.computePromptLineCount(state.promptText, layout);
+    const dropdownMode = state.field === "model" ? "model" : state.field === "thinking" ? "thinking" : null;
+    const dropdownOptions =
+      dropdownMode === "model"
+        ? state.modelOptions
+        : dropdownMode === "thinking"
+          ? state.thinkingOptions
+          : [];
+    const selectedOption = dropdownMode === "model" ? state.model : state.thinkingLevel;
     const maxHeight = Math.max(1, layout.maxHeight);
-    const boundedHeight = Math.min(promptLineCount, maxHeight);
+    const chipsRows = maxHeight >= 2 ? 1 : 0;
+    const maxDropdownRows = Math.max(0, maxHeight - chipsRows - 1);
+    const dropdownRows = dropdownMode ? Math.min(8, dropdownOptions.length, maxDropdownRows) : 0;
+    const promptRows = Math.max(1, Math.min(promptLineCount, maxHeight - chipsRows - dropdownRows));
+    const boundedHeight = Math.max(1, promptRows + chipsRows + dropdownRows);
 
     this.overlay.top = Math.max(0, layout.top);
     this.overlay.height = boundedHeight;
     this.row.height = boundedHeight;
-    this.promptShell.height = boundedHeight;
-    this.input.height = boundedHeight;
-    this.input.minHeight = boundedHeight;
-    this.input.maxHeight = boundedHeight;
+    this.promptShell.height = promptRows;
+    this.input.wrapMode = "char";
+    this.input.height = promptRows;
+    this.input.minHeight = promptRows;
+    this.input.maxHeight = promptRows;
+    this.chipsRow.visible = chipsRows > 0;
+    this.chipsRow.height = chipsRows > 0 ? 1 : 0;
+    this.dropdownBox.visible = dropdownRows > 0;
+    this.renderDropdown(dropdownMode, dropdownOptions, selectedOption, dropdownRows);
 
     const modelActive = state.field === "model";
-    this.modelText.content = ` ${modelLabel} `;
+    this.modelText.content = ` model: ${modelLabel} `;
     this.modelText.fg = modelActive
       ? theme.getPromptChipActiveForegroundColor()
       : theme.getPromptChipForegroundColor();
@@ -214,7 +244,7 @@ export class PromptComposerBar {
       : TextAttributes.NONE;
 
     const thinkingActive = state.field === "thinking";
-    this.thinkingText.content = ` ${thinkingLabel} `;
+    this.thinkingText.content = ` thinking: ${thinkingLabel} `;
     this.thinkingText.fg = thinkingActive
       ? theme.getPromptChipActiveForegroundColor()
       : theme.getPromptChipForegroundColor();
@@ -233,38 +263,97 @@ export class PromptComposerBar {
     this.overlay.backgroundColor = theme.getPromptOverlayBackgroundColor();
     this.row.backgroundColor = theme.getPromptOverlayBackgroundColor();
     this.chipsRow.backgroundColor = theme.getPromptOverlayBackgroundColor();
+    this.dropdownBox.backgroundColor = theme.getPromptOverlayBackgroundColor();
     this.promptShell.backgroundColor = theme.getPromptInputBackgroundColor();
     this.promptPrefix.fg = theme.getPromptPrefixColor();
     this.applyTextareaTheme();
     this.overlay.requestRender();
   }
 
-  /** Formats the model chip label with optional fuzzy query suffix. */
+  /** Formats the model chip label with loading state suffix. */
   private getModelLabel(state: PromptComposerViewState): string {
-    const modelSearch = state.modelQuery.trim().length > 0 ? ` [${state.modelQuery.trim()}]` : "";
     const loadingSuffix = state.loading ? " (loading)" : "";
-    return `${state.model}${modelSearch}${loadingSuffix}`;
+    return `${state.model}${loadingSuffix}`;
   }
 
   /** Formats the thinking-level chip label shown next to model. */
   private getThinkingLabel(state: PromptComposerViewState): string {
-    return `think:${state.thinkingLevel}`;
+    return state.thinkingLevel;
   }
 
-  /** Estimates prompt line usage using current width and chip labels. */
-  private computePromptLineCount(
-    promptText: string,
-    modelLabel: string,
-    thinkingLabel: string,
-    layout: PromptComposerLayout,
-  ): number {
+  /** Estimates prompt line usage using current prompt area width. */
+  private computePromptLineCount(promptText: string, layout: PromptComposerLayout): number {
     const maxHeight = Math.max(1, layout.maxHeight);
-    const totalWidth = Math.max(24, this.renderer.width);
-    const chipsWidth = modelLabel.length + thinkingLabel.length + 8;
-    const prefixWidth = PromptComposerBar.PROMPT_PREFIX.length;
-    const availablePromptWidth = Math.max(8, totalWidth - chipsWidth - prefixWidth - 8);
+    const availablePromptWidth = this.getPromptInputWidth();
     const wrapped = this.estimateWrappedLines(promptText, availablePromptWidth);
     return Math.min(maxHeight, Math.max(1, wrapped));
+  }
+
+  private getPromptInputWidth(): number {
+    const totalWidth = Math.max(24, this.renderer.width);
+    const prefixWidth = this.displayWidth(PromptComposerBar.PROMPT_PREFIX);
+    return Math.max(8, totalWidth - 2 - 2 - prefixWidth - 2);
+  }
+
+  private renderDropdown(
+    mode: "model" | "thinking" | null,
+    options: readonly string[],
+    selectedOption: string,
+    visibleRowCount: number,
+  ): void {
+    clearChildren(this.dropdownBox);
+    if (!mode || visibleRowCount <= 0 || options.length === 0) {
+      this.dropdownBox.visible = false;
+      return;
+    }
+
+    this.dropdownBox.visible = true;
+    const selectedIndex = Math.max(0, options.indexOf(selectedOption));
+    const window = this.computeVisibleWindow(selectedIndex, options.length, visibleRowCount);
+    const contentWidth = Math.max(8, this.renderer.width - 4);
+
+    for (let index = window.start; index < window.end; index += 1) {
+      const option = options[index] ?? "";
+      const isSelected = index === selectedIndex;
+      const marker = isSelected ? "›" : " ";
+      const content = `${marker} ${truncateLeftLabel(option, Math.max(1, contentWidth - 2))}`;
+      this.dropdownBox.add(
+        new TextRenderable(this.renderer, {
+          width: "100%",
+          content,
+          fg: isSelected
+            ? theme.getPromptChipActiveForegroundColor()
+            : theme.getPromptChipForegroundColor(),
+          bg: isSelected
+            ? theme.getPromptChipActiveBackgroundColor()
+            : theme.getPromptChipBackgroundColor(),
+          attributes: isSelected ? TextAttributes.BOLD : TextAttributes.NONE,
+          overflow: "hidden",
+          truncate: true,
+          wrapMode: "none",
+          paddingLeft: 1,
+          paddingRight: 1,
+        }),
+      );
+    }
+  }
+
+  private computeVisibleWindow(
+    selectedIndex: number,
+    optionCount: number,
+    visibleRowCount: number,
+  ): { start: number; end: number } {
+    if (optionCount <= visibleRowCount) {
+      return { start: 0, end: optionCount };
+    }
+
+    const half = Math.floor(visibleRowCount / 2);
+    let start = Math.max(0, selectedIndex - half);
+    let end = Math.min(optionCount, start + visibleRowCount);
+    if (end - start < visibleRowCount) {
+      start = Math.max(0, end - visibleRowCount);
+    }
+    return { start, end };
   }
 
   /** Approximates soft-wrapped line count for prompt text. */
@@ -274,10 +363,18 @@ export class PromptComposerBar {
     const lines = normalized.length === 0 ? [""] : normalized.split("\n");
     let total = 0;
     for (const line of lines) {
-      const segmentLength = Math.max(1, line.length);
+      const segmentLength = Math.max(1, this.displayWidth(line));
       total += Math.max(1, Math.ceil(segmentLength / width));
     }
     return Math.max(1, total);
+  }
+
+  private displayWidth(text: string): number {
+    try {
+      return Bun.stringWidth(text);
+    } catch {
+      return text.length;
+    }
   }
 
   /** Applies theme colors to prompt textarea runtime style fields. */

@@ -31,11 +31,30 @@ export class Cursor {
     };
   }
 
+  public get isVisualModeEnabled(): boolean {
+    return this.visualMode;
+  }
+
   public configure(totalLines: number): void {
+    this.configureWithTarget(totalLines);
+  }
+
+  public configureWithTarget(
+    totalLines: number,
+    targetLine?: number,
+    positionMode: "auto" | "top" | "bottom" | "keep" = "auto",
+  ): void {
+    const previous = this.line;
     this.totalLines = Math.max(0, totalLines);
+    if (typeof targetLine === "number" && Number.isFinite(targetLine)) {
+      this.line = Math.round(targetLine);
+    }
     this.clampState();
     this.bindings.onCursorChanged();
     this.bindings.camera.configure(this.line, this.totalLines);
+    if (typeof targetLine === "number" && positionMode !== "keep") {
+      this.bindings.camera.onCursorSet(this.line, this.totalLines, previous, positionMode);
+    }
   }
 
   public pageStep(): number {

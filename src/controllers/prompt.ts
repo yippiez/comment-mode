@@ -61,7 +61,6 @@ export class Prompt {
   private anchorLine: number | null = null;
   private availableModels: string[] = ["opencode/big-pickle"];
   private modelVariantsById = new Map<string, string[]>();
-  private modelQuery = "";
   private modelListLoading = false;
 
   /** Initializes prompt controller dependencies and callbacks. */
@@ -83,6 +82,10 @@ export class Prompt {
     return this.target;
   }
 
+  public get currentField(): PromptComposerField {
+    return this.field;
+  }
+
   /** Boots model metadata loading in the background. */
   public start(): void {
     void this.refreshAvailableModels();
@@ -96,7 +99,6 @@ export class Prompt {
       thinkingLevel: target.thinkingLevel ?? Prompt.DEFAULT_THINKING_LEVEL,
     };
     this.anchorLine = target.anchorLine;
-    this.modelQuery = "";
     this.field = "prompt";
     this.visible = true;
     this.syncThinkingLevelFromModel();
@@ -110,9 +112,35 @@ export class Prompt {
     this.visible = false;
     this.target = null;
     this.anchorLine = null;
-    this.modelQuery = "";
     this.promptComposer.close();
     this.onFocusModeChange("code");
+  }
+
+  public cycleField(delta: number): void {
+    this.moveField(delta);
+  }
+
+  public cycleModel(delta: number): void {
+    this.cycleModelInternal(delta);
+  }
+
+  public cycleThinkingLevel(delta: number): void {
+    this.cycleThinkingLevelInternal(delta);
+  }
+
+  public refreshModels(): void {
+    void this.refreshAvailableModels();
+  }
+
+  public submitFromKeyboard(): void {
+    void this.submit();
+  }
+
+  public handlePromptInputKey(key: KeyEvent, consumeKey: (event: KeyEvent) => void): void {
+    const handled = this.promptComposer.promptInput.handleKeyPress(key);
+    if (!handled) return;
+    consumeKey(key);
+    this.render();
   }
 
   /** Re-renders prompt UI using latest layout constraints. */
@@ -124,7 +152,7 @@ export class Prompt {
   /** Handles keyboard input while prompt composer is focused. */
   public handleKeypress(
     keyName: string,
-    rawKeyName: string | undefined,
+    _rawKeyName: string | undefined,
     key: KeyEvent,
     consumeKey: (event: KeyEvent) => void,
   ): void {
@@ -141,26 +169,19 @@ export class Prompt {
     }
 
     if (this.field === "model") {
-      if (keyName === "up") {
+      if (keyName === "left" || keyName === "up") {
         consumeKey(key);
-        this.cycleModel(-1);
+        this.cycleModelInternal(-1);
         return;
       }
-      if (keyName === "down") {
+      if (keyName === "right" || keyName === "down") {
         consumeKey(key);
-        this.cycleModel(1);
-        return;
-      }
-      if (keyName === "left" || keyName === "right") {
-        consumeKey(key);
+        this.cycleModelInternal(1);
         return;
       }
       if (keyName === "r") {
         consumeKey(key);
         void this.refreshAvailableModels();
-        return;
-      }
-      if (this.handleModelQueryInput(keyName, rawKeyName, key, consumeKey)) {
         return;
       }
       if (keyName === "return" || keyName === "enter") {
@@ -173,12 +194,12 @@ export class Prompt {
     if (this.field === "thinking") {
       if (keyName === "left" || keyName === "up") {
         consumeKey(key);
-        this.cycleThinkingLevel(-1);
+        this.cycleThinkingLevelInternal(-1);
         return;
       }
       if (keyName === "right" || keyName === "down") {
         consumeKey(key);
-        this.cycleThinkingLevel(1);
+        this.cycleThinkingLevelInternal(1);
         return;
       }
       if (keyName === "return" || keyName === "enter") {
@@ -190,14 +211,11 @@ export class Prompt {
 
     if (keyName === "return" || keyName === "enter") {
       consumeKey(key);
-      void this.submit();
+      this.submitFromKeyboard();
       return;
     }
 
-    const handled = this.promptComposer.promptInput.handleKeyPress(key);
-    if (!handled) return;
-    consumeKey(key);
-    this.render();
+    this.handlePromptInputKey(key, consumeKey);
   }
 
   /** Commits prompt state and hands submission back to app orchestration. */
@@ -235,10 +253,10 @@ export class Prompt {
     this.render();
   }
 
-  /** Cycles selected model in current filtered model pool. */
-  private cycleModel(delta: number): void {
+  /** Cycles selected model in full model list. */
+  private cycleModelInternal(delta: number): void {
     if (!this.target) return;
-    const modelPool = this.getPromptModelCandidates();
+    const modelPool = this.getModelOptions();
     if (modelPool.length === 0) return;
     const currentIndex = modelPool.indexOf(this.target.model);
     const baseIndex = currentIndex >= 0 ? currentIndex : 0;
@@ -249,7 +267,7 @@ export class Prompt {
   }
 
   /** Cycles thinking level using variants supported by selected model. */
-  private cycleThinkingLevel(delta: number): void {
+  private cycleThinkingLevelInternal(delta: number): void {
     if (!this.target) return;
     const levels = this.getThinkingLevelsForModel(this.target.model);
     const currentLevel = this.target.thinkingLevel ?? Prompt.DEFAULT_THINKING_LEVEL;
@@ -260,79 +278,8 @@ export class Prompt {
     this.render();
   }
 
-  /** Handles fuzzy query typing for model selection. */
-  private handleModelQueryInput(
-    keyName: string,
-    rawKeyName: string | undefined,
-    key: KeyEvent,
-    consumeKey: (event: KeyEvent) => void,
-  ): boolean {
-    if (!this.target) return false;
-
-    if (keyName === "backspace") {
-      if (this.modelQuery.length === 0) return false;
-      consumeKey(key);
-      this.modelQuery = this.modelQuery.slice(0, -1);
-      this.syncModelAndThinkingFromFilter();
-      this.render();
-      return true;
-    }
-
-    if (keyName === "space") {
-      consumeKey(key);
-      this.modelQuery += " ";
-      this.syncModelAndThinkingFromFilter();
-      this.render();
-      return true;
-    }
-
-    const typed = this.getTypedCharacter(rawKeyName);
-    if (!typed) return false;
-
-    consumeKey(key);
-    this.modelQuery += typed;
-    this.syncModelAndThinkingFromFilter();
-    this.render();
-    return true;
-  }
-
-  /** Normalizes typed key to accepted model-query character. */
-  private getTypedCharacter(rawKeyName: string | undefined): string | null {
-    if (!rawKeyName || rawKeyName.length !== 1) return null;
-    return /[A-Za-z0-9./:_-]/.test(rawKeyName) ? rawKeyName : null;
-  }
-
-  /** Ensures current model and thinking level follow active model query filter. */
-  private syncModelAndThinkingFromFilter(): void {
-    if (!this.target) return;
-    const filtered = this.getPromptModelCandidates();
-    if (filtered.length === 0) return;
-    if (this.modelQuery.trim().length > 0) {
-      this.target.model = filtered[0] ?? this.target.model;
-      this.syncThinkingLevelFromModel();
-      return;
-    }
-    if (!filtered.includes(this.target.model)) {
-      this.target.model = filtered[0] ?? this.target.model;
-    }
-    this.syncThinkingLevelFromModel();
-  }
-
-  /** Returns sorted fuzzy-matched model ids for current query. */
-  private getPromptModelCandidates(): string[] {
-    if (this.modelQuery.trim().length === 0) {
-      return this.availableModels;
-    }
-
-    const normalizedQuery = this.modelQuery.trim().toLowerCase();
-    return this.availableModels
-      .map((model) => ({
-        model,
-        score: this.fuzzyScore(model.toLowerCase(), normalizedQuery),
-      }))
-      .filter((entry) => Number.isFinite(entry.score))
-      .sort((a, b) => a.score - b.score || a.model.localeCompare(b.model))
-      .map((entry) => entry.model);
+  private getModelOptions(): string[] {
+    return this.availableModels;
   }
 
   /** Picks default model with preference for opencode/big-pickle. */
@@ -340,33 +287,6 @@ export class Prompt {
     const preferred = "opencode/big-pickle";
     if (this.availableModels.includes(preferred)) return preferred;
     return this.availableModels[0] ?? preferred;
-  }
-
-  /** Computes simple subsequence fuzzy score where lower is better. */
-  private fuzzyScore(candidate: string, query: string): number {
-    if (query.length === 0) return 0;
-    let queryIndex = 0;
-    let score = 0;
-    let lastMatch = -1;
-
-    for (let index = 0; index < candidate.length; index += 1) {
-      if (candidate[index] !== query[queryIndex]) continue;
-      score += index;
-      if (index === 0 || "/._-:".includes(candidate[index - 1] ?? "")) {
-        score -= 8;
-      }
-      if (lastMatch === index - 1) {
-        score -= 6;
-      }
-      lastMatch = index;
-      queryIndex += 1;
-      if (queryIndex === query.length) {
-        score += candidate.length - query.length;
-        return score;
-      }
-    }
-
-    return Number.POSITIVE_INFINITY;
   }
 
   /** Refreshes model list and variant map from opencode metadata. */
@@ -386,7 +306,7 @@ export class Prompt {
       if (this.target && !this.availableModels.includes(this.target.model)) {
         this.target.model = this.getDefaultModel();
       }
-      this.syncModelAndThinkingFromFilter();
+      this.syncThinkingLevelFromModel();
     } finally {
       this.modelListLoading = false;
       this.render();
@@ -396,10 +316,14 @@ export class Prompt {
   /** Returns supported thinking levels for the current model. */
   private getThinkingLevelsForModel(model: string): string[] {
     const configuredVariants = this.modelVariantsById.get(model);
+    const unique = new Set<string>([Prompt.DEFAULT_THINKING_LEVEL]);
     if (configuredVariants) {
-      return configuredVariants.slice();
+      for (const variant of configuredVariants) {
+        if (variant.trim().length === 0) continue;
+        unique.add(variant);
+      }
     }
-    return [];
+    return [...unique];
   }
 
   /** Keeps active thinking level valid for selected model variants. */
@@ -421,7 +345,8 @@ export class Prompt {
         field: this.field,
         model: this.target?.model ?? "",
         thinkingLevel: this.target?.thinkingLevel ?? Prompt.DEFAULT_THINKING_LEVEL,
-        modelQuery: this.modelQuery,
+        modelOptions: this.getModelOptions(),
+        thinkingOptions: this.getThinkingLevelsForModel(this.target?.model ?? ""),
         loading: this.modelListLoading,
         promptText: this.promptComposer.promptInput.plainText,
       },
