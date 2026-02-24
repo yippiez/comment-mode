@@ -119,5 +119,6 @@ export const sodaTheme: ThemeDefinition = {
     statusRunningBg: "#d8e5f2",
     statusCompletedBg: "#d6ead7",
     statusFailedBg: "#f1d9de",
+    directoryFg: "#2f5f8f",
   },
 };

@@ -118,6 +118,7 @@ export type ThemeColors = {
   statusRunningBg: string;
   statusCompletedBg: string;
   statusFailedBg: string;
+  directoryFg: string;
 };
 
 export type ThemeDefinition = {

@@ -119,5 +119,6 @@ export const vagueTheme: ThemeDefinition = {
     statusRunningBg: "#405065",
     statusCompletedBg: "#2f4f3a",
     statusFailedBg: "#5b2d3a",
+    directoryFg: "#7e98e8",
   },
 };

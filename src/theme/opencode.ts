@@ -119,5 +119,6 @@ export const opencodeTheme: ThemeDefinition = {
     statusRunningBg: "#0f3058",
     statusCompletedBg: "#033a34",
     statusFailedBg: "#501b3f",
+    directoryFg: "#93e9f6",
   },
 };

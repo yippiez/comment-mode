@@ -119,5 +119,6 @@ export const tokyoNightTheme: ThemeDefinition = {
     statusRunningBg: "#1f4b7a",
     statusCompletedBg: "#1f5d4f",
     statusFailedBg: "#5f2f47",
+    directoryFg: "#7aa2f7",
   },
 };

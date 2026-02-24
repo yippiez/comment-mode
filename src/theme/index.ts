@@ -280,6 +280,10 @@ export class ThemeManager {
     return this.currentTheme.colors.highlightedTextColor;
   }
 
+  public getDirectoryColor(): string {
+    return this.currentTheme.colors.directoryFg;
+  }
+
   public getTransparentColor(): string {
     return "transparent";
   }
