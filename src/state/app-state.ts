@@ -1,9 +1,8 @@
-import type { FocusMode, ViewMode } from "../types";
+import type { UiState } from "./types";
 
-export class AppStateStore {
-  public focusMode: FocusMode = "code";
-  public viewMode: ViewMode = "code";
+export class AppStateStore implements UiState {
+  public focusMode: UiState["focusMode"] = "code";
+  public viewMode: UiState["viewMode"] = "code";
   public diffMode = false;
-  public helpVisible = false;
   public selectedChipIndex = 0;
 }
