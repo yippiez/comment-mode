@@ -1,12 +1,12 @@
 import { clamp } from "../utils/ui";
-import { CameraController } from "./camera-controller";
+import { Camera } from "./camera";
 
 type CursorBindings = {
-  camera: CameraController;
+  camera: Camera;
   onCursorChanged: () => void;
 };
 
-export class CursorController {
+export class Cursor {
   private readonly bindings: CursorBindings;
 
   private totalLines = 0;

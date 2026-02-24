@@ -1,5 +1,5 @@
 import { KeyEvent } from "@opentui/core";
-import { listOpencodeModelCatalog } from "../agent-session";
+import { listOpencodeModelCatalog } from "../integrations/opencode";
 import type { ViewMode } from "../types";
 import {
   PromptComposerBar,
@@ -7,7 +7,7 @@ import {
   type PromptComposerLayout,
 } from "../components/prompt-composer-bar";
 
-export type PromptControllerTarget = {
+export type PromptTarget = {
   updateId?: string;
   viewMode?: ViewMode;
   filePath: string;
@@ -32,18 +32,18 @@ export type PromptSubmission = {
   thinkingLevel?: string;
 };
 
-type PromptControllerOptions = {
+type PromptOptions = {
   rootDir: string;
   promptComposer: PromptComposerBar;
   onSubmission: (submission: PromptSubmission) => Promise<void>;
   onFocusModeChange: (focusMode: "code" | "prompt") => void;
   resolveLayout: (
-    target: PromptControllerTarget | null,
+    target: PromptTarget | null,
     fallbackAnchorLine: number | null,
   ) => PromptComposerLayout;
 };
 
-export class PromptController {
+export class Prompt {
   private static readonly DEFAULT_THINKING_LEVEL = "auto";
 
   private readonly rootDir: string;
@@ -51,13 +51,13 @@ export class PromptController {
   private readonly onSubmission: (submission: PromptSubmission) => Promise<void>;
   private readonly onFocusModeChange: (focusMode: "code" | "prompt") => void;
   private readonly resolveLayout: (
-    target: PromptControllerTarget | null,
+    target: PromptTarget | null,
     fallbackAnchorLine: number | null,
   ) => PromptComposerLayout;
 
   private visible = false;
   private field: PromptComposerField = "prompt";
-  private target: PromptControllerTarget | null = null;
+  private target: PromptTarget | null = null;
   private anchorLine: number | null = null;
   private availableModels: string[] = ["opencode/big-pickle"];
   private modelVariantsById = new Map<string, string[]>();
@@ -65,7 +65,7 @@ export class PromptController {
   private modelListLoading = false;
 
   /** Initializes prompt controller dependencies and callbacks. */
-  constructor(options: PromptControllerOptions) {
+  constructor(options: PromptOptions) {
     this.rootDir = options.rootDir;
     this.promptComposer = options.promptComposer;
     this.onSubmission = options.onSubmission;
@@ -79,7 +79,7 @@ export class PromptController {
   }
 
   /** Returns the active prompt target if one exists. */
-  public get currentTarget(): PromptControllerTarget | null {
+  public get currentTarget(): PromptTarget | null {
     return this.target;
   }
 
@@ -89,11 +89,11 @@ export class PromptController {
   }
 
   /** Opens the inline prompt composer for a code selection target. */
-  public open(target: PromptControllerTarget): void {
+  public open(target: PromptTarget): void {
     this.target = {
       ...target,
       model: target.model || this.getDefaultModel(),
-      thinkingLevel: target.thinkingLevel ?? PromptController.DEFAULT_THINKING_LEVEL,
+      thinkingLevel: target.thinkingLevel ?? Prompt.DEFAULT_THINKING_LEVEL,
     };
     this.anchorLine = target.anchorLine;
     this.modelQuery = "";
@@ -217,7 +217,7 @@ export class PromptController {
       prompt: this.target.prompt,
       model: this.target.model,
       thinkingLevel:
-        this.target.thinkingLevel && this.target.thinkingLevel !== PromptController.DEFAULT_THINKING_LEVEL
+        this.target.thinkingLevel && this.target.thinkingLevel !== Prompt.DEFAULT_THINKING_LEVEL
           ? this.target.thinkingLevel
           : undefined,
     };
@@ -252,11 +252,11 @@ export class PromptController {
   private cycleThinkingLevel(delta: number): void {
     if (!this.target) return;
     const levels = this.getThinkingLevelsForModel(this.target.model);
-    const currentLevel = this.target.thinkingLevel ?? PromptController.DEFAULT_THINKING_LEVEL;
+    const currentLevel = this.target.thinkingLevel ?? Prompt.DEFAULT_THINKING_LEVEL;
     const currentIndex = levels.indexOf(currentLevel);
     const baseIndex = currentIndex >= 0 ? currentIndex : 0;
     const nextIndex = ((baseIndex + delta) % levels.length + levels.length) % levels.length;
-    this.target.thinkingLevel = levels[nextIndex] ?? PromptController.DEFAULT_THINKING_LEVEL;
+    this.target.thinkingLevel = levels[nextIndex] ?? Prompt.DEFAULT_THINKING_LEVEL;
     this.render();
   }
 
@@ -406,10 +406,10 @@ export class PromptController {
   private syncThinkingLevelFromModel(): void {
     if (!this.target) return;
     const levels = this.getThinkingLevelsForModel(this.target.model);
-    const current = this.target.thinkingLevel ?? PromptController.DEFAULT_THINKING_LEVEL;
+    const current = this.target.thinkingLevel ?? Prompt.DEFAULT_THINKING_LEVEL;
     this.target.thinkingLevel = levels.includes(current)
       ? current
-      : levels[0] ?? PromptController.DEFAULT_THINKING_LEVEL;
+      : levels[0] ?? Prompt.DEFAULT_THINKING_LEVEL;
   }
 
   /** Renders prompt composer with current prompt, model, and thinking state. */
@@ -420,7 +420,7 @@ export class PromptController {
         visible: this.visible && Boolean(this.target),
         field: this.field,
         model: this.target?.model ?? "",
-        thinkingLevel: this.target?.thinkingLevel ?? PromptController.DEFAULT_THINKING_LEVEL,
+        thinkingLevel: this.target?.thinkingLevel ?? Prompt.DEFAULT_THINKING_LEVEL,
         modelQuery: this.modelQuery,
         loading: this.modelListLoading,
         promptText: this.promptComposer.promptInput.plainText,

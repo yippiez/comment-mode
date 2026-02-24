@@ -12,7 +12,7 @@ type RuntimeLineViewStyleApi = {
   fg?: string | RGBA;
 };
 
-export class VisualHighlightController {
+export class VisualHighlight {
   private static readonly MAX_SELECTION_COL = 8192;
 
   private activeCodeViews = new Set<CodeRenderable>();
@@ -98,7 +98,7 @@ export class VisualHighlightController {
       y: codeView.y + selectionStartLine,
     };
     const focus = {
-      x: codeView.x + VisualHighlightController.MAX_SELECTION_COL,
+      x: codeView.x + VisualHighlight.MAX_SELECTION_COL,
       y: codeView.y + selectionEndLine,
     };
 

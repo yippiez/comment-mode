@@ -1,11 +1,11 @@
 import type { KeyEvent } from "@opentui/core";
-import { CameraController } from "./camera-controller";
-import { CursorController } from "./cursor-controller";
+import { Camera } from "./camera";
+import { Cursor } from "./cursor";
 import { LineModel } from "../line-model";
 
 type NavigationBindings = {
-  cursor: CursorController;
-  camera: CameraController;
+  cursor: Cursor;
+  camera: Camera;
   lineModel: LineModel;
   getAgentPromptLines: () => number[];
   getAnchorDividerDisplayRow: (anchor: { filePath: string; dividerRow: number }) => number;
@@ -16,7 +16,7 @@ type HandleResult = {
   handled: boolean;
 };
 
-export class NavigationController {
+export class Navigation {
   private static readonly GG_CHORD_TIMEOUT_MS = 500;
   private static readonly REPEATED_MOVE_THROTTLE_MS = 14;
 
@@ -38,7 +38,7 @@ export class NavigationController {
   public shouldThrottleRepeatedMove(key: KeyEvent): boolean {
     if (!key.repeated) return false;
     const now = Date.now();
-    if (now - this.lastRepeatedMoveAt < NavigationController.REPEATED_MOVE_THROTTLE_MS) {
+    if (now - this.lastRepeatedMoveAt < Navigation.REPEATED_MOVE_THROTTLE_MS) {
       return true;
     }
     this.lastRepeatedMoveAt = now;
@@ -65,7 +65,7 @@ export class NavigationController {
       const now = Date.now();
       if (
         this.pendingGChordAt !== null &&
-        now - this.pendingGChordAt <= NavigationController.GG_CHORD_TIMEOUT_MS
+        now - this.pendingGChordAt <= Navigation.GG_CHORD_TIMEOUT_MS
       ) {
         this.pendingGChordAt = null;
         this.bindings.cursor.goToLine(1, "top");

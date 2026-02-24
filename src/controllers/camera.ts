@@ -9,7 +9,7 @@ type CameraBindings = {
   getLineForDisplayRow: (row: number, movementDelta: number) => number | undefined;
 };
 
-export class CameraController {
+export class Camera {
   private static readonly PROGRAMMATIC_SCROLL_TTL_MS = 400;
   private static readonly MAX_PROGRAMMATIC_SCROLL_EVENTS = 64;
 
@@ -203,12 +203,12 @@ export class CameraController {
   private trackProgrammaticScrollEvent(top: number): void {
     this.pruneProgrammaticScrollEvents();
     this.pendingProgrammaticScrolls.push({ top, at: Date.now() });
-    if (this.pendingProgrammaticScrolls.length <= CameraController.MAX_PROGRAMMATIC_SCROLL_EVENTS) {
+    if (this.pendingProgrammaticScrolls.length <= Camera.MAX_PROGRAMMATIC_SCROLL_EVENTS) {
       return;
     }
     this.pendingProgrammaticScrolls.splice(
       0,
-      this.pendingProgrammaticScrolls.length - CameraController.MAX_PROGRAMMATIC_SCROLL_EVENTS,
+      this.pendingProgrammaticScrolls.length - Camera.MAX_PROGRAMMATIC_SCROLL_EVENTS,
     );
   }
 
@@ -221,7 +221,7 @@ export class CameraController {
   }
 
   private pruneProgrammaticScrollEvents(): void {
-    const cutoff = Date.now() - CameraController.PROGRAMMATIC_SCROLL_TTL_MS;
+    const cutoff = Date.now() - Camera.PROGRAMMATIC_SCROLL_TTL_MS;
     this.pendingProgrammaticScrolls = this.pendingProgrammaticScrolls.filter(
       (entry) => entry.at >= cutoff,
     );
