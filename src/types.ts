@@ -1,8 +1,8 @@
 import type { CodeRenderable, LineNumberRenderable, RGBA } from "@opentui/core";
 
 export type FocusMode = "chips" | "code" | "prompt";
-export type ViewMode = "code" | "signatures" | "files";
-export type BlockKind = "code" | "collapsed" | "agent" | "signature" | "file";
+export type ViewMode = "code" | "files";
+export type BlockKind = "code" | "collapsed" | "agent" | "file";
 export type AgentHarness = "opencode";
 export type AgentModel = string;
 export type AgentUpdateStatus = "draft" | "running" | "completed" | "failed";

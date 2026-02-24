@@ -1,7 +1,6 @@
 import type { CodeFileEntry, ViewMode } from "../types";
 import { buildCodePromptSelection, filterCodeModeEntries } from "./code";
 import { buildFileTreeRows, buildFilesClipboardText, buildFilesPromptSelection, filterFilesModeEntries } from "./files";
-import { buildSignaturesPromptSelection, extractSignatureBlocks, filterSignaturesModeEntries } from "./signatures";
 import type {
   FileTreeRow,
   ModeClipboardContext,
@@ -14,27 +13,12 @@ import type {
 const MODE_PLUGINS: readonly ViewModePlugin[] = [
   {
     id: "code",
-    label: "CODE",
-    chipColors: { bg: "#2563eb", fg: "#f8fafc" },
-    supportsDiff: true,
     emptyStateMessage: "No files for selected types.",
     filterEntries: filterCodeModeEntries,
     buildPromptSelection: buildCodePromptSelection,
   },
   {
-    id: "signatures",
-    label: "SIGNATURES",
-    chipColors: { bg: "#7c3aed", fg: "#f8fafc" },
-    supportsDiff: false,
-    emptyStateMessage: "No signature-eligible files.",
-    filterEntries: filterSignaturesModeEntries,
-    buildPromptSelection: buildSignaturesPromptSelection,
-  },
-  {
     id: "files",
-    label: "FILES",
-    chipColors: { bg: "#eab308", fg: "#111827" },
-    supportsDiff: false,
     emptyStateMessage: "No files for selected types.",
     filterEntries: filterFilesModeEntries,
     buildPromptSelection: buildFilesPromptSelection,
@@ -84,10 +68,6 @@ class ModeRegistry {
     return this.getPlugin(mode).emptyStateMessage;
   }
 
-  public supportsDiff(mode: ViewMode): boolean {
-    return this.getPlugin(mode).supportsDiff;
-  }
-
   public buildPromptSelection(mode: ViewMode, context: ModePromptContext): ModePromptSelection | null {
     return this.getPlugin(mode).buildPromptSelection(context);
   }
@@ -101,5 +81,5 @@ class ModeRegistry {
 
 export const modes = new ModeRegistry();
 
-export { buildFileTreeRows, extractSignatureBlocks };
+export { buildFileTreeRows };
 export type { FileTreeRow, ModeSelectionLineInfo, ViewModePlugin };

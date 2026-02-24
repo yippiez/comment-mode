@@ -4,7 +4,6 @@ import type { PromptComposerField } from "../components/prompt-composer-bar";
 export type UiState = {
   focusMode: FocusMode;
   viewMode: ViewMode;
-  diffMode: boolean;
   selectedChipIndex: number;
 };
 

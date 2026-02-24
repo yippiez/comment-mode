@@ -2,13 +2,12 @@ import type { FocusMode, ViewMode } from "../types";
 import type { StoreApi } from "./store";
 import type { RootState, UiState } from "./types";
 
-const VIEW_MODE_ORDER: readonly ViewMode[] = ["code", "signatures", "files"];
+const VIEW_MODE_ORDER: readonly ViewMode[] = ["code", "files"];
 
 export function initialUiState(): UiState {
   return {
     focusMode: "code",
     viewMode: "code",
-    diffMode: false,
     selectedChipIndex: 0,
   };
 }
@@ -28,9 +27,6 @@ export function createUiActions(store: StoreApi<RootState>) {
     setViewMode(mode: ViewMode): void {
       store.update((state) => {
         state.ui.viewMode = mode;
-        if (mode !== "code") {
-          state.ui.diffMode = false;
-        }
       });
     },
     cycleViewMode(): ViewMode {
@@ -41,26 +37,8 @@ export function createUiActions(store: StoreApi<RootState>) {
         const nextIndex = (safeIndex + 1) % VIEW_MODE_ORDER.length;
         nextMode = VIEW_MODE_ORDER[nextIndex] ?? "code";
         state.ui.viewMode = nextMode;
-        if (nextMode !== "code") {
-          state.ui.diffMode = false;
-        }
       });
       return nextMode;
-    },
-    setDiffMode(enabled: boolean): void {
-      store.update((state) => {
-        if (state.ui.viewMode !== "code") {
-          state.ui.diffMode = false;
-          return;
-        }
-        state.ui.diffMode = enabled;
-      });
-    },
-    toggleDiffMode(): void {
-      store.update((state) => {
-        if (state.ui.viewMode !== "code") return;
-        state.ui.diffMode = !state.ui.diffMode;
-      });
     },
   };
 }

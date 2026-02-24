@@ -10,7 +10,7 @@ import {
 } from "@opentui/core";
 import { Camera } from "./controllers/camera";
 import { Agent, type AgentSubmission } from "./integrations/opencode";
-import { ContentLayoutBuilder, type DiffSegment } from "./controllers/content-layout-builder";
+import { Layout } from "./controllers/layout";
 import { Navigation } from "./controllers/navigation";
 import {
   Prompt,
@@ -18,31 +18,27 @@ import {
   type PromptSubmission,
 } from "./controllers/prompt";
 import { createAgentRow, type AgentRowDecoration } from "./components/agent-row";
-import { createBottomChip } from "./components/bottom-chip";
 import { createFileTreeRowView } from "./components/file-tree-row";
 import { PromptComposerBar, type PromptComposerLayout } from "./components/prompt-composer-bar";
 import { copyToClipboard } from "./utils/clipboard";
 import { Cursor } from "./controllers/cursor";
 import { LineModel } from "./line-model";
-import { CHIPS_KEYMAP, CODE_KEYMAP } from "./shortcuts";
 import { AppStateStore } from "./state/app-state";
 import { theme } from "./theme";
 import type {
   AgentUpdate,
   AgentUpdateStatus,
-  BlockKind,
   CodeFileEntry,
   FocusMode,
 } from "./types";
 import { clamp, clearChildren, makeSlashLine } from "./utils/ui";
 import {
   buildFileTreeRows,
-  extractSignatureBlocks,
   type FileTreeRow,
   modes,
   type ModeSelectionLineInfo,
 } from "./modes";
-import { VisualHighlight } from "./controllers/visual-highlight";
+import { Highlight } from "./controllers/highlight";
 import {
   registerKeyboardEvents,
   registerScrollEvents,
@@ -71,7 +67,6 @@ export class CodeBrowserApp {
   private readonly root: BoxRenderable;
   private readonly chipsRow: BoxRenderable;
   private readonly scrollbox: ScrollBoxRenderable;
-  private readonly bottomBar: BoxRenderable;
   private readonly promptComposer: PromptComposerBar;
   private readonly camera: Camera;
   private readonly navigation: Navigation;
@@ -85,12 +80,12 @@ export class CodeBrowserApp {
   private readonly cursor: Cursor;
 
   private readonly lineModel = new LineModel();
-  private readonly visualHighlights = new VisualHighlight();
+  private readonly visualHighlights = new Highlight();
   private dividerByFilePath = new Map<string, TextRenderable>();
   private collapsedFiles = new Set<string>();
   private filesModeDirectoryPath = "";
   private fileTreeRowsByLine = new Map<number, FileTreeRow>();
-  private signatureLineNumberMinWidth = 2;
+  private pendingCodeTargetFilePath: string | null = null;
   private agentLineByUpdateId = new Map<string, number>();
   private updateIdByAgentLine = new Map<number, string>();
   private agentRowDecorations = new Map<number, AgentRowDecoration>();
@@ -120,7 +115,6 @@ export class CodeBrowserApp {
       id: "content",
       flexGrow: 1,
       width: "100%",
-      marginBottom: 1,
       verticalScrollbarOptions: { visible: false },
       horizontalScrollbarOptions: { visible: false },
       onMouseDown: () => {
@@ -128,24 +122,8 @@ export class CodeBrowserApp {
       },
     });
 
-    this.bottomBar = new BoxRenderable(renderer, {
-      id: "bottom-bar",
-      position: "absolute",
-      bottom: 0,
-      left: 0,
-      zIndex: 800,
-      width: "100%",
-      height: 1,
-      paddingLeft: 1,
-      paddingRight: 1,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 0,
-    });
-
     this.root.add(this.chipsRow);
     this.root.add(this.scrollbox);
-    this.root.add(this.bottomBar);
 
     this.promptComposer = new PromptComposerBar(renderer);
 
@@ -245,7 +223,11 @@ export class CodeBrowserApp {
       registerKeyboardEvents(
         this.renderer.keyInput,
         () => this.getKeyboardStateSnapshot(),
-        (action) => this.handleKeyboardAction(action),
+        {
+          dispatch: (action, key) => {
+            this.handleKeyboardAction(action, key);
+          },
+        },
       ),
     );
 
@@ -266,36 +248,9 @@ export class CodeBrowserApp {
     return {
       promptVisible: this.prompt.isVisible,
       focusMode: this.state.focusMode,
+      viewMode: this.state.viewMode,
+      promptField: this.prompt.isVisible ? this.prompt.currentField : null,
     };
-  }
-
-  private handleKeyboardAction(action: KeyboardAction): void {
-    switch (action.type) {
-      case "toggle_theme":
-        this.consumeKey(action.key);
-        this.toggleTheme();
-        return;
-      case "switch_view_mode":
-        this.consumeKey(action.key);
-        this.switchViewMode();
-        return;
-      case "prompt_keypress":
-        this.prompt.handleKeypress(action.keyName, action.rawKeyName, action.key, (event) =>
-          this.consumeKey(event),
-        );
-        return;
-      case "toggle_focus_mode":
-        this.consumeKey(action.key);
-        this.setFocusMode(this.state.focusMode === "chips" ? "code" : "chips");
-        return;
-      case "chips_keypress":
-        this.navigation.resetChordState();
-        this.handleChipsKeypress(action.keyName, action.key);
-        return;
-      case "code_keypress":
-        this.handleCodeKeypress(action.keyName, action.rawKeyName, action.key);
-        return;
-    }
   }
 
   private handleScrollAction(action: ScrollAction): void {
@@ -306,159 +261,133 @@ export class CodeBrowserApp {
 
   private handleSystemAction(action: SystemAction): void {
     if (action.type === "stdout_resize") {
-      this.updateBottomBar();
       this.renderContent();
     }
   }
 
-  private handleChipsKeypress(keyName: string, key: KeyEvent): void {
-    const action = CHIPS_KEYMAP[keyName];
-    if (action === "move_left") {
+  private handleKeyboardAction(action: KeyboardAction, key: KeyEvent): void {
+    if (action.type !== "none") {
       this.consumeKey(key);
-      this.moveChipSelection(-1);
-      return;
     }
 
-    if (action === "move_right") {
-      this.consumeKey(key);
-      this.moveChipSelection(1);
-      return;
-    }
-
-    if (action === "toggle_chip") {
-      this.consumeKey(key);
-      this.toggleSelectedChip();
-    }
-  }
-
-  private handleCodeKeypress(
-    keyName: string,
-    rawKeyName: string | undefined,
-    key: KeyEvent,
-  ): void {
-    const mappedAction = CODE_KEYMAP[keyName];
-
-    if (mappedAction === "escape_visual") {
-      this.consumeKey(key);
-      this.navigation.resetChordState();
-      this.cursor.disableVisualMode();
-      return;
-    }
-
-    if (this.handleAgentRowKeypress(keyName, key)) {
-      this.navigation.resetChordState();
-      return;
-    }
-
-    if (mappedAction === "open_prompt") {
-      this.consumeKey(key);
-      this.navigation.resetChordState();
-      void this.handleEnterOnCodeView();
-      return;
-    }
-
-    const navigationResult = this.navigation.handleVimNavigationKeypress(
-      keyName,
-      rawKeyName,
-      key,
-      (event) => this.consumeKey(event),
-    );
-    if (navigationResult.handled) return;
-
-    if (mappedAction === "move_up") {
-      if (this.navigation.shouldThrottleRepeatedMove(key)) {
-        this.consumeKey(key);
+    switch (action.type) {
+      case "none":
+        return;
+      case "theme.toggle":
+        this.toggleTheme();
+        return;
+      case "focus.toggle_code_chips":
+        this.setFocusMode(this.state.focusMode === "chips" ? "code" : "chips");
+        return;
+      case "app.quit":
+        this.renderer.destroy();
+        return;
+      case "chips.move":
+        this.moveChipSelection(action.delta);
+        return;
+      case "chips.toggle_selected":
+        this.toggleSelectedChip();
+        return;
+      case "cursor.move":
+        if (this.navigation.shouldThrottleRepeatedMove(action.repeated)) {
+          return;
+        }
+        this.cursor.moveBy(action.delta);
+        return;
+      case "cursor.page":
+        this.cursor.moveBy(this.cursor.pageStep() * action.delta);
+        if (action.delta < 0) {
+          this.cursor.goToMinVisibleHeight();
+          return;
+        }
+        this.cursor.goToMaxVisibleHeight();
+        return;
+      case "visual.toggle":
+        this.cursor.toggleVisualMode();
+        return;
+      case "visual.exit":
+        this.cursor.disableVisualMode();
+        return;
+      case "selection.yank":
+        void this.copySelectionToClipboard();
+        return;
+      case "files.toggle_explorer":
+        this.toggleFilesExplorerMode();
+        return;
+      case "files.enter_or_open":
+        if (this.state.viewMode === "files" && !this.cursor.isVisualModeEnabled) {
+          this.handleFilesModeEnterKeypress();
+          return;
+        }
+        void this.handleEnterOnCodeView();
+        return;
+      case "files.enter_directory":
+        this.enterCurrentDirectory();
+        return;
+      case "files.open_selected_file":
+        this.handleFilesModeEnterKeypress();
+        return;
+      case "files.parent_dir":
+        this.goToParentDirectory();
+        return;
+      case "files.collapse_current":
+        this.toggleCurrentStructureCollapse();
+        return;
+      case "nav.jump":
+        if (action.target === "top") {
+          this.navigation.jumpToTop();
+          return;
+        }
+        if (action.target === "bottom") {
+          this.navigation.jumpToBottom();
+          return;
+        }
+        if (action.target === "next_file") {
+          this.navigation.jumpToNextFile();
+          return;
+        }
+        if (action.target === "prev_file") {
+          this.navigation.jumpToPreviousFile();
+          return;
+        }
+        this.navigation.jumpToNextAgent();
+        return;
+      case "agent.delete_at_cursor": {
+        const update = this.getAgentUpdateAtCursorLine();
+        if (!update) return;
+        this.agent.remove(update.id);
         return;
       }
-      this.consumeKey(key);
-      this.cursor.moveBy(-1);
-      return;
-    }
-
-    if (mappedAction === "move_down") {
-      if (this.navigation.shouldThrottleRepeatedMove(key)) {
-        this.consumeKey(key);
+      case "prompt.close":
+        this.prompt.close();
         return;
-      }
-      this.consumeKey(key);
-      this.cursor.moveBy(1);
-      return;
+      case "prompt.submit":
+        if (this.prompt.isVisible) {
+          this.prompt.submitFromKeyboard();
+          return;
+        }
+        if (this.state.viewMode === "files" && !this.cursor.isVisualModeEnabled) {
+          this.handleFilesModeEnterKeypress();
+          return;
+        }
+        void this.handleEnterOnCodeView();
+        return;
+      case "prompt.field.cycle":
+        this.prompt.cycleField(action.delta);
+        return;
+      case "prompt.model.cycle":
+        this.prompt.cycleModel(action.delta);
+        return;
+      case "prompt.thinking.cycle":
+        this.prompt.cycleThinkingLevel(action.delta);
+        return;
+      case "prompt.models.refresh":
+        this.prompt.refreshModels();
+        return;
+      case "prompt.input_key":
+        this.prompt.handlePromptInputKey(key, (event) => this.consumeKey(event));
+        return;
     }
-
-    if (mappedAction === "page_up") {
-      this.consumeKey(key);
-      this.cursor.moveBy(-this.cursor.pageStep());
-      this.cursor.goToMinVisibleHeight();
-      return;
-    }
-
-    if (mappedAction === "page_down") {
-      this.consumeKey(key);
-      this.cursor.moveBy(this.cursor.pageStep());
-      this.cursor.goToMaxVisibleHeight();
-      return;
-    }
-
-    if (mappedAction === "toggle_visual") {
-      this.consumeKey(key);
-      this.cursor.toggleVisualMode();
-      return;
-    }
-
-    if (mappedAction === "yank_selection") {
-      this.consumeKey(key);
-      this.navigation.resetChordState();
-      void this.copySelectionToClipboard();
-      return;
-    }
-
-    if (keyName === "space" && this.state.viewMode === "files") {
-      this.consumeKey(key);
-      this.navigation.resetChordState();
-      this.enterCurrentDirectory();
-      return;
-    }
-
-    if (keyName === "backspace" && this.state.viewMode === "files") {
-      this.consumeKey(key);
-      this.navigation.resetChordState();
-      this.goToParentDirectory();
-      return;
-    }
-
-    if (mappedAction === "collapse_file") {
-      this.consumeKey(key);
-      this.navigation.resetChordState();
-      this.toggleCurrentStructureCollapse();
-      return;
-    }
-
-    if (mappedAction === "toggle_diff") {
-      this.consumeKey(key);
-      this.navigation.resetChordState();
-      this.toggleDiffMode();
-      return;
-    }
-
-    if (mappedAction === "quit") {
-      this.consumeKey(key);
-      this.renderer.destroy();
-      return;
-    }
-
-  }
-
-  private handleAgentRowKeypress(keyName: string, key: KeyEvent): boolean {
-    const update = this.getAgentUpdateAtCursorLine();
-    if (!update) return false;
-
-    if (keyName === "delete") {
-      this.consumeKey(key);
-      this.agent.remove(update.id);
-      return true;
-    }
-
-    return false;
   }
 
   private async handleEnterOnCodeView(): Promise<void> {
@@ -567,7 +496,7 @@ export class CodeBrowserApp {
     };
   }
 
-  /** Persists prompt submission, triggers run, and restores cursor on created agent row. */
+  /** Persists prompt submission and triggers agent run without moving cursor. */
   private async handlePromptSubmission(submission: PromptSubmission): Promise<void> {
     const upsertPayload: AgentSubmission = {
       updateId: submission.updateId,
@@ -584,10 +513,6 @@ export class CodeBrowserApp {
     this.cursor.disableVisualMode();
     this.renderContent();
     await this.agent.launch(update);
-    const targetLine = this.agentLineByUpdateId.get(update.id);
-    if (typeof targetLine === "number") {
-      this.cursor.goToLine(targetLine, "keep");
-    }
   }
 
   private getAgentUpdateAtCursorLine(): AgentUpdate | undefined {
@@ -630,19 +555,9 @@ export class CodeBrowserApp {
     }
   }
 
-  private toggleDiffMode(): void {
-    if (this.state.viewMode !== "code") return;
-    this.state.diffMode = !this.state.diffMode;
-    this.renderContent();
-  }
-
-  private switchViewMode(): void {
-    const nextMode = modes.switchMode();
-    this.state.viewMode = nextMode;
-    if (!modes.supportsDiff(nextMode)) {
-      this.state.diffMode = false;
-    }
-    this.updateBottomBar();
+  private toggleFilesExplorerMode(): void {
+    const nextMode = this.state.viewMode === "files" ? "code" : "files";
+    this.state.viewMode = modes.setMode(nextMode);
     this.renderContent();
   }
 
@@ -659,40 +574,8 @@ export class CodeBrowserApp {
     this.root.backgroundColor = theme.getBackgroundColor();
     this.chipsRow.backgroundColor = theme.getBackgroundColor();
     this.scrollbox.backgroundColor = theme.getBackgroundColor();
-    this.bottomBar.backgroundColor = theme.getDividerBackgroundColor();
-    this.updateBottomBar();
     this.promptComposer.applyTheme();
     this.root.requestRender();
-  }
-
-  private updateBottomBar(): void {
-    clearChildren(this.bottomBar);
-    const currentMode = modes.getPlugin(this.state.viewMode);
-
-    this.bottomBar.add(
-      createBottomChip(this.renderer, {
-        label: currentMode.label,
-        bg: currentMode.chipColors.bg,
-        fg: currentMode.chipColors.fg,
-        variant: "active",
-      }),
-    );
-    this.bottomBar.add(
-      new TextRenderable(this.renderer, {
-        content: " · ",
-        fg: theme.getDividerForegroundColor(),
-        attributes: TextAttributes.BOLD,
-      }),
-    );
-
-    this.bottomBar.add(
-      createBottomChip(this.renderer, {
-        label: theme.getThemeName().toUpperCase(),
-        bg: theme.getDividerBackgroundColor(),
-        fg: theme.getDividerForegroundColor(),
-        variant: "plain",
-      }),
-    );
   }
 
   private toggleCurrentStructureCollapse(): void {
@@ -700,6 +583,23 @@ export class CodeBrowserApp {
       return;
     }
     this.toggleCurrentFileCollapse();
+  }
+
+  private handleFilesModeEnterKeypress(): void {
+    const row = this.fileTreeRowsByLine.get(this.cursor.cursorLine);
+    if (!row) return;
+    if (row.kind === "dir") {
+      this.enterCurrentDirectory();
+      return;
+    }
+    this.openFileFromExplorer(row.filePath);
+  }
+
+  private openFileFromExplorer(filePath: string): void {
+    this.state.viewMode = modes.setMode("code");
+    this.collapsedFiles.delete(filePath);
+    this.pendingCodeTargetFilePath = filePath;
+    this.renderContent();
   }
 
   private enterCurrentDirectory(): void {
@@ -825,21 +725,8 @@ export class CodeBrowserApp {
       return;
     }
 
-    if (this.state.viewMode === "signatures") {
-      const maxLineCount = entriesToRender.reduce((maxValue, entry) => {
-        return Math.max(maxValue, entry.lineCount);
-      }, 1);
-      const maxDigits = String(Math.max(1, maxLineCount)).length;
-      this.signatureLineNumberMinWidth = Math.max(3, maxDigits + 2);
-    } else {
-      this.signatureLineNumberMinWidth = 2;
-    }
-
     if (this.state.viewMode === "files") {
       this.ensureFilesModeDirectoryVisible(entriesToRender);
-    }
-
-    if (this.state.viewMode === "files") {
       this.renderFilesModeContent(entriesToRender);
       if (this.prompt.isVisible) {
         this.prompt.refreshView();
@@ -874,7 +761,6 @@ export class CodeBrowserApp {
         const result = this.addCollapsedPlaceholderBlock(
           entry,
           entry.lineCount,
-          "file",
           dividerWidth,
           1,
           nextLineNumber,
@@ -890,18 +776,7 @@ export class CodeBrowserApp {
           nextDisplayRow = agentResult.nextDisplayRow;
           nextUpdateIndex += 1;
         }
-      } else if (this.state.viewMode === "signatures") {
-        const result = this.renderSignaturesForEntry(
-          entry,
-          updatesForFile,
-          nextUpdateIndex,
-          nextLineNumber,
-          nextDisplayRow,
-        );
-        nextLineNumber = result.nextLineNumber;
-        nextDisplayRow = result.nextDisplayRow;
-        nextUpdateIndex = result.nextUpdateIndex;
-      } else if (!this.state.diffMode) {
+      } else {
         const sourceLines = entry.content.split("\n");
         let fileLineCursor = 1;
         while (nextUpdateIndex < updatesForFile.length) {
@@ -942,98 +817,15 @@ export class CodeBrowserApp {
           nextLineNumber = result.nextLineNumber;
           nextDisplayRow = result.nextDisplayRow;
         }
-      } else {
-        const segments = this.buildDiffSegments(entry);
-        for (const segment of segments) {
-          const segmentEndLine = segment.fileLineStart + segment.lineCount - 1;
-          while (nextUpdateIndex < updatesForFile.length) {
-            const update = updatesForFile[nextUpdateIndex];
-            if (!update) break;
-            if (update.selectionEndFileLine >= segment.fileLineStart) break;
-            const agentResult = this.addAgentUpdateWithMessages(update, nextLineNumber, nextDisplayRow);
-            nextLineNumber = agentResult.nextLineNumber;
-            nextDisplayRow = agentResult.nextDisplayRow;
-            nextUpdateIndex += 1;
-          }
+      }
 
-          if (segment.kind === "collapsed") {
-            const result = this.addCollapsedPlaceholderBlock(
-              entry,
-              segment.lineCount,
-              "diff",
-              dividerWidth,
-              segment.fileLineStart,
-              nextLineNumber,
-              nextDisplayRow,
-            );
-            nextLineNumber = result.nextLineNumber;
-            nextDisplayRow = result.nextDisplayRow;
-            while (nextUpdateIndex < updatesForFile.length) {
-              const update = updatesForFile[nextUpdateIndex];
-              if (!update) break;
-              if (update.selectionEndFileLine > segmentEndLine) break;
-              const agentResult = this.addAgentUpdateWithMessages(update, nextLineNumber, nextDisplayRow);
-              nextLineNumber = agentResult.nextLineNumber;
-              nextDisplayRow = agentResult.nextDisplayRow;
-              nextUpdateIndex += 1;
-            }
-            continue;
-          }
-
-          const segmentLines = segment.content.split("\n");
-          let fileLineCursor = segment.fileLineStart;
-          while (nextUpdateIndex < updatesForFile.length) {
-            const update = updatesForFile[nextUpdateIndex];
-            if (!update) break;
-            if (update.selectionEndFileLine > segmentEndLine) break;
-
-            if (update.selectionEndFileLine >= fileLineCursor) {
-              const localEnd = update.selectionEndFileLine - segment.fileLineStart + 1;
-              const localStart = fileLineCursor - segment.fileLineStart;
-              const chunkLines = segmentLines.slice(localStart, localEnd);
-              const result = this.addCodeBlock(
-                entry,
-                chunkLines.join("\n"),
-                fileLineCursor,
-                chunkLines.length,
-                nextLineNumber,
-                nextDisplayRow,
-              );
-              nextLineNumber = result.nextLineNumber;
-              nextDisplayRow = result.nextDisplayRow;
-              fileLineCursor = update.selectionEndFileLine + 1;
-            }
-
-            const agentResult = this.addAgentUpdateWithMessages(update, nextLineNumber, nextDisplayRow);
-            nextLineNumber = agentResult.nextLineNumber;
-            nextDisplayRow = agentResult.nextDisplayRow;
-            nextUpdateIndex += 1;
-          }
-
-          if (fileLineCursor <= segmentEndLine) {
-            const localStart = fileLineCursor - segment.fileLineStart;
-            const chunkLines = segmentLines.slice(localStart);
-            const result = this.addCodeBlock(
-              entry,
-              chunkLines.join("\n"),
-              fileLineCursor,
-              chunkLines.length,
-              nextLineNumber,
-              nextDisplayRow,
-            );
-            nextLineNumber = result.nextLineNumber;
-            nextDisplayRow = result.nextDisplayRow;
-          }
-        }
-
-        while (nextUpdateIndex < updatesForFile.length) {
-          const update = updatesForFile[nextUpdateIndex];
-          if (!update) break;
-          const agentResult = this.addAgentUpdateWithMessages(update, nextLineNumber, nextDisplayRow);
-          nextLineNumber = agentResult.nextLineNumber;
-          nextDisplayRow = agentResult.nextDisplayRow;
-          nextUpdateIndex += 1;
-        }
+      while (nextUpdateIndex < updatesForFile.length) {
+        const update = updatesForFile[nextUpdateIndex];
+        if (!update) break;
+        const agentResult = this.addAgentUpdateWithMessages(update, nextLineNumber, nextDisplayRow);
+        nextLineNumber = agentResult.nextLineNumber;
+        nextDisplayRow = agentResult.nextDisplayRow;
+        nextUpdateIndex += 1;
       }
 
       if (nextLineNumber > fileAnchorLine) {
@@ -1042,63 +834,13 @@ export class CodeBrowserApp {
     }
 
     this.lineModel.setTotalLines(nextLineNumber - 1);
-    this.cursor.configure(this.lineModel.totalLines);
+    const pendingPath = this.pendingCodeTargetFilePath;
+    this.pendingCodeTargetFilePath = null;
+    const targetAnchor = pendingPath ? this.lineModel.getFileAnchorByPath(pendingPath) : undefined;
+    this.cursor.configureWithTarget(this.lineModel.totalLines, targetAnchor?.line, "top");
     if (this.prompt.isVisible) {
       this.prompt.refreshView();
     }
-  }
-
-  private renderSignaturesForEntry(
-    entry: CodeFileEntry,
-    updatesForFile: readonly AgentUpdate[],
-    startUpdateIndex: number,
-    nextLineNumber: number,
-    nextDisplayRow: number,
-  ): { nextLineNumber: number; nextDisplayRow: number; nextUpdateIndex: number } {
-    const signatures = extractSignatureBlocks(entry.content);
-    let updateIndex = startUpdateIndex;
-    let lineCursor = nextLineNumber;
-    let rowCursor = nextDisplayRow;
-
-    for (const signature of signatures) {
-      const signatureContent = signature.lines.join("\n");
-      const signatureResult = this.addCodeBlock(
-        entry,
-        signatureContent,
-        signature.fileLineStart,
-        signature.lines.length,
-        lineCursor,
-        rowCursor,
-        "signature",
-      );
-      lineCursor = signatureResult.nextLineNumber;
-      rowCursor = signatureResult.nextDisplayRow;
-
-      while (updateIndex < updatesForFile.length) {
-        const update = updatesForFile[updateIndex];
-        if (!update) break;
-        if (update.selectionEndFileLine > signature.anchorFileLine) break;
-        const agentResult = this.addAgentUpdateWithMessages(update, lineCursor, rowCursor);
-        lineCursor = agentResult.nextLineNumber;
-        rowCursor = agentResult.nextDisplayRow;
-        updateIndex += 1;
-      }
-    }
-
-    while (updateIndex < updatesForFile.length) {
-      const update = updatesForFile[updateIndex];
-      if (!update) break;
-      const agentResult = this.addAgentUpdateWithMessages(update, lineCursor, rowCursor);
-      lineCursor = agentResult.nextLineNumber;
-      rowCursor = agentResult.nextDisplayRow;
-      updateIndex += 1;
-    }
-
-    return {
-      nextLineNumber: lineCursor,
-      nextDisplayRow: rowCursor,
-      nextUpdateIndex: updateIndex,
-    };
   }
 
   private renderFilesModeContent(entries: readonly CodeFileEntry[]): void {
@@ -1145,9 +887,9 @@ export class CodeBrowserApp {
   ): { nextLineNumber: number; nextDisplayRow: number; blockStartLine: number } {
     const rowView = createFileTreeRowView(this.renderer, row, this.getFilesModeViewportWidth());
 
-    this.scrollbox.add(rowView.lineView);
+    this.scrollbox.add(rowView.codeView);
     this.lineModel.addBlock({
-      lineView: rowView.lineView,
+      lineView: null,
       codeView: rowView.codeView,
       defaultLineNumberFg: theme.getCodeLineNumberColor(),
       defaultLineSigns: new Map(),
@@ -1169,26 +911,27 @@ export class CodeBrowserApp {
   }
 
   private getFilesModeViewportWidth(): number {
+    const viewportWidth = Math.floor(this.scrollbox.viewport.width);
+    if (Number.isFinite(viewportWidth) && viewportWidth > 0) {
+      return Math.max(1, viewportWidth - 1);
+    }
+
     const scrollboxWidth = Math.floor(this.scrollbox.width);
     if (Number.isFinite(scrollboxWidth) && scrollboxWidth > 0) {
-      return scrollboxWidth;
+      return Math.max(1, scrollboxWidth - 1);
     }
-    return Math.max(1, Math.floor(this.renderer.width));
+    return Math.max(1, Math.floor(this.renderer.width - 1));
   }
 
   private addCollapsedPlaceholderBlock(
     entry: CodeFileEntry,
     collapsedLineCount: number,
-    kind: "file" | "diff",
     dividerWidth: number,
     fileLineStart: number,
     nextLineNumber: number,
     nextDisplayRow: number,
   ): { nextLineNumber: number; nextDisplayRow: number; blockStartLine: number } {
-    const label =
-      kind === "file"
-        ? `↑ ${collapsedLineCount} lines collapsed (file) ↓`
-        : `↑ ${collapsedLineCount} lines collapsed ↓`;
+    const label = `↑ ${collapsedLineCount} lines collapsed (file) ↓`;
     const content = this.formatCollapsedContentLine(label, dividerWidth);
 
     const code = new CodeRenderable(this.renderer, {
@@ -1249,7 +992,6 @@ export class CodeBrowserApp {
     lineCount: number,
     nextLineNumber: number,
     nextDisplayRow: number,
-    blockKind: BlockKind = "code",
   ): { nextLineNumber: number; nextDisplayRow: number; blockStartLine: number } {
     const renderedLineCount = Math.max(1, lineCount);
     const renderedLines = content.split("\n");
@@ -1268,10 +1010,7 @@ export class CodeBrowserApp {
       width: "100%",
       target: code,
       showLineNumbers: true,
-      minWidth:
-        blockKind === "signature"
-          ? this.signatureLineNumberMinWidth
-          : Math.max(2, String(Math.max(1, entry.lineCount)).length),
+      minWidth: Math.max(2, String(Math.max(1, entry.lineCount)).length),
       paddingRight: 1,
       lineNumberOffset: fileLineStart - 1,
       fg: theme.getCodeLineNumberColor(),
@@ -1279,15 +1018,13 @@ export class CodeBrowserApp {
     });
     lineView.selectable = false;
 
-    if (blockKind === "code") {
-      for (let lineOffset = 0; lineOffset < renderedLineCount; lineOffset += 1) {
-        const fileLine = fileLineStart + lineOffset;
-        if (!entry.uncommittedLines.has(fileLine)) continue;
-        lineView.setLineSign(lineOffset, {
-          before: "▌",
-          beforeColor: theme.getUncommittedLineSignColor(),
-        });
-      }
+    for (let lineOffset = 0; lineOffset < renderedLineCount; lineOffset += 1) {
+      const fileLine = fileLineStart + lineOffset;
+      if (!entry.uncommittedLines.has(fileLine)) continue;
+      lineView.setLineSign(lineOffset, {
+        before: "▌",
+        beforeColor: theme.getUncommittedLineSignColor(),
+      });
     }
     const defaultLineSigns = new Map(lineView.getLineSigns());
 
@@ -1297,7 +1034,7 @@ export class CodeBrowserApp {
       codeView: code,
       defaultLineNumberFg: theme.getCodeLineNumberColor(),
       defaultLineSigns,
-      blockKind,
+      blockKind: "code",
       fileLineStart,
       renderedLines,
       lineStart: nextLineNumber,
@@ -1318,42 +1055,57 @@ export class CodeBrowserApp {
     nextLineNumber: number,
     nextDisplayRow: number,
   ): { nextLineNumber: number; nextDisplayRow: number; blockStartLine: number } {
-    const content = this.formatAgentUpdateLine(update);
-    const decoration = createAgentRow(this.renderer, {
-      content,
-      baseBg: this.getAgentStatusBg(update.status),
-      baseFg: theme.getAgentRowForegroundColor(),
-      selectedBg: theme.getAgentRowSelectedBackgroundColor(),
-      selectedFg: theme.getAgentRowSelectedForegroundColor(),
-      cursorBg: theme.getAgentRowCursorBackgroundColor(),
-      cursorFg: theme.getAgentRowCursorForegroundColor(),
-      paddingLeft: 1,
-      paddingRight: 1,
-      bold: true,
-    });
+    const paddingLeft = 1;
+    const paddingRight = 1;
+    const wrappedLines = this.wrapTextToWidth(
+      this.formatAgentUpdateLine(update),
+      this.getAgentContentWidth(paddingLeft, paddingRight),
+    );
 
-    this.scrollbox.add(decoration.row);
-    this.lineModel.addBlock({
-      lineView: null,
-      codeView: null,
-      defaultLineNumberFg: theme.getAgentRowForegroundColor(),
-      defaultLineSigns: new Map(),
-      blockKind: "agent",
-      fileLineStart: update.selectionEndFileLine,
-      renderedLines: [content],
-      lineStart: nextLineNumber,
-      lineCount: 1,
-      displayRowStart: nextDisplayRow,
-      filePath: update.filePath,
-    });
+    let lineCursor = nextLineNumber;
+    let rowCursor = nextDisplayRow;
+    const blockStartLine = nextLineNumber;
 
-    this.agentLineByUpdateId.set(update.id, nextLineNumber);
-    this.updateIdByAgentLine.set(nextLineNumber, update.id);
-    this.agentRowDecorations.set(nextLineNumber, decoration);
+    for (const line of wrappedLines) {
+      const decoration = createAgentRow(this.renderer, {
+        content: line,
+        baseBg: this.getAgentStatusBg(update.status),
+        baseFg: theme.getAgentRowForegroundColor(),
+        selectedBg: theme.getAgentRowSelectedBackgroundColor(),
+        selectedFg: theme.getAgentRowSelectedForegroundColor(),
+        cursorBg: theme.getAgentRowCursorBackgroundColor(),
+        cursorFg: theme.getAgentRowCursorForegroundColor(),
+        paddingLeft,
+        paddingRight,
+        bold: true,
+      });
+
+      this.scrollbox.add(decoration.row);
+      this.lineModel.addBlock({
+        lineView: null,
+        codeView: null,
+        defaultLineNumberFg: theme.getAgentRowForegroundColor(),
+        defaultLineSigns: new Map(),
+        blockKind: "agent",
+        fileLineStart: update.selectionEndFileLine,
+        renderedLines: [line],
+        lineStart: lineCursor,
+        lineCount: 1,
+        displayRowStart: rowCursor,
+        filePath: update.filePath,
+      });
+
+      this.updateIdByAgentLine.set(lineCursor, update.id);
+      this.agentRowDecorations.set(lineCursor, decoration);
+      lineCursor += 1;
+      rowCursor += 1;
+    }
+
+    this.agentLineByUpdateId.set(update.id, blockStartLine);
     return {
-      nextLineNumber: nextLineNumber + 1,
-      nextDisplayRow: nextDisplayRow + 1,
-      blockStartLine: nextLineNumber,
+      nextLineNumber: lineCursor,
+      nextDisplayRow: rowCursor,
+      blockStartLine,
     };
   }
 
@@ -1382,18 +1134,20 @@ export class CodeBrowserApp {
 
     let lineCursor = nextLineNumber;
     let rowCursor = nextDisplayRow;
-    let blockStartLine = nextLineNumber;
+    let blockStartLine: number | null = null;
     for (const message of recentMessages) {
       const result = this.addAgentMessageBlock(update, message, lineCursor, rowCursor);
       lineCursor = result.nextLineNumber;
       rowCursor = result.nextDisplayRow;
-      blockStartLine = result.blockStartLine;
+      if (blockStartLine === null) {
+        blockStartLine = result.blockStartLine;
+      }
     }
 
     return {
       nextLineNumber: lineCursor,
       nextDisplayRow: rowCursor,
-      blockStartLine,
+      blockStartLine: blockStartLine ?? nextLineNumber,
     };
   }
 
@@ -1403,40 +1157,55 @@ export class CodeBrowserApp {
     nextLineNumber: number,
     nextDisplayRow: number,
   ): { nextLineNumber: number; nextDisplayRow: number; blockStartLine: number } {
-    const content = ` ${message}`;
-    const decoration = createAgentRow(this.renderer, {
-      content,
-      baseBg: theme.getAgentMessageBackgroundColor(),
-      baseFg: theme.getAgentMessageForegroundColor(),
-      selectedBg: theme.getAgentRowSelectedBackgroundColor(),
-      selectedFg: theme.getAgentRowSelectedForegroundColor(),
-      cursorBg: theme.getAgentRowCursorBackgroundColor(),
-      cursorFg: theme.getAgentRowCursorForegroundColor(),
-      paddingLeft: 2,
-      paddingRight: 1,
-    });
+    const paddingLeft = 2;
+    const paddingRight = 1;
+    const wrappedLines = this.wrapTextToWidth(
+      ` ${message}`,
+      this.getAgentContentWidth(paddingLeft, paddingRight),
+    );
 
-    this.scrollbox.add(decoration.row);
-    this.lineModel.addBlock({
-      lineView: null,
-      codeView: null,
-      defaultLineNumberFg: theme.getAgentMessageForegroundColor(),
-      defaultLineSigns: new Map(),
-      blockKind: "agent",
-      fileLineStart: update.selectionEndFileLine,
-      renderedLines: [content],
-      lineStart: nextLineNumber,
-      lineCount: 1,
-      displayRowStart: nextDisplayRow,
-      filePath: update.filePath,
-    });
-    this.updateIdByAgentLine.set(nextLineNumber, update.id);
-    this.agentRowDecorations.set(nextLineNumber, decoration);
+    let lineCursor = nextLineNumber;
+    let rowCursor = nextDisplayRow;
+    const blockStartLine = nextLineNumber;
+
+    for (const line of wrappedLines) {
+      const decoration = createAgentRow(this.renderer, {
+        content: line,
+        baseBg: theme.getAgentMessageBackgroundColor(),
+        baseFg: theme.getAgentMessageForegroundColor(),
+        selectedBg: theme.getAgentRowSelectedBackgroundColor(),
+        selectedFg: theme.getAgentRowSelectedForegroundColor(),
+        cursorBg: theme.getAgentRowCursorBackgroundColor(),
+        cursorFg: theme.getAgentRowCursorForegroundColor(),
+        paddingLeft,
+        paddingRight,
+      });
+
+      this.scrollbox.add(decoration.row);
+      this.lineModel.addBlock({
+        lineView: null,
+        codeView: null,
+        defaultLineNumberFg: theme.getAgentMessageForegroundColor(),
+        defaultLineSigns: new Map(),
+        blockKind: "agent",
+        fileLineStart: update.selectionEndFileLine,
+        renderedLines: [line],
+        lineStart: lineCursor,
+        lineCount: 1,
+        displayRowStart: rowCursor,
+        filePath: update.filePath,
+      });
+
+      this.updateIdByAgentLine.set(lineCursor, update.id);
+      this.agentRowDecorations.set(lineCursor, decoration);
+      lineCursor += 1;
+      rowCursor += 1;
+    }
 
     return {
-      nextLineNumber: nextLineNumber + 1,
-      nextDisplayRow: nextDisplayRow + 1,
-      blockStartLine: nextLineNumber,
+      nextLineNumber: lineCursor,
+      nextDisplayRow: rowCursor,
+      blockStartLine,
     };
   }
 
@@ -1450,11 +1219,62 @@ export class CodeBrowserApp {
           ? "AGENT FAILED"
           : "AGENT DRAFT";
     const prompt = update.prompt.trim().length > 0 ? update.prompt : "<type prompt>";
-    const truncatedPrompt = prompt.length > 88 ? `${prompt.slice(0, 88)}…` : prompt;
     const variantSuffix = update.variant ? ` · think:${update.variant}` : "";
     const runSuffix = update.runId ? ` · ${update.runId}` : "";
     const errorSuffix = update.error ? ` | error: ${update.error}` : "";
-    return `● ${prefix} · ${update.model}${variantSuffix} · ${truncatedPrompt}${runSuffix}${errorSuffix}`;
+    return `● ${prefix} · ${update.model}${variantSuffix} · ${prompt}${runSuffix}${errorSuffix}`;
+  }
+
+  private getAgentContentWidth(paddingLeft: number, paddingRight: number): number {
+    const viewportWidth = Math.floor(this.scrollbox.viewport.width);
+    if (Number.isFinite(viewportWidth) && viewportWidth > 0) {
+      return Math.max(8, viewportWidth - Math.max(0, paddingLeft) - Math.max(0, paddingRight));
+    }
+
+    const scrollboxWidth = Math.floor(this.scrollbox.width);
+    if (Number.isFinite(scrollboxWidth) && scrollboxWidth > 0) {
+      return Math.max(8, scrollboxWidth - Math.max(0, paddingLeft) - Math.max(0, paddingRight));
+    }
+
+    return Math.max(8, Math.floor(this.renderer.width - paddingLeft - paddingRight));
+  }
+
+  private wrapTextToWidth(text: string, width: number): string[] {
+    const safeWidth = Math.max(1, Math.floor(width));
+    const normalized = text.replace(/\t/g, "  ");
+    const lines = normalized.split("\n");
+    const wrapped: string[] = [];
+
+    for (const line of lines) {
+      if (line.length === 0) {
+        wrapped.push("");
+        continue;
+      }
+
+      let segment = "";
+      for (const char of line) {
+        const next = `${segment}${char}`;
+        if (this.displayWidth(next) > safeWidth) {
+          wrapped.push(segment.length > 0 ? segment : char);
+          segment = segment.length > 0 ? char : "";
+          continue;
+        }
+        segment = next;
+      }
+      if (segment.length > 0) {
+        wrapped.push(segment);
+      }
+    }
+
+    return wrapped.length > 0 ? wrapped : [""];
+  }
+
+  private displayWidth(text: string): number {
+    try {
+      return Bun.stringWidth(text);
+    } catch {
+      return text.length;
+    }
   }
 
   private getAgentStatusBg(status: AgentUpdateStatus): string {
@@ -1462,11 +1282,7 @@ export class CodeBrowserApp {
   }
 
   private getUpdatesForFile(filePath: string): AgentUpdate[] {
-    return ContentLayoutBuilder.getUpdatesForFile(this.agent.getMutableUpdates(), filePath);
-  }
-
-  private buildDiffSegments(entry: CodeFileEntry): DiffSegment[] {
-    return ContentLayoutBuilder.buildDiffSegments(entry);
+    return Layout.getUpdatesForFile(this.agent.getMutableUpdates(), filePath);
   }
 
   private renderEmptyState(message: string): void {
@@ -1481,7 +1297,7 @@ export class CodeBrowserApp {
   }
 
   private getViewportHeight(): number {
-    return Math.max(1, this.scrollbox.viewport.height || this.scrollbox.height || this.renderer.height - 3);
+    return Math.max(1, this.scrollbox.viewport.height || this.scrollbox.height || this.renderer.height - 2);
   }
 
   private getMaxScrollTop(): number {

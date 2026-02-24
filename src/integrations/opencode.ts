@@ -270,6 +270,14 @@ export class Agent {
 }
 
 export async function listOpencodeModelCatalog(rootDir: string): Promise<OpencodeModelCatalogItem[]> {
+  const verboseResult = await runProcessCapture("opencode", ["models", "--verbose"], rootDir);
+  if (!verboseResult.error) {
+    const verboseCatalog = parseVerboseModelCatalog(`${verboseResult.stdout ?? ""}\n${verboseResult.stderr ?? ""}`);
+    if (verboseCatalog.length > 0) {
+      return verboseCatalog;
+    }
+  }
+
   const result = await runProcessCapture("opencode", ["models"], rootDir);
   if (result.error) return [];
 
@@ -285,6 +293,105 @@ export async function listOpencodeModelCatalog(rootDir: string): Promise<Opencod
   return [...models]
     .sort((a, b) => a.localeCompare(b))
     .map((model) => ({ model, variants: [] }));
+}
+
+function parseVerboseModelCatalog(output: string): OpencodeModelCatalogItem[] {
+  const lines = output.split(/\r?\n/);
+  const catalog = new Map<string, OpencodeModelCatalogItem>();
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const model = sanitizeLine(lines[index] ?? "");
+    if (!isModelIdentifier(model)) continue;
+
+    const parsedObject = parseJsonObjectAfterLine(lines, index + 1);
+    const variants = parsedObject ? extractVariantNames(parsedObject.value) : [];
+    catalog.set(model, {
+      model,
+      variants,
+    });
+
+    if (parsedObject) {
+      index = Math.max(index, parsedObject.endLine);
+    }
+  }
+
+  return [...catalog.values()].sort((a, b) => a.model.localeCompare(b.model));
+}
+
+function parseJsonObjectAfterLine(
+  lines: readonly string[],
+  startLine: number,
+): { value: unknown; endLine: number } | null {
+  let started = false;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  let jsonText = "";
+
+  for (let lineIndex = startLine; lineIndex < lines.length; lineIndex += 1) {
+    const line = stripAnsi(lines[lineIndex] ?? "");
+    for (let charIndex = 0; charIndex < line.length; charIndex += 1) {
+      const char = line[charIndex] ?? "";
+
+      if (!started) {
+        if (char.trim().length === 0) continue;
+        if (char !== "{") {
+          return null;
+        }
+        started = true;
+      }
+
+      jsonText += char;
+
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (char === "\\") {
+          escaped = true;
+        } else if (char === '"') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (char === '"') {
+        inString = true;
+        continue;
+      }
+
+      if (char === "{") {
+        depth += 1;
+        continue;
+      }
+
+      if (char === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          const parsed = parseJson(jsonText);
+          if (parsed === JSON_PARSE_FAILED) {
+            return null;
+          }
+          return { value: parsed, endLine: lineIndex };
+        }
+      }
+    }
+
+    if (started) {
+      jsonText += "\n";
+    }
+  }
+
+  return null;
+}
+
+function extractVariantNames(value: unknown): string[] {
+  const variantsRecord = asRecord(asRecord(value)?.variants);
+  if (!variantsRecord) return [];
+
+  return Object.keys(variantsRecord)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+    .sort((a, b) => a.localeCompare(b));
 }
 
 async function startHeadlessOpencodeRun(request: OpencodeRunRequest): Promise<OpencodeRunResult> {

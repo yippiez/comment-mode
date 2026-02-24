@@ -1,10 +1,5 @@
 import type { BlockKind, CodeFileEntry, ViewMode } from "../types";
 
-export type ModeChipColors = {
-  bg: string;
-  fg: string;
-};
-
 export type ModeSelectionLineInfo = {
   globalLine: number;
   filePath: string;
@@ -41,9 +36,6 @@ export type ModeClipboardContext = {
 
 export type ViewModePlugin = {
   id: ViewMode;
-  label: string;
-  chipColors: ModeChipColors;
-  supportsDiff: boolean;
   emptyStateMessage: string;
   filterEntries: (entries: readonly CodeFileEntry[]) => CodeFileEntry[];
   buildPromptSelection: (context: ModePromptContext) => ModePromptSelection | null;
