@@ -1,9 +1,9 @@
 import { clamp } from "../utils/ui";
+import { emit, SIGNALS } from "../signals";
 import { Camera } from "./camera";
 
 type CursorBindings = {
   camera: Camera;
-  onCursorChanged: () => void;
 };
 
 export class Cursor {
@@ -50,7 +50,7 @@ export class Cursor {
       this.line = Math.round(targetLine);
     }
     this.clampState();
-    this.bindings.onCursorChanged();
+    emit(SIGNALS.cursorChanged);
     this.bindings.camera.configure(this.line, this.totalLines);
     if (typeof targetLine === "number" && positionMode !== "keep") {
       this.bindings.camera.onCursorSet(this.line, this.totalLines, previous, positionMode);
@@ -64,7 +64,7 @@ export class Cursor {
   public moveBy(delta: number): void {
     if (this.totalLines <= 0) return;
     this.line = clamp(this.line + delta, 1, this.totalLines);
-    this.bindings.onCursorChanged();
+    emit(SIGNALS.cursorChanged);
     this.bindings.camera.onCursorMoved(this.line, this.totalLines, delta);
   }
 
@@ -75,7 +75,7 @@ export class Cursor {
     if (this.totalLines <= 0) return;
     const previous = this.line;
     this.line = clamp(targetLine, 1, this.totalLines);
-    this.bindings.onCursorChanged();
+    emit(SIGNALS.cursorChanged);
     if (positionMode === "keep") return;
     this.bindings.camera.onCursorSet(this.line, this.totalLines, previous, positionMode);
   }
@@ -83,7 +83,7 @@ export class Cursor {
   public goToLineAtMinVisibleHeight(targetLine: number): void {
     if (this.totalLines <= 0) return;
     this.line = clamp(targetLine, 1, this.totalLines);
-    this.bindings.onCursorChanged();
+    emit(SIGNALS.cursorChanged);
     this.bindings.camera.placeLineAtMinVisibleHeight(this.line, this.totalLines);
   }
 
@@ -99,7 +99,7 @@ export class Cursor {
     if (this.totalLines <= 0) return;
     this.visualMode = !this.visualMode;
     this.visualAnchorLine = this.line;
-    this.bindings.onCursorChanged();
+    emit(SIGNALS.cursorChanged);
     this.bindings.camera.onCursorMoved(this.line, this.totalLines, 0);
   }
 
@@ -107,7 +107,7 @@ export class Cursor {
     if (!this.visualMode) return;
     this.visualMode = false;
     this.visualAnchorLine = this.line;
-    this.bindings.onCursorChanged();
+    emit(SIGNALS.cursorChanged);
     this.bindings.camera.onCursorMoved(this.line, this.totalLines, 0);
   }
 
@@ -115,7 +115,7 @@ export class Cursor {
     const nextLine = this.bindings.camera.handleExternalScroll(nextTop, this.totalLines, this.line);
     if (nextLine === undefined) return;
     this.line = nextLine;
-    this.bindings.onCursorChanged();
+    emit(SIGNALS.cursorChanged);
   }
 
   private clampState(): void {

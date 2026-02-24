@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
+import { emit, SIGNALS } from "../signals";
 import type { AgentModel, AgentUpdate, ViewMode } from "../types";
 
 export type AgentSubmission = {
@@ -18,7 +19,6 @@ type AgentOptions = {
   rootDir: string;
   initialUpdates: AgentUpdate[];
   onUpdatesChanged?: (updates: AgentUpdate[]) => void;
-  onRenderRequested: () => void;
 };
 
 type OpencodeRunRequest = {
@@ -63,7 +63,6 @@ const JSON_PARSE_FAILED = Symbol("json-parse-failed");
 export class Agent {
   private readonly rootDir: string;
   private readonly onUpdatesChanged?: (updates: AgentUpdate[]) => void;
-  private readonly onRenderRequested: () => void;
 
   private updates: AgentUpdate[];
   private runningStops = new Map<string, () => void>();
@@ -72,7 +71,6 @@ export class Agent {
   constructor(options: AgentOptions) {
     this.rootDir = options.rootDir;
     this.onUpdatesChanged = options.onUpdatesChanged;
-    this.onRenderRequested = options.onRenderRequested;
     this.updates = options.initialUpdates.map((update) => ({
       ...update,
       messages: [...(update.messages ?? [])],
@@ -159,7 +157,7 @@ export class Agent {
     if (this.updates.length === previousLength) return false;
 
     this.notifyUpdatesChanged();
-    this.onRenderRequested();
+    emit(SIGNALS.agentRenderRequested);
     return true;
   }
 
@@ -196,7 +194,7 @@ export class Agent {
     update.runId = undefined;
     update.messages = [];
     this.notifyUpdatesChanged();
-    this.onRenderRequested();
+    emit(SIGNALS.agentRenderRequested);
 
     let result: OpencodeRunResult;
     try {
@@ -222,7 +220,7 @@ export class Agent {
             this.pushMessage(update, update.error);
           }
           this.notifyUpdatesChanged();
-          this.onRenderRequested();
+          emit(SIGNALS.agentRenderRequested);
         },
       });
     } catch (error) {
@@ -234,14 +232,14 @@ export class Agent {
       update.error = result.error;
       this.pushMessage(update, result.error);
       this.notifyUpdatesChanged();
-      this.onRenderRequested();
+      emit(SIGNALS.agentRenderRequested);
       return;
     }
 
     update.runId = result.runId;
     this.runningStops.set(update.id, result.stop);
     this.notifyUpdatesChanged();
-    this.onRenderRequested();
+    emit(SIGNALS.agentRenderRequested);
   }
 
   private pushMessage(update: AgentUpdate, message: string): void {
@@ -260,7 +258,7 @@ export class Agent {
     this.renderTimer = setTimeout(() => {
       this.renderTimer = null;
       this.notifyUpdatesChanged();
-      this.onRenderRequested();
+      emit(SIGNALS.agentRenderRequested);
     }, 60);
   }
 

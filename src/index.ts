@@ -2,6 +2,7 @@ import { createCliRenderer } from "@opentui/core";
 import { CodeBrowserApp } from "./app";
 import { loadCodeFileEntries } from "./files";
 import { watchWorkspace } from "./live-reload";
+import { deregister, register, SIGNALS } from "./signals";
 import { ensurePatchedTreeSitterWorkerPath } from "./worker";
 
 await ensurePatchedTreeSitterWorkerPath();
@@ -35,11 +36,14 @@ const refreshEntries = async () => {
   refreshRunning = false;
 };
 
-const watcher = await watchWorkspace(rootDir, () => {
+const workspaceChangeRegistrationId = register(SIGNALS.workspaceChanged, () => {
   void refreshEntries();
 });
 
+const watcher = await watchWorkspace(rootDir);
+
 renderer.on("destroy", () => {
   app.shutdown();
+  deregister(workspaceChangeRegistrationId);
   watcher.close();
 });

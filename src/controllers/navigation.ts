@@ -8,7 +8,6 @@ type NavigationBindings = {
   lineModel: LineModel;
   getAgentPromptLines: () => number[];
   getAnchorDividerDisplayRow: (anchor: { filePath: string; dividerRow: number }) => number;
-  onDeleteCurrentAgentPrompt: () => void;
 };
 
 export class Navigation {
@@ -51,10 +50,6 @@ export class Navigation {
 
   public jumpToNextAgent(): void {
     this.jumpToNextAgentPrompt();
-  }
-
-  public deleteCurrentAgentPrompt(): void {
-    this.bindings.onDeleteCurrentAgentPrompt();
   }
 
   /** Moves cursor/camera to next file anchor and places divider near top band. */

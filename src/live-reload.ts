@@ -2,6 +2,7 @@ import { watch, type FSWatcher } from "node:fs";
 import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { IGNORE_DIRS } from "./config";
+import { emit, SIGNALS } from "./signals";
 
 type WatcherOptions = {
   changeDebounceMs?: number;
@@ -14,7 +15,6 @@ type WorkspaceWatcher = {
 
 export async function watchWorkspace(
   root: string,
-  onChange: () => void,
   options: WatcherOptions = {},
 ): Promise<WorkspaceWatcher> {
   const changeDebounceMs = options.changeDebounceMs ?? 80;
@@ -27,7 +27,7 @@ export async function watchWorkspace(
 
   const emitChange = () => {
     if (isClosed) return;
-    onChange();
+    emit(SIGNALS.workspaceChanged);
   };
 
   const scheduleChange = () => {

@@ -1,5 +1,6 @@
 import { KeyEvent } from "@opentui/core";
 import { listOpencodeModelCatalog } from "../integrations/opencode";
+import { emit, SIGNALS } from "../signals";
 import type { ViewMode } from "../types";
 import {
   PromptComposerBar,
@@ -35,8 +36,6 @@ export type PromptSubmission = {
 type PromptOptions = {
   rootDir: string;
   promptComposer: PromptComposerBar;
-  onSubmission: (submission: PromptSubmission) => Promise<void>;
-  onFocusModeChange: (focusMode: "code" | "prompt") => void;
   resolveLayout: (
     target: PromptTarget | null,
     fallbackAnchorLine: number | null,
@@ -48,8 +47,6 @@ export class Prompt {
 
   private readonly rootDir: string;
   private readonly promptComposer: PromptComposerBar;
-  private readonly onSubmission: (submission: PromptSubmission) => Promise<void>;
-  private readonly onFocusModeChange: (focusMode: "code" | "prompt") => void;
   private readonly resolveLayout: (
     target: PromptTarget | null,
     fallbackAnchorLine: number | null,
@@ -67,8 +64,6 @@ export class Prompt {
   constructor(options: PromptOptions) {
     this.rootDir = options.rootDir;
     this.promptComposer = options.promptComposer;
-    this.onSubmission = options.onSubmission;
-    this.onFocusModeChange = options.onFocusModeChange;
     this.resolveLayout = options.resolveLayout;
   }
 
@@ -102,7 +97,7 @@ export class Prompt {
     this.field = "prompt";
     this.visible = true;
     this.syncThinkingLevelFromModel();
-    this.onFocusModeChange("prompt");
+    emit(SIGNALS.promptFocusModeChange, "prompt");
     this.promptComposer.open(this.target.prompt);
     this.render();
   }
@@ -113,7 +108,7 @@ export class Prompt {
     this.target = null;
     this.anchorLine = null;
     this.promptComposer.close();
-    this.onFocusModeChange("code");
+    emit(SIGNALS.promptFocusModeChange, "code");
   }
 
   public cycleField(delta: number): void {
@@ -133,7 +128,7 @@ export class Prompt {
   }
 
   public submitFromKeyboard(): void {
-    void this.submit();
+    this.submit();
   }
 
   public handlePromptInputKey(key: KeyEvent, consumeKey: (event: KeyEvent) => void): void {
@@ -219,7 +214,7 @@ export class Prompt {
   }
 
   /** Commits prompt state and hands submission back to app orchestration. */
-  private async submit(): Promise<void> {
+  private submit(): void {
     if (!this.target) return;
     const promptText = this.promptComposer.promptInput.plainText.trim();
     if (!promptText) return;
@@ -241,7 +236,7 @@ export class Prompt {
     };
 
     this.close();
-    await this.onSubmission(submission);
+    emit(SIGNALS.promptSubmission, submission);
   }
 
   /** Moves active prompt field focus by delta with wrapping. */
