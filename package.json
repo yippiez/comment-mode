@@ -1,11 +1,16 @@
 {
   "name": "comment-mode",
-  "module": "src/index.tsx",
+  "module": "packages/tui/src/index.ts",
   "type": "module",
   "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "bun run --watch src/index.ts",
-    "static": "bun run src/index.ts"
+    "dev": "bun run --watch packages/tui/src/index.ts",
+    "static": "bun run packages/tui/src/index.ts",
+    "server": "bun run packages/server/src/index.ts",
+    "cli": "bun run packages/cli/src/index.ts"
   },
   "devDependencies": {
     "@types/bun": "latest"
