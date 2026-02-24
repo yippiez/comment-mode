@@ -1,9 +1,5 @@
-import type { CodeFileEntry, ViewMode } from "./types";
-
-export type ViewModeDescriptor = {
-  id: ViewMode;
-  label: string;
-};
+import type { CodeFileEntry } from "../types";
+import type { ModePromptContext, ModePromptSelection } from "./types";
 
 export type SignatureBlock = {
   fileLineStart: number;
@@ -11,53 +7,26 @@ export type SignatureBlock = {
   lines: string[];
 };
 
-export type FileTreeRow = {
-  key: string;
-  kind: "dir" | "file";
-  path: string;
-  filePath: string;
-  depth: number;
-  label: string;
-  lineCount?: number;
-  childFileCount?: number;
-};
-
-const MODES: ViewModeDescriptor[] = [
-  { id: "code", label: "CODE" },
-  { id: "signatures", label: "SIGNATURES" },
-  { id: "files", label: "FILES" },
-];
-
-class ViewModesManager {
-  private index = 0;
-
-  public getAllModes(): readonly ViewModeDescriptor[] {
-    return MODES;
-  }
-
-  public getMode(): ViewMode {
-    return MODES[this.index]?.id ?? "code";
-  }
-
-  public getModeName(): string {
-    return MODES[this.index]?.label ?? "CODE";
-  }
-
-  public setMode(mode: ViewMode): ViewMode {
-    const nextIndex = MODES.findIndex((entry) => entry.id === mode);
-    if (nextIndex >= 0) {
-      this.index = nextIndex;
-    }
-    return this.getMode();
-  }
-
-  public switchMode(): ViewMode {
-    this.index = (this.index + 1) % MODES.length;
-    return this.getMode();
-  }
+export function filterSignaturesModeEntries(entries: readonly CodeFileEntry[]): CodeFileEntry[] {
+  return entries.filter((entry) => entry.filetype !== "markdown" && entry.typeLabel !== "MD");
 }
 
-export const viewModes = new ViewModesManager();
+export function buildSignaturesPromptSelection(context: ModePromptContext): ModePromptSelection | null {
+  const selectedSignatures = context.selection.filter(
+    (line) => line.blockKind === "signature" && typeof line.fileLine === "number",
+  );
+  if (selectedSignatures.length === 0) return null;
+
+  const sections: string[] = ["Mode: SIGNATURES", "Selected signatures:"];
+  for (const line of selectedSignatures) {
+    sections.push(`- ${line.filePath}:${String(line.fileLine)} ${line.text}`);
+  }
+
+  return {
+    selection: selectedSignatures,
+    selectedText: sections.join("\n"),
+  };
+}
 
 /** Extracts function-like signatures plus nearby docs/comments. */
 export function extractSignatureBlocks(content: string): SignatureBlock[] {
@@ -291,94 +260,4 @@ function stripSharedIndentation(lines: readonly string[]): string[] {
     const sliceStart = Math.min(minIndent, line.length);
     return line.slice(sliceStart);
   });
-}
-
-/** Builds a collapsible tree list from relative file paths. */
-export function buildFileTreeRows(
-  entries: readonly CodeFileEntry[],
-  currentDirectoryPath: string,
-): FileTreeRow[] {
-  const directoryPath = normalizeDirectoryPath(currentDirectoryPath);
-  const prefix = directoryPath.length > 0 ? `${directoryPath}/` : "";
-  const rows: FileTreeRow[] = [];
-
-  if (directoryPath.length > 0) {
-    const parentPath = parentDirectoryPath(directoryPath);
-    rows.push({
-      key: `dir:${parentPath}:up`,
-      kind: "dir",
-      path: parentPath,
-      filePath: parentPath,
-      depth: 0,
-      label: "../",
-    });
-  }
-
-  const childDirectories = new Map<string, number>();
-  const childFiles: Array<{ path: string; name: string; lineCount: number }> = [];
-
-  for (const entry of entries) {
-    if (prefix.length > 0 && !entry.relativePath.startsWith(prefix)) continue;
-    const relative = prefix.length > 0 ? entry.relativePath.slice(prefix.length) : entry.relativePath;
-    if (!relative) continue;
-
-    const slashIndex = relative.indexOf("/");
-    if (slashIndex >= 0) {
-      const directoryName = relative.slice(0, slashIndex);
-      const directoryFullPath = prefix.length > 0 ? `${directoryPath}/${directoryName}` : directoryName;
-      childDirectories.set(directoryFullPath, (childDirectories.get(directoryFullPath) ?? 0) + 1);
-      continue;
-    }
-
-    childFiles.push({
-      path: entry.relativePath,
-      name: relative,
-      lineCount: entry.lineCount,
-    });
-  }
-
-  const sortedDirectories = [...childDirectories.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  for (const [directoryFullPath, fileCount] of sortedDirectories) {
-    const directoryName = directoryFullPath.split("/").pop() ?? directoryFullPath;
-    rows.push({
-      key: `dir:${directoryFullPath}`,
-      kind: "dir",
-      path: directoryFullPath,
-      filePath: directoryFullPath,
-      depth: 0,
-      label: `${directoryName}/`,
-      childFileCount: fileCount,
-    });
-  }
-
-  const sortedFiles = [...childFiles].sort((a, b) => a.path.localeCompare(b.path));
-  for (const file of sortedFiles) {
-    rows.push({
-      key: `file:${file.path}`,
-      kind: "file",
-      path: file.path,
-      filePath: file.path,
-      depth: 0,
-      label: file.name,
-      lineCount: file.lineCount,
-    });
-  }
-
-  return rows;
-}
-
-function normalizeDirectoryPath(directoryPath: string): string {
-  if (!directoryPath) return "";
-  return directoryPath
-    .split("/")
-    .filter(Boolean)
-    .join("/");
-}
-
-function parentDirectoryPath(directoryPath: string): string {
-  const normalized = normalizeDirectoryPath(directoryPath);
-  if (!normalized) return "";
-  const parts = normalized.split("/");
-  if (parts.length <= 1) return "";
-  return parts.slice(0, -1).join("/");
 }
