@@ -57,7 +57,7 @@ import {
   resolvePromptComposerLayout,
   type SelectionLineInfo,
 } from "./selection";
-import { ensureFilesModeDirectoryVisible, getParentDirectoryPath } from "./files_mode";
+import { ensureFilesModeDirectoryVisible, getParentDirectoryPath } from "../util/path";
 import { recomputeTypeState } from "./type_filters";
 import { registerAppSignalHandlers } from "./signal_bindings";
 type CodeBrowserAppOptions = {
