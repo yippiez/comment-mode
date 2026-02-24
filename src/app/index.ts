@@ -37,20 +37,34 @@ import {
   buildFileTreeRows,
   type FileTreeRow,
   modes,
-  type ModeSelectionLineInfo,
 } from "../modes";
 import { Highlight } from "../controllers/highlight";
 import { registerKeyboardSignalBindings, type KeyboardStateSnapshot } from "../signals/keyboard";
 import { registerScrollSignalBindings } from "../signals/scroll";
 import { registerSystemSignalBindings } from "../signals/system";
+import {
+  computeAgentContentWidth,
+  computeFilesModeViewportWidth,
+  formatAgentUpdateLine,
+  formatCollapsedContentLine,
+  renderTypeChips,
+  wrapTextToWidth,
+} from "./render";
+import {
+  buildClipboardSelectionText,
+  collectSelectionLineInfos,
+  createPromptTargetFromSelection,
+  resolvePromptComposerLayout,
+  type SelectionLineInfo,
+} from "./selection";
+import { ensureFilesModeDirectoryVisible, getParentDirectoryPath } from "./files_mode";
+import { recomputeTypeState } from "./type_filters";
 import { registerAppSignalHandlers } from "./signal_bindings";
 type CodeBrowserAppOptions = {
   rootDir: string;
   initialAgentUpdates?: AgentUpdate[];
   onAgentUpdatesChanged?: (updates: AgentUpdate[]) => void;
 };
-
-type SelectionLineInfo = ModeSelectionLineInfo;
 
 const ACTION_CHIPS: readonly string[] = [];
 
@@ -314,36 +328,16 @@ export class CodeBrowserApp {
 
   /** Builds a prompt target payload from current visual selection in active file. */
   private createPromptTargetFromSelection(): PromptTarget | null {
-    const selection = this.getSelectionLineInfos();
-    if (selection.length === 0) return null;
-
-    const modeSelection = modes.buildPromptSelection(this.state.viewMode, {
-      selection,
-      fileTreeRowsByLine: this.fileTreeRowsByLine,
-    });
-    if (!modeSelection) return null;
-
-    return this.buildPromptTarget(modeSelection.selection, modeSelection.selectedText);
+    return createPromptTargetFromSelection(
+      this.state.viewMode,
+      this.cursor,
+      this.lineModel,
+      this.fileTreeRowsByLine,
+    );
   }
 
   private getSelectionLineInfos(): SelectionLineInfo[] {
-    const { start, end } = this.cursor.selectionRange;
-    if (start <= 0 || end <= 0) return [];
-    const selection: SelectionLineInfo[] = [];
-
-    for (let globalLine = start; globalLine <= end; globalLine += 1) {
-      const lineInfo = this.lineModel.getVisibleLineInfo(globalLine);
-      if (!lineInfo) continue;
-      selection.push({
-        globalLine,
-        filePath: lineInfo.filePath,
-        fileLine: lineInfo.fileLine,
-        text: lineInfo.text,
-        blockKind: lineInfo.blockKind,
-      });
-    }
-
-    return selection;
+    return collectSelectionLineInfos(this.cursor, this.lineModel);
   }
 
   private async copySelectionToClipboard(): Promise<void> {
@@ -356,40 +350,11 @@ export class CodeBrowserApp {
   }
 
   private buildClipboardSelectionText(selection: readonly SelectionLineInfo[]): string {
-    const modeClipboard = modes.buildClipboardText(this.state.viewMode, {
+    return buildClipboardSelectionText(
+      this.state.viewMode,
       selection,
-      fileTreeRowsByLine: this.fileTreeRowsByLine,
-    });
-    if (modeClipboard) return modeClipboard;
-
-    return selection.map((line) => line.text).join("\n").trimEnd();
-  }
-
-  private buildPromptTarget(
-    selection: readonly SelectionLineInfo[],
-    selectedText: string,
-  ): PromptTarget | null {
-    const first = selection[0];
-    const last = selection[selection.length - 1];
-    if (!first || !last) return null;
-
-    const primaryFilePath = first.filePath;
-    const primaryFileLines = selection
-      .filter((line) => line.filePath === primaryFilePath && typeof line.fileLine === "number")
-      .map((line) => line.fileLine as number);
-    const selectionStartFileLine = primaryFileLines.length > 0 ? Math.min(...primaryFileLines) : 1;
-    const selectionEndFileLine = primaryFileLines.length > 0 ? Math.max(...primaryFileLines) : 1;
-
-    return {
-      viewMode: this.state.viewMode,
-      filePath: primaryFilePath,
-      selectionStartFileLine,
-      selectionEndFileLine,
-      anchorLine: last.globalLine,
-      selectedText,
-      prompt: "",
-      model: "opencode/big-pickle",
-    };
+      this.fileTreeRowsByLine,
+    );
   }
 
   /** Persists prompt submission and triggers agent run without moving cursor. */
@@ -515,26 +480,11 @@ export class CodeBrowserApp {
   }
 
   private getParentDirectoryPath(filePath: string): string {
-    const normalized = filePath
-      .split("/")
-      .filter(Boolean)
-      .join("/");
-    if (!normalized) return "";
-    const parts = normalized.split("/");
-    if (parts.length <= 1) return "";
-    return parts.slice(0, -1).join("/");
+    return getParentDirectoryPath(filePath);
   }
 
   private ensureFilesModeDirectoryVisible(entries: readonly CodeFileEntry[]): void {
-    let directory = this.filesModeDirectoryPath;
-    while (directory.length > 0) {
-      const hasVisibleChild = entries.some((entry) => {
-        return entry.relativePath.startsWith(`${directory}/`);
-      });
-      if (hasVisibleChild) break;
-      directory = this.getParentDirectoryPath(directory);
-    }
-    this.filesModeDirectoryPath = directory;
+    this.filesModeDirectoryPath = ensureFilesModeDirectoryVisible(entries, this.filesModeDirectoryPath);
   }
 
   private toggleCurrentFileCollapse(): void {
@@ -554,41 +504,20 @@ export class CodeBrowserApp {
   }
 
   private renderChips(): void {
-    clearChildren(this.chipsRow);
-    const chipsFocused = this.state.focusMode === "chips";
-
-    for (const [index, type] of this.sortedTypes.entries()) {
-      const enabled = this.isTypeEnabled(type);
-      const selected = index === this.state.selectedChipIndex;
-
-      const chip = new BoxRenderable(this.renderer, {
-        paddingLeft: 1,
-        paddingRight: 1,
-        backgroundColor: selected
-          ? theme.getChipSelectedBackgroundColor(chipsFocused)
-          : theme.getChipBackgroundColor(enabled),
-        onMouseDown: () => {
-          this.state.selectedChipIndex = index;
-          this.setFocusMode("chips");
-          this.toggleSelectedChip();
-        },
-      });
-
-      chip.add(
-        new TextRenderable(this.renderer, {
-          content: `${type} (${this.typeCounts.get(type) ?? 0})`,
-          fg: theme.getChipTextColor(selected, enabled),
-          attributes: selected
-            ? TextAttributes.BOLD | TextAttributes.UNDERLINE
-            : enabled
-              ? TextAttributes.BOLD
-              : TextAttributes.DIM,
-        }),
-      );
-
-      this.chipsRow.add(chip);
-    }
-
+    renderTypeChips({
+      renderer: this.renderer,
+      chipsRow: this.chipsRow,
+      sortedTypes: this.sortedTypes,
+      selectedChipIndex: this.state.selectedChipIndex,
+      chipsFocused: this.state.focusMode === "chips",
+      getTypeCount: (type) => this.typeCounts.get(type) ?? 0,
+      isTypeEnabled: (type) => this.isTypeEnabled(type),
+      onChipSelected: (index) => {
+        this.state.selectedChipIndex = index;
+        this.setFocusMode("chips");
+      },
+      onToggleSelectedChip: () => this.toggleSelectedChip(),
+    });
   }
 
   private renderContent(): void {
@@ -807,16 +736,11 @@ export class CodeBrowserApp {
   }
 
   private getFilesModeViewportWidth(): number {
-    const viewportWidth = Math.floor(this.scrollbox.viewport.width);
-    if (Number.isFinite(viewportWidth) && viewportWidth > 0) {
-      return Math.max(1, viewportWidth - 1);
-    }
-
-    const scrollboxWidth = Math.floor(this.scrollbox.width);
-    if (Number.isFinite(scrollboxWidth) && scrollboxWidth > 0) {
-      return Math.max(1, scrollboxWidth - 1);
-    }
-    return Math.max(1, Math.floor(this.renderer.width - 1));
+    return computeFilesModeViewportWidth(
+      Math.floor(this.scrollbox.viewport.width),
+      Math.floor(this.scrollbox.width),
+      this.renderer.width,
+    );
   }
 
   private addCollapsedPlaceholderBlock(
@@ -873,12 +797,7 @@ export class CodeBrowserApp {
   }
 
   private formatCollapsedContentLine(label: string, width: number): string {
-    const trimmed = label.trim();
-    if (trimmed.length >= width) return trimmed.slice(0, width);
-    const remaining = width - trimmed.length;
-    const left = Math.floor(remaining / 2);
-    const right = remaining - left;
-    return `${" ".repeat(left)}${trimmed}${" ".repeat(right)}`;
+    return formatCollapsedContentLine(label, width);
   }
 
   private addCodeBlock(
@@ -1106,71 +1025,21 @@ export class CodeBrowserApp {
   }
 
   private formatAgentUpdateLine(update: AgentUpdate): string {
-    const prefix =
-      update.status === "running"
-        ? "AGENT RUNNING"
-        : update.status === "completed"
-          ? "AGENT DONE"
-        : update.status === "failed"
-          ? "AGENT FAILED"
-          : "AGENT DRAFT";
-    const prompt = update.prompt.trim().length > 0 ? update.prompt : "<type prompt>";
-    const variantSuffix = update.variant ? ` · think:${update.variant}` : "";
-    const runSuffix = update.runId ? ` · ${update.runId}` : "";
-    const errorSuffix = update.error ? ` | error: ${update.error}` : "";
-    return `● ${prefix} · ${update.model}${variantSuffix} · ${prompt}${runSuffix}${errorSuffix}`;
+    return formatAgentUpdateLine(update);
   }
 
   private getAgentContentWidth(paddingLeft: number, paddingRight: number): number {
-    const viewportWidth = Math.floor(this.scrollbox.viewport.width);
-    if (Number.isFinite(viewportWidth) && viewportWidth > 0) {
-      return Math.max(8, viewportWidth - Math.max(0, paddingLeft) - Math.max(0, paddingRight));
-    }
-
-    const scrollboxWidth = Math.floor(this.scrollbox.width);
-    if (Number.isFinite(scrollboxWidth) && scrollboxWidth > 0) {
-      return Math.max(8, scrollboxWidth - Math.max(0, paddingLeft) - Math.max(0, paddingRight));
-    }
-
-    return Math.max(8, Math.floor(this.renderer.width - paddingLeft - paddingRight));
+    return computeAgentContentWidth(
+      Math.floor(this.scrollbox.viewport.width),
+      Math.floor(this.scrollbox.width),
+      this.renderer.width,
+      paddingLeft,
+      paddingRight,
+    );
   }
 
   private wrapTextToWidth(text: string, width: number): string[] {
-    const safeWidth = Math.max(1, Math.floor(width));
-    const normalized = text.replace(/\t/g, "  ");
-    const lines = normalized.split("\n");
-    const wrapped: string[] = [];
-
-    for (const line of lines) {
-      if (line.length === 0) {
-        wrapped.push("");
-        continue;
-      }
-
-      let segment = "";
-      for (const char of line) {
-        const next = `${segment}${char}`;
-        if (this.displayWidth(next) > safeWidth) {
-          wrapped.push(segment.length > 0 ? segment : char);
-          segment = segment.length > 0 ? char : "";
-          continue;
-        }
-        segment = next;
-      }
-      if (segment.length > 0) {
-        wrapped.push(segment);
-      }
-    }
-
-    return wrapped.length > 0 ? wrapped : [""];
-  }
-
-  private displayWidth(text: string): number {
-    try {
-      return Bun.stringWidth(text);
-    } catch {
-      return text.length;
-    }
+    return wrapTextToWidth(text, width);
   }
 
   private getAgentStatusBg(status: AgentUpdateStatus): string {
@@ -1208,38 +1077,15 @@ export class CodeBrowserApp {
     target: PromptTarget | null,
     fallbackAnchorLine: number | null,
   ): PromptComposerLayout {
-    const viewportTop = Math.max(0, this.scrollbox.y);
-    const viewportHeight = this.getViewportHeight();
-    const viewportBottom = viewportTop + viewportHeight - 1;
-    const anchorLine = this.resolvePromptAnchorLine(target, fallbackAnchorLine);
-    const anchorDisplayRow = this.lineModel.getDisplayRowForLine(anchorLine);
-    const rowInViewport = anchorDisplayRow - this.scrollbox.scrollTop;
-    const desiredTop = viewportTop + rowInViewport + 1;
-    const top = clamp(desiredTop, viewportTop, viewportBottom);
-    return {
-      top,
-      maxHeight: Math.max(1, viewportBottom - top + 1),
-    };
-  }
-
-  /** Resolves best anchor line for prompt overlay using target selection and fallback cursor. */
-  private resolvePromptAnchorLine(
-    target: PromptTarget | null,
-    fallbackAnchorLine: number | null,
-  ): number {
-    if (target) {
-      const visibleLine = this.lineModel.findGlobalLineForFileLine(
-        target.filePath,
-        target.selectionEndFileLine,
-      );
-      if (typeof visibleLine === "number") {
-        return visibleLine;
-      }
-    }
-
-    if (this.lineModel.totalLines <= 0) return 1;
-    const fallback = fallbackAnchorLine ?? this.cursor.cursorLine;
-    return clamp(fallback, 1, this.lineModel.totalLines);
+    return resolvePromptComposerLayout({
+      target,
+      fallbackAnchorLine,
+      lineModel: this.lineModel,
+      cursorLine: this.cursor.cursorLine,
+      scrollboxY: this.scrollbox.y,
+      scrollTop: this.scrollbox.scrollTop,
+      viewportHeight: this.getViewportHeight(),
+    });
   }
 
   private applyLineHighlights(): void {
@@ -1282,43 +1128,16 @@ export class CodeBrowserApp {
   }
 
   private recomputeTypesState(): void {
-    const previousEnabled = new Map(this.enabledTypes);
-
-    this.typeCounts = new Map();
-    for (const entry of this.entries) {
-      this.typeCounts.set(entry.typeLabel, (this.typeCounts.get(entry.typeLabel) ?? 0) + 1);
-    }
-
-    const programmingLangs = ["ts", "tsx", "js", "jsx", "py", "go", "rs", "java", "c", "cpp", "h", "hpp", "cs", "rb", "php", "swift", "kt", "scala", "vue", "svelte"];
-    const configFiles = ["json", "yaml", "yml", "toml", "xml", "ini", "conf", "config", "env", "properties"];
-    const textFiles = ["md", "txt", "rst", "log"];
-
-    const getPriority = (type: string): number => {
-      const lower = type.toLowerCase();
-      if (programmingLangs.includes(lower)) return 0;
-      if (configFiles.includes(lower)) return 1;
-      if (textFiles.includes(lower)) return 3;
-      return 2;
-    };
-
-    this.sortedTypes = [...this.typeCounts.keys()].sort((a, b) => {
-      const pa = getPriority(a);
-      const pb = getPriority(b);
-      if (pa !== pb) return pa - pb;
-      return a.localeCompare(b);
-    });
-
-    const nextEnabled = new Map<string, boolean>();
-    for (const type of this.sortedTypes) {
-      nextEnabled.set(type, previousEnabled.get(type) ?? true);
-    }
-    this.enabledTypes = nextEnabled;
-
-    this.state.selectedChipIndex = clamp(
+    const nextState = recomputeTypeState(
+      this.entries,
+      this.enabledTypes,
       this.state.selectedChipIndex,
-      0,
-      Math.max(0, this.sortedTypes.length + ACTION_CHIPS.length - 1),
+      ACTION_CHIPS.length,
     );
+    this.typeCounts = nextState.typeCounts;
+    this.sortedTypes = nextState.sortedTypes;
+    this.enabledTypes = nextState.enabledTypes;
+    this.state.selectedChipIndex = nextState.selectedChipIndex;
   }
 
   private pruneAgentUpdates(): void {
