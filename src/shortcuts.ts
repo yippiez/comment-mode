@@ -5,7 +5,6 @@ export type CodeKeyAction =
   | "page_down"
   | "toggle_visual"
   | "collapse_file"
-  | "toggle_diff"
   | "yank_selection"
   | "open_prompt"
   | "escape_visual"
@@ -20,7 +19,6 @@ export const CODE_KEYMAP: Record<string, CodeKeyAction> = {
   pagedown: "page_down",
   v: "toggle_visual",
   c: "collapse_file",
-  d: "toggle_diff",
   y: "yank_selection",
   enter: "open_prompt",
   return: "open_prompt",
