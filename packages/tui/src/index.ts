@@ -1,3 +1,5 @@
+#!/usr/bin/env bun
+
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 
