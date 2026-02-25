@@ -1,10 +1,11 @@
 import { createCliRenderer } from "@opentui/core";
 import { CodeBrowserApp } from "./app";
 import { loadCodeFileEntries } from "./files";
+import { ensurePatchedTreeSitterWorkerPath, registerTreeSitterParsers } from "./integrations/treesitter";
 import { watchWorkspace } from "./live-reload";
 import { deregister, register, SIGNALS } from "./signals";
-import { ensurePatchedTreeSitterWorkerPath } from "./worker";
 
+registerTreeSitterParsers();
 await ensurePatchedTreeSitterWorkerPath();
 
 const renderer = await createCliRenderer({ exitOnCtrlC: true });
