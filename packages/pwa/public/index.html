@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#141415" />
+    <title>Comment Mode PWA</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <header class="hero">
+      <p class="eyebrow">Comment Mode</p>
+      <h1>Stacked code view + prompt panel</h1>
+      <p class="lead">
+        A mobile-first PWA inspired by the TUI flow: scan code blocks in one vertical stream, then ask the model from
+        the panel below.
+      </p>
+    </header>
+
+    <main class="app-shell">
+      <section class="stack-shell">
+        <div class="section-head">
+          <h2>Workspace stack</h2>
+          <button
+            type="button"
+            class="ghost"
+            hx-get="/fragments/code-stack"
+            hx-target="#code-stack"
+            hx-swap="innerHTML"
+          >
+            Refresh
+          </button>
+        </div>
+        <div
+          id="code-stack"
+          class="code-stack"
+          hx-get="/fragments/code-stack"
+          hx-trigger="load, refresh-stack from:body"
+          hx-swap="innerHTML"
+        >
+          <p class="empty-state">Loading code stack...</p>
+        </div>
+      </section>
+
+      <section class="prompt-shell">
+        <h2>Prompt the model</h2>
+        <p class="prompt-file">
+          Context file:
+          <code id="prompt-file-label">(tap "Use for prompt" on any file)</code>
+        </p>
+
+        <form id="prompt-form" hx-post="/fragments/run" hx-target="#run-output" hx-swap="innerHTML">
+          <input type="hidden" id="prompt-file-path" name="filePath" />
+          <input type="hidden" id="prompt-start-line" name="selectionStartFileLine" value="1" />
+          <input type="hidden" id="prompt-end-line" name="selectionEndFileLine" value="1" />
+
+          <label for="model-select">Model</label>
+          <select
+            id="model-select"
+            name="model"
+            hx-get="/fragments/model-options"
+            hx-trigger="load"
+            hx-target="this"
+            hx-swap="innerHTML"
+          >
+            <option value="">Loading models...</option>
+          </select>
+
+          <label for="prompt-text">Prompt</label>
+          <textarea
+            id="prompt-text"
+            name="prompt"
+            rows="6"
+            placeholder="Describe what you want to change or ask about this file..."
+            required
+          ></textarea>
+
+          <div class="form-actions">
+            <button type="submit" class="run-button">Run prompt</button>
+            <span id="run-indicator" class="run-indicator htmx-indicator">Running...</span>
+          </div>
+        </form>
+
+        <div id="run-output" class="run-output" aria-live="polite"></div>
+      </section>
+    </main>
+  </body>
+</html>

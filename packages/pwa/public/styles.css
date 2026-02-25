@@ -1,0 +1,305 @@
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap");
+
+:root {
+  --bg: #141415;
+  --panel: #1c1c24;
+  --panel-strong: #252530;
+  --line: #333738;
+  --text: #cdcdcd;
+  --muted: #878787;
+  --accent: #7e98e8;
+  --accent-warm: #e8b589;
+  --ok: #2f4f3a;
+  --error: #5b2d3a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  color: var(--text);
+  background:
+    radial-gradient(circle at 85% -20%, rgba(126, 152, 232, 0.22), transparent 35%),
+    radial-gradient(circle at 15% 120%, rgba(232, 181, 137, 0.2), transparent 40%),
+    var(--bg);
+  font-family: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
+}
+
+.hero {
+  padding: 1.25rem 1rem 0.75rem;
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--accent-warm);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+}
+
+h1 {
+  margin: 0.2rem 0 0.55rem;
+  font-size: 1.45rem;
+  line-height: 1.2;
+}
+
+.lead {
+  margin: 0;
+  color: #b7b7c4;
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+.app-shell {
+  width: min(980px, 100%);
+  margin: 0 auto;
+  padding: 0.5rem 0.75rem 1.25rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.stack-shell,
+.prompt-shell {
+  background: color-mix(in srgb, var(--panel) 92%, black 8%);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px rgba(20, 20, 21, 0.55), 0 18px 30px rgba(0, 0, 0, 0.25);
+}
+
+.section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 0.85rem;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(37, 37, 48, 0.8), rgba(28, 28, 36, 0.9));
+}
+
+h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.ghost,
+.pick-file-button,
+.run-button {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--text);
+  background: var(--panel-strong);
+  font: inherit;
+  cursor: pointer;
+}
+
+.ghost {
+  padding: 0.35rem 0.65rem;
+  font-size: 0.84rem;
+}
+
+.ghost:hover,
+.pick-file-button:hover,
+.run-button:hover {
+  border-color: var(--accent);
+}
+
+.code-stack {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.75rem;
+}
+
+.code-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-strong);
+  overflow: hidden;
+}
+
+.code-card.is-selected {
+  border-color: var(--accent-warm);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-warm) 50%, transparent);
+}
+
+.code-card-header {
+  padding: 0.65rem;
+  display: grid;
+  gap: 0.4rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.code-path {
+  margin: 0;
+  font-size: 0.88rem;
+  color: #ffffff;
+  word-break: break-word;
+}
+
+.code-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.pick-file-button {
+  justify-self: start;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.8rem;
+}
+
+.code-block {
+  margin: 0;
+  padding: 0.75rem;
+  max-height: 52vh;
+  overflow: auto;
+  font-family: "IBM Plex Mono", "JetBrains Mono", monospace;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: #c3c3d5;
+  background: linear-gradient(180deg, #1b1b25 0%, #17171d 100%);
+}
+
+.prompt-shell {
+  padding: 0.95rem;
+}
+
+.prompt-file {
+  margin: 0.55rem 0 0.95rem;
+  color: #b7b7c4;
+  font-size: 0.86rem;
+}
+
+.prompt-file code {
+  color: var(--accent-warm);
+}
+
+label {
+  display: block;
+  margin-top: 0.7rem;
+  margin-bottom: 0.3rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+select,
+textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #15151d;
+  color: var(--text);
+  padding: 0.65rem;
+  font: inherit;
+}
+
+textarea {
+  resize: vertical;
+  min-height: 7rem;
+}
+
+select:focus,
+textarea:focus {
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 1px;
+}
+
+.form-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin-top: 0.85rem;
+}
+
+.run-button {
+  padding: 0.5rem 0.85rem;
+  background: linear-gradient(160deg, #2a3147, #222734);
+}
+
+.run-indicator {
+  display: none;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+#prompt-form.htmx-request .run-indicator {
+  display: inline;
+}
+
+.run-output {
+  margin-top: 0.95rem;
+}
+
+.run-card {
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #181922;
+  padding: 0.75rem;
+}
+
+.run-card h3 {
+  margin: 0 0 0.4rem;
+  font-size: 0.95rem;
+}
+
+.run-card.is-success {
+  border-color: color-mix(in srgb, var(--ok) 70%, var(--line));
+}
+
+.run-card.is-error {
+  border-color: color-mix(in srgb, var(--error) 65%, var(--line));
+}
+
+.run-context,
+.run-error {
+  margin: 0.2rem 0;
+  font-size: 0.8rem;
+}
+
+.run-error {
+  color: #f0bbc3;
+}
+
+.run-message-list {
+  margin: 0.55rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.84rem;
+  color: #d4d4de;
+}
+
+.run-message-list li {
+  margin-bottom: 0.3rem;
+}
+
+.empty-state {
+  margin: 0;
+  padding: 1rem;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+
+@media (min-width: 720px) {
+  .hero {
+    padding-top: 1.7rem;
+  }
+
+  .app-shell {
+    padding: 0.8rem 1rem 1.8rem;
+  }
+
+  .code-block {
+    max-height: 46vh;
+    font-size: 0.82rem;
+  }
+}

@@ -38,6 +38,17 @@ bun run cli health --url http://127.0.0.1:4042
 bun run cli models --url http://127.0.0.1:4042 --password "your-strong-password"
 ```
 
+## Run PWA (HTMX, mobile-first)
+
+```bash
+bun run pwa
+```
+
+- Opens a localhost-only web app at `http://127.0.0.1:4173` (or the printed port).
+- Shows all code files in a stacked vertical view (no file explorer).
+- Includes a prompt panel below the code stack to run `opencode` against the selected file.
+- Uses a single built-in Vague-inspired theme.
+
 ## Themes
 
 - Vague

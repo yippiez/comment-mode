@@ -10,7 +10,8 @@
     "dev": "bun run --watch packages/tui/src/index.ts",
     "static": "bun run packages/tui/src/index.ts",
     "server": "bun run packages/server/src/index.ts",
-    "cli": "bun run packages/cli/src/index.ts"
+    "cli": "bun run packages/cli/src/index.ts",
+    "pwa": "bun run packages/pwa/src/index.ts"
   },
   "devDependencies": {
     "@types/bun": "latest"
