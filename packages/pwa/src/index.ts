@@ -1,5 +1,6 @@
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import path from "node:path";
+import hljs from "highlight.js/lib/common";
 import { listOpencodeModelCatalog, startHeadlessOpencodeRun } from "../../server/src/opencode";
 import { isLoopbackAddress } from "../../server/src/security";
 import type { CodeFileEntryPayload, OpencodeModelCatalogItem } from "../../server/src/types";
@@ -29,12 +30,12 @@ const STATIC_ASSETS: Record<string, StaticAsset> = {
   "/styles.css": {
     fileName: "styles.css",
     contentType: "text/css; charset=utf-8",
-    cacheControl: "public, max-age=3600",
+    cacheControl: "no-store",
   },
   "/app.js": {
     fileName: "app.js",
     contentType: "application/javascript; charset=utf-8",
-    cacheControl: "public, max-age=3600",
+    cacheControl: "no-store",
   },
   "/sw.js": {
     fileName: "sw.js",
@@ -44,7 +45,7 @@ const STATIC_ASSETS: Record<string, StaticAsset> = {
   "/manifest.webmanifest": {
     fileName: "manifest.webmanifest",
     contentType: "application/manifest+json; charset=utf-8",
-    cacheControl: "public, max-age=3600",
+    cacheControl: "no-store",
   },
   "/icons/icon.svg": {
     fileName: "icons/icon.svg",
@@ -106,6 +107,10 @@ async function handleRequest(
 
   if (pathname === "/api/health") {
     return jsonOk({ ok: true, rootDir: startup.rootDir, localhostOnly: true });
+  }
+
+  if (pathname === "/api/dev-hash" && request.method === "GET") {
+    return textOk(computeDevHash());
   }
 
   if (pathname === "/fragments/code-stack" && request.method === "GET") {
@@ -259,25 +264,120 @@ function renderCodeStack(entries: readonly CodeFileEntryPayload[]): string {
     .map((entry) => {
       const filePath = escapeHtml(entry.relativePath);
       const filePathAttr = escapeHtmlAttribute(entry.relativePath);
-      const code = escapeHtml(entry.content.length > 0 ? entry.content : "\n");
+      const language = detectHighlightLanguage(entry.relativePath);
+      const code = renderCodeLines(entry.content.length > 0 ? entry.content : "\n", language);
+      const languageClass = `hljs language-${escapeHtmlAttribute(language)}`;
+      const fileTypeLabel = entry.typeLabel.trim();
+      const fileTypeKey = escapeHtmlAttribute(fileTypeLabel.toLowerCase());
+      const fileTypeDisplay = escapeHtml(fileTypeLabel);
 
       return [
-        '<article class="code-card" data-file-card>',
-        "  <header class=\"code-card-header\">",
-        `    <p class=\"code-path\">${filePath}</p>`,
-        "    <div class=\"code-meta\">",
-        `      <span>${entry.lineCount.toString()} lines</span>`,
-        `      <span>${escapeHtml(entry.typeLabel)}</span>`,
-        "    </div>",
-        `    <button type=\"button\" class=\"pick-file-button\" data-use-file data-path=\"${filePathAttr}\" data-start=\"1\" data-end=\"${entry.lineCount.toString()}\">Use for prompt</button>`,
-        "  </header>",
-        "  <pre class=\"code-block\"><code>",
+        `<section class="file-block" data-file-block data-file-type-key="${fileTypeKey}" data-file-type-label="${fileTypeDisplay}">`,
+        `  <button type="button" class="file-divider" data-divider data-path="${filePathAttr}" data-type-key="${fileTypeKey}" data-start="1" data-end="${entry.lineCount.toString()}" aria-expanded="true"><span class="divider-path">/// ${filePath}</span><span class="divider-type">${fileTypeDisplay}</span></button>`,
+        `  <pre class="code-block"><code class="${languageClass}">`,
         code,
         "  </code></pre>",
-        "</article>",
+        "</section>",
       ].join("\n");
     })
     .join("\n");
+}
+
+function detectHighlightLanguage(filePath: string): string {
+  const extension = path.extname(filePath).toLowerCase();
+  switch (extension) {
+    case ".ts":
+      return "typescript";
+    case ".tsx":
+      return "typescript";
+    case ".js":
+    case ".cjs":
+    case ".mjs":
+      return "javascript";
+    case ".jsx":
+      return "jsx";
+    case ".json":
+      return "json";
+    case ".css":
+      return "css";
+    case ".scss":
+      return "scss";
+    case ".html":
+    case ".htm":
+      return "xml";
+    case ".md":
+      return "markdown";
+    case ".yml":
+    case ".yaml":
+      return "yaml";
+    case ".sh":
+      return "bash";
+    case ".rs":
+      return "rust";
+    case ".go":
+      return "go";
+    case ".py":
+      return "python";
+    case ".java":
+      return "java";
+    case ".swift":
+      return "swift";
+    case ".toml":
+      return "ini";
+    case ".xml":
+      return "xml";
+    default:
+      return "plaintext";
+  }
+}
+
+function renderCodeLines(content: string, language: string): string {
+  const lines = content.split("\n");
+  return lines
+    .map((line, index) => {
+      const highlighted = highlightLine(line, language);
+      const value = highlighted.length > 0 ? highlighted : "&nbsp;";
+      return `<span class="code-line"><span class="line-number">${(index + 1).toString()}</span><span class="line-content">${value}</span></span>`;
+    })
+    .join("\n");
+}
+
+function highlightLine(line: string, language: string): string {
+  if (line.length === 0) {
+    return "";
+  }
+
+  if (language === "plaintext") {
+    return escapeHtml(line);
+  }
+
+  try {
+    return hljs.highlight(line, { language, ignoreIllegals: true }).value;
+  } catch {
+    return escapeHtml(line);
+  }
+}
+
+function computeDevHash(): string {
+  const paths = [
+    path.resolve(import.meta.dir, "index.ts"),
+    ...Object.values(STATIC_ASSETS).map((asset) => path.join(PUBLIC_DIR, asset.fileName)),
+  ];
+
+  const statBits: string[] = [];
+  for (const filePath of paths) {
+    if (!existsSync(filePath)) {
+      statBits.push(`${filePath}:missing`);
+      continue;
+    }
+
+    const stat = statSync(filePath);
+    statBits.push(`${filePath}:${Math.floor(stat.mtimeMs).toString()}:${stat.size.toString()}`);
+  }
+
+  return Bun.hash(statBits.join("|"))
+    .toString(16)
+    .padStart(16, "0");
 }
 
 function renderModelOptions(catalog: readonly OpencodeModelCatalogItem[]): string {
@@ -301,32 +401,10 @@ function renderRunResult(result: {
   filePath?: string;
   model?: string;
 }): string {
-  const stateClass = result.success ? "is-success" : "is-error";
-  const stateLabel = result.success ? "Run completed" : "Run failed";
+  const runState = result.success ? "done" : "failed";
+  const detail = result.error ?? result.messages[result.messages.length - 1] ?? "";
 
-  const contextBits = [
-    result.filePath ? `file ${result.filePath}` : undefined,
-    result.model ? `model ${result.model}` : undefined,
-  ].filter((value): value is string => Boolean(value));
-
-  const contextLine = contextBits.length > 0 ? `<p class="run-context">${escapeHtml(contextBits.join(" | "))}</p>` : "";
-
-  const messages = result.messages.length
-    ? result.messages.map((message) => `<li>${escapeHtml(message)}</li>`).join("\n")
-    : "<li>No model messages were emitted.</li>";
-
-  const errorLine = result.error ? `<p class="run-error">${escapeHtml(result.error)}</p>` : "";
-
-  return [
-    `<article class="run-card ${stateClass}">`,
-    `  <h3>${escapeHtml(stateLabel)}</h3>`,
-    `  ${contextLine}`,
-    `  ${errorLine}`,
-    '  <ul class="run-message-list">',
-    `    ${messages}`,
-    "  </ul>",
-    "</article>",
-  ].join("\n");
+  return `<div data-run-state="${runState}" data-run-detail="${escapeHtmlAttribute(detail)}"></div>`;
 }
 
 function getFormValue(formData: { get: (name: string) => unknown }, key: string): string | undefined {
@@ -474,6 +552,16 @@ function jsonError(status: number, message: string): Response {
     status,
     headers: {
       "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
+function textOk(content: string): Response {
+  return new Response(content, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
       "Cache-Control": "no-store",
     },
   });
