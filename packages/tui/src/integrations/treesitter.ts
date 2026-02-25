@@ -28,6 +28,14 @@ const CUSTOM_TREE_SITTER_PARSERS: FiletypeParserOptions[] = [
       highlights: ["https://raw.githubusercontent.com/tree-sitter/tree-sitter-json/master/queries/highlights.scm"],
     },
   },
+  {
+    filetype: "svelte",
+    wasm: "https://unpkg.com/tree-sitter-svelte/tree-sitter-svelte.wasm",
+    queries: {
+      highlights: ["https://raw.githubusercontent.com/Himujjal/tree-sitter-svelte/master/queries/highlights.scm"],
+      injections: ["https://raw.githubusercontent.com/Himujjal/tree-sitter-svelte/master/queries/injections.scm"],
+    },
+  },
 ];
 
 let registeredCustomParsers = false;
