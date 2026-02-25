@@ -78,6 +78,7 @@ export type FileType =
   | "ruby"
   | "rust"
   | "shell"
+  | "svelte"
   | "toml"
   | "typescript"
   | "yaml";
@@ -95,6 +96,7 @@ type FileTypeExtension =
   | ".rb"
   | ".rs"
   | ".sh"
+  | ".svelte"
   | ".toml"
   | ".ts"
   | ".tsx"
@@ -152,6 +154,7 @@ const FILE_TYPE_BY_EXTENSION: Record<FileTypeExtension, FileType> = {
   ".rb": "ruby",
   ".rs": "rust",
   ".sh": "shell",
+  ".svelte": "svelte",
   ".toml": "toml",
   ".ts": "typescript",
   ".tsx": "typescript",
