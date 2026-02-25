@@ -5,6 +5,16 @@ import { listOpencodeModelCatalog, startHeadlessOpencodeRun } from "../../server
 import { isLoopbackAddress } from "../../server/src/security";
 import type { CodeFileEntryPayload, OpencodeModelCatalogItem } from "../../server/src/types";
 import { getIgnoredDirs, loadCodeFileEntries } from "../../server/src/workspace";
+import {
+  SVELTE_VIEW_PATHS,
+  renderAppShellDocument,
+  renderCodeStackFragment,
+  renderModelOptionsFragment,
+  renderRunResultFragment,
+  type CodeStackRenderableEntry,
+  type ModelOptionRenderable,
+  type RunResultRenderable,
+} from "./svelte-renderer";
 
 const DEFAULT_PORT = 4173;
 const READY_PREFIX = "COMMENT_MODE_PWA_READY ";
@@ -22,11 +32,6 @@ type StaticAsset = {
 };
 
 const STATIC_ASSETS: Record<string, StaticAsset> = {
-  "/": {
-    fileName: "index.html",
-    contentType: "text/html; charset=utf-8",
-    cacheControl: "no-store",
-  },
   "/styles.css": {
     fileName: "styles.css",
     contentType: "text/css; charset=utf-8",
@@ -87,7 +92,7 @@ async function main(): Promise<void> {
       url: `http://127.0.0.1:${server.port}`,
       rootDir: config.rootDir,
       localhostOnly: true,
-      framework: "htmx",
+      framework: "svelte-compiler",
     })}`,
   );
 }
@@ -99,6 +104,10 @@ async function handleRequest(
 ): Promise<Response> {
   const requestUrl = new URL(request.url);
   const pathname = requestUrl.pathname;
+
+  if ((pathname === "/" || pathname === "/index.html") && request.method === "GET") {
+    return htmlResponse(await renderAppShellDocument());
+  }
 
   const staticResponse = serveStatic(pathname);
   if (staticResponse) {
@@ -115,12 +124,12 @@ async function handleRequest(
 
   if (pathname === "/fragments/code-stack" && request.method === "GET") {
     const entries = await loadCodeFileEntries(startup.rootDir, ignored);
-    return htmlResponse(renderCodeStack(entries));
+    return htmlResponse(await renderCodeStackFragment(toCodeStackEntries(entries)));
   }
 
   if (pathname === "/fragments/model-options" && request.method === "GET") {
     const catalog = await listOpencodeModelCatalog(startup.rootDir);
-    return htmlResponse(renderModelOptions(catalog));
+    return htmlResponse(await renderModelOptionsFragment(toModelOptions(catalog)));
   }
 
   if (pathname === "/fragments/run" && request.method === "POST") {
@@ -153,22 +162,22 @@ async function handleRunFragment(
   try {
     formData = await request.formData();
   } catch {
-    return htmlResponse(renderRunResult({ success: false, messages: [], error: "Invalid form payload." }), 400);
+    return await runResultResponse({ success: false, messages: [], error: "Invalid form payload." }, 400);
   }
 
   const prompt = getFormValue(formData, "prompt");
   if (!prompt) {
-    return htmlResponse(renderRunResult({ success: false, messages: [], error: "Prompt is required." }), 400);
+    return await runResultResponse({ success: false, messages: [], error: "Prompt is required." }, 400);
   }
 
   const entries = await loadCodeFileEntries(startup.rootDir, ignored);
   if (entries.length === 0) {
-    return htmlResponse(
-      renderRunResult({
+    return await runResultResponse(
+      {
         success: false,
         messages: [],
         error: "No code files found in this workspace.",
-      }),
+      },
       400,
     );
   }
@@ -176,7 +185,7 @@ async function handleRunFragment(
   const preferredPath = getFormValue(formData, "filePath");
   const selectedEntry = entries.find((entry) => entry.relativePath === preferredPath) ?? entries[0];
   if (!selectedEntry) {
-    return htmlResponse(renderRunResult({ success: false, messages: [], error: "Unable to resolve a file." }), 400);
+    return await runResultResponse({ success: false, messages: [], error: "Unable to resolve a file." }, 400);
   }
 
   const modelCatalog = await listOpencodeModelCatalog(startup.rootDir);
@@ -184,12 +193,12 @@ async function handleRunFragment(
   const defaultModel = modelCatalog[0]?.model;
   const model = requestedModel ?? defaultModel;
   if (!model) {
-    return htmlResponse(
-      renderRunResult({
+    return await runResultResponse(
+      {
         success: false,
         messages: [],
         error: "No model available. Confirm the opencode CLI has a configured model.",
-      }),
+      },
       400,
     );
   }
@@ -232,55 +241,41 @@ async function handleRunFragment(
   });
 
   if (!runResult.ok) {
-    return htmlResponse(
-      renderRunResult({
+    return await runResultResponse(
+      {
         success: false,
         messages: dedupeMessages(runMessages),
         error: runResult.error,
-      }),
+      },
       500,
     );
   }
 
   const outcome = await runFinished;
-  return htmlResponse(
-    renderRunResult({
+  return await runResultResponse(
+    {
       success: outcome.success,
       error: outcome.error,
       messages: dedupeMessages(runMessages),
-      filePath: selectedEntry.relativePath,
-      model,
-    }),
+    },
     outcome.success ? 200 : 500,
   );
 }
 
-function renderCodeStack(entries: readonly CodeFileEntryPayload[]): string {
-  if (entries.length === 0) {
-    return '<p class="empty-state">No code files were found in this workspace.</p>';
-  }
+function toCodeStackEntries(entries: readonly CodeFileEntryPayload[]): CodeStackRenderableEntry[] {
+  return entries.map((entry) => {
+    const language = detectHighlightLanguage(entry.relativePath);
+    const fileTypeLabel = entry.typeLabel.trim();
 
-  return entries
-    .map((entry) => {
-      const filePath = escapeHtml(entry.relativePath);
-      const filePathAttr = escapeHtmlAttribute(entry.relativePath);
-      const language = detectHighlightLanguage(entry.relativePath);
-      const code = renderCodeLines(entry.content.length > 0 ? entry.content : "\n", language);
-      const languageClass = `hljs language-${escapeHtmlAttribute(language)}`;
-      const fileTypeLabel = entry.typeLabel.trim();
-      const fileTypeKey = escapeHtmlAttribute(fileTypeLabel.toLowerCase());
-      const fileTypeDisplay = escapeHtml(fileTypeLabel);
-
-      return [
-        `<section class="file-block" data-file-block data-file-type-key="${fileTypeKey}" data-file-type-label="${fileTypeDisplay}">`,
-        `  <button type="button" class="file-divider" data-divider data-path="${filePathAttr}" data-type-key="${fileTypeKey}" data-start="1" data-end="${entry.lineCount.toString()}" aria-expanded="true"><span class="divider-path">/// ${filePath}</span><span class="divider-type">${fileTypeDisplay}</span></button>`,
-        `  <pre class="code-block"><code class="${languageClass}">`,
-        code,
-        "  </code></pre>",
-        "</section>",
-      ].join("\n");
-    })
-    .join("\n");
+    return {
+      path: entry.relativePath,
+      fileTypeLabel,
+      fileTypeKey: fileTypeLabel.toLowerCase(),
+      lineCount: entry.lineCount,
+      language,
+      codeHtml: renderCodeLines(entry.content.length > 0 ? entry.content : "\n", language),
+    };
+  });
 }
 
 function detectHighlightLanguage(filePath: string): string {
@@ -361,6 +356,8 @@ function highlightLine(line: string, language: string): string {
 function computeDevHash(): string {
   const paths = [
     path.resolve(import.meta.dir, "index.ts"),
+    path.resolve(import.meta.dir, "svelte-renderer.ts"),
+    ...SVELTE_VIEW_PATHS,
     ...Object.values(STATIC_ASSETS).map((asset) => path.join(PUBLIC_DIR, asset.fileName)),
   ];
 
@@ -380,31 +377,18 @@ function computeDevHash(): string {
     .padStart(16, "0");
 }
 
-function renderModelOptions(catalog: readonly OpencodeModelCatalogItem[]): string {
-  if (catalog.length === 0) {
-    return '<option value="" selected>No models found</option>';
-  }
-
-  return catalog
-    .map((item, index) => {
-      const variants = item.variants.length > 0 ? ` (${item.variants.join(", ")})` : "";
-      const selected = index === 0 ? " selected" : "";
-      return `<option value="${escapeHtmlAttribute(item.model)}"${selected}>${escapeHtml(item.model + variants)}</option>`;
-    })
-    .join("\n");
+function toModelOptions(catalog: readonly OpencodeModelCatalogItem[]): ModelOptionRenderable[] {
+  return catalog.map((item) => {
+    const variants = item.variants.length > 0 ? ` (${item.variants.join(", ")})` : "";
+    return {
+      model: item.model,
+      label: item.model + variants,
+    };
+  });
 }
 
-function renderRunResult(result: {
-  success: boolean;
-  messages: readonly string[];
-  error?: string;
-  filePath?: string;
-  model?: string;
-}): string {
-  const runState = result.success ? "done" : "failed";
-  const detail = result.error ?? result.messages[result.messages.length - 1] ?? "";
-
-  return `<div data-run-state="${runState}" data-run-detail="${escapeHtmlAttribute(detail)}"></div>`;
+async function runResultResponse(result: RunResultRenderable, status: number): Promise<Response> {
+  return htmlResponse(await renderRunResultFragment(result), status);
 }
 
 function getFormValue(formData: { get: (name: string) => unknown }, key: string): string | undefined {
@@ -521,10 +505,6 @@ function escapeHtml(value: string): string {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
-}
-
-function escapeHtmlAttribute(value: string): string {
-  return escapeHtml(value);
 }
 
 function htmlResponse(content: string, status = 200): Response {
