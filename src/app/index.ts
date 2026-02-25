@@ -8,6 +8,7 @@ import {
 import { Camera } from "../controllers/camera";
 import { OpenCode, type OpenCodeSubmission } from "../integrations/opencode";
 import { Layout } from "../controllers/layout";
+import { hydrateCodeFileEntry } from "../files";
 import { Navigation } from "../controllers/navigation";
 import {
   Prompt,
@@ -71,6 +72,7 @@ type CursorRestorePoint = {
 };
 
 const ACTION_CHIPS: readonly string[] = [];
+const LAZY_CONTENT_MODE_FILE_THRESHOLD = 250;
 
 export class CodeBrowserApp {
   private readonly renderer: CliRenderer;
@@ -98,6 +100,8 @@ export class CodeBrowserApp {
   private readonly fileExplorer = new FileExplorer();
   private readonly agentTimeline: AgentTimeline;
   private dividerByFilePath = new Map<string, TextRenderable>();
+  private readonly pendingEntryLoads = new Set<string>();
+  private lazyContentModeEnabled = false;
   private readonly sourceCleanupFns: Array<() => void> = [];
   private readonly signalRegistrationIds: string[] = [];
 
@@ -186,6 +190,7 @@ export class CodeBrowserApp {
     this.sortedTypes = [];
     this.enabledTypes = new Map();
     this.state.viewMode = modes.getMode();
+    this.enableLazyContentModeIfNeeded();
     this.recomputeTypesState();
     this.applyTheme();
   }
@@ -201,6 +206,7 @@ export class CodeBrowserApp {
 
   public refreshEntries(entries: CodeFileEntry[]): void {
     this.entries = entries;
+    this.enableLazyContentModeIfNeeded();
     this.pruneCollapsedFiles();
     this.pruneAgentUpdates();
     this.recomputeTypesState();
@@ -482,6 +488,9 @@ export class CodeBrowserApp {
     const cursorTargetFilePath =
       currentFilePath && this.fileExplorer.isCollapsed(currentFilePath) ? currentFilePath : undefined;
     this.renderContent({ cursorTargetFilePath });
+    if (typeof cursorTargetFilePath === "string") {
+      this.cursor.goToLineAtMinVisibleHeight(this.cursor.cursorLine);
+    }
   }
 
   private renderChips(): void {
@@ -565,7 +574,7 @@ export class CodeBrowserApp {
       if (this.fileExplorer.isCollapsed(entry.relativePath)) {
         const result = this.documentBlocks.addCollapsedPlaceholderBlock(
           entry,
-          entry.lineCount,
+          entry.isContentLoaded ? entry.lineCount : null,
           dividerWidth,
           1,
           nextLineNumber,
@@ -585,6 +594,19 @@ export class CodeBrowserApp {
           nextDisplayRow = agentResult.nextDisplayRow;
           nextUpdateIndex += 1;
         }
+      } else if (!entry.isContentLoaded) {
+        this.scheduleFileContentLoad(entry);
+        const result = this.documentBlocks.addCollapsedPlaceholderBlock(
+          entry,
+          null,
+          dividerWidth,
+          1,
+          nextLineNumber,
+          nextDisplayRow,
+          "↑ loading file content... ↓",
+        );
+        nextLineNumber = result.nextLineNumber;
+        nextDisplayRow = result.nextDisplayRow;
       } else {
         const sourceLines = entry.content.split("\n");
         let fileLineCursor = 1;
@@ -870,6 +892,31 @@ export class CodeBrowserApp {
 
   private pruneCollapsedFiles(): void {
     this.fileExplorer.pruneCollapsedFiles(this.entries);
+  }
+
+  private enableLazyContentModeIfNeeded(): void {
+    if (this.lazyContentModeEnabled) return;
+    if (this.entries.length < LAZY_CONTENT_MODE_FILE_THRESHOLD) return;
+    if (this.entries.every((entry) => entry.isContentLoaded)) return;
+
+    this.lazyContentModeEnabled = true;
+    this.fileExplorer.collapseAll(this.entries);
+    this.state.viewMode = modes.setMode("files");
+  }
+
+  private scheduleFileContentLoad(entry: CodeFileEntry): void {
+    if (entry.isContentLoaded) return;
+    if (this.pendingEntryLoads.has(entry.relativePath)) return;
+
+    this.pendingEntryLoads.add(entry.relativePath);
+    void hydrateCodeFileEntry(entry)
+      .then(() => {
+        this.pendingEntryLoads.delete(entry.relativePath);
+        this.renderContent({ cursorTargetFilePath: entry.relativePath });
+      })
+      .catch(() => {
+        this.pendingEntryLoads.delete(entry.relativePath);
+      });
   }
 
 }

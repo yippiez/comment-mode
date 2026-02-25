@@ -7,12 +7,16 @@ import { isCodeExtension, resolveFileType, resolveTypeLabel, resolveTypePriority
 export type WorkspaceCodeFileEntry = {
   relativePath: string;
   content: string;
+  isContentLoaded: boolean;
   filetype?: string;
   typeLabel: string;
   typePriority: number;
   lineCount: number;
   uncommittedLines: number[];
+  markAllLinesUncommitted: boolean;
 };
+
+const EAGER_CONTENT_FILE_LIMIT = 250;
 
 export type WorkspaceWatcher = {
   close: () => void;
@@ -43,35 +47,60 @@ export async function loadCodeFileEntries(
   ignoredDirs: ReadonlySet<string>,
 ): Promise<WorkspaceCodeFileEntry[]> {
   const files = await listCodeFiles(root, ignoredDirs);
+  const eagerLoadContent = files.length <= EAGER_CONTENT_FILE_LIMIT;
   const entries = await Promise.all(
     files.map(async (relativePath) => {
-      const absolutePath = path.join(root, relativePath);
-      const content = await readFile(absolutePath, "utf8");
       const typeLabel = resolveTypeLabel(relativePath);
-      const lineCount = countLogicalLines(content);
+      let content = "";
+      let lineCount = 1;
+      let isContentLoaded = false;
+
+      if (eagerLoadContent) {
+        try {
+          const absolutePath = path.join(root, relativePath);
+          content = await readFile(absolutePath, "utf8");
+          lineCount = countLogicalLines(content);
+          isContentLoaded = true;
+        } catch {
+          content = "";
+          lineCount = 1;
+          isContentLoaded = false;
+        }
+      }
 
       return {
         relativePath,
         content,
+        isContentLoaded,
         filetype: resolveFileType(relativePath),
         typeLabel,
         typePriority: resolveTypePriority(typeLabel),
         lineCount,
         uncommittedLines: [] as number[],
+        markAllLinesUncommitted: false as boolean,
       } satisfies WorkspaceCodeFileEntry;
     }),
   );
 
-  const linesByFile = collectUncommittedLinesByFile(root, entries);
+  const knownFiles = new Set(entries.map((entry) => entry.relativePath));
+  const uncommitted = collectUncommittedLinesByFile(root, knownFiles);
   for (const entry of entries) {
-    const lines = linesByFile.get(entry.relativePath) ?? new Set<number>();
+    const lines = uncommitted.linesByFile.get(entry.relativePath) ?? new Set<number>();
     entry.uncommittedLines = [...lines].sort((a, b) => a - b);
+    entry.markAllLinesUncommitted = uncommitted.wholeFileUncommitted.has(entry.relativePath);
   }
 
   return entries;
 }
 
 export async function listCodeFiles(root: string, ignoredDirs: ReadonlySet<string>): Promise<string[]> {
+  const gitVisibleFiles = listGitWorkspaceFiles(root);
+  if (gitVisibleFiles) {
+    return gitVisibleFiles
+      .filter((relativePath) => isCodeExtension(path.extname(relativePath).toLowerCase()))
+      .sort((a, b) => a.localeCompare(b));
+  }
+
   const results: string[] = [];
 
   const walk = async (dir: string): Promise<void> => {
@@ -194,9 +223,51 @@ function countLogicalLines(content: string): number {
   return content.split("\n").length;
 }
 
+function listGitWorkspaceFiles(root: string): string[] | null {
+  const probe = spawnSync("git", ["-C", root, "rev-parse", "--is-inside-work-tree"], {
+    encoding: "utf8",
+  });
+
+  if (probe.status !== 0 || probe.stdout.trim() !== "true") {
+    return null;
+  }
+
+  const lsFiles = spawnSync(
+    "git",
+    ["-C", root, "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+    {
+      encoding: "utf8",
+    },
+  );
+
+  if (lsFiles.status !== 0) {
+    return null;
+  }
+
+  return [...new Set((lsFiles.stdout ?? "").split("\0").filter(Boolean))];
+}
+
 function filterGitIgnored(root: string, files: string[]): string[] {
   if (files.length === 0) return files;
 
+  const checkIgnore = spawnSync("git", ["-C", root, "check-ignore", "--no-index", "-z", "--stdin"], {
+    input: `${files.join("\0")}\0`,
+    encoding: "utf8",
+  });
+
+  if (checkIgnore.status === 129) {
+    return filterGitIgnoredInRepository(root, files);
+  }
+
+  if (checkIgnore.status !== 0 && checkIgnore.status !== 1) {
+    return files;
+  }
+
+  const ignored = new Set(checkIgnore.stdout.split("\0").filter(Boolean));
+  return files.filter((file) => !ignored.has(file));
+}
+
+function filterGitIgnoredInRepository(root: string, files: string[]): string[] {
   const probe = spawnSync("git", ["-C", root, "rev-parse", "--is-inside-work-tree"], {
     encoding: "utf8",
   });
@@ -218,16 +289,24 @@ function filterGitIgnored(root: string, files: string[]): string[] {
   return files.filter((file) => !ignored.has(file));
 }
 
+type UncommittedLinesSnapshot = {
+  linesByFile: Map<string, Set<number>>;
+  wholeFileUncommitted: Set<string>;
+};
+
 function collectUncommittedLinesByFile(
   root: string,
-  entries: readonly Pick<WorkspaceCodeFileEntry, "relativePath" | "lineCount">[],
-): Map<string, Set<number>> {
+  knownFiles: ReadonlySet<string>,
+): UncommittedLinesSnapshot {
   const probe = spawnSync("git", ["-C", root, "rev-parse", "--is-inside-work-tree"], {
     encoding: "utf8",
   });
 
   if (probe.status !== 0 || probe.stdout.trim() !== "true") {
-    return new Map();
+    return {
+      linesByFile: new Map(),
+      wholeFileUncommitted: new Set(),
+    };
   }
 
   const trackedOrStagedPatch = spawnSync(
@@ -268,22 +347,22 @@ function collectUncommittedLinesByFile(
   });
 
   const linesByFile = new Map<string, Set<number>>();
+  const wholeFileUncommitted = new Set<string>();
   mergePatchChangedLines(linesByFile, trackedOrStagedPatch.stdout ?? "");
   mergePatchChangedLines(linesByFile, stagedPatch.stdout ?? "");
 
   if (untracked.status === 0) {
     const untrackedFiles = new Set((untracked.stdout ?? "").split("\0").filter(Boolean));
-    for (const entry of entries) {
-      if (!untrackedFiles.has(entry.relativePath)) continue;
-      const allLines = new Set<number>();
-      for (let line = 1; line <= entry.lineCount; line += 1) {
-        allLines.add(line);
-      }
-      linesByFile.set(entry.relativePath, allLines);
+    for (const filePath of untrackedFiles) {
+      if (!knownFiles.has(filePath)) continue;
+      wholeFileUncommitted.add(filePath);
     }
   }
 
-  return linesByFile;
+  return {
+    linesByFile,
+    wholeFileUncommitted,
+  };
 }
 
 function mergePatchChangedLines(target: Map<string, Set<number>>, patch: string): void {
@@ -316,6 +395,11 @@ function mergePatchChangedLines(target: Map<string, Set<number>>, patch: string)
 }
 
 async function listWatchableDirs(root: string, ignoredDirs: ReadonlySet<string>): Promise<string[]> {
+  const gitVisibleFiles = listGitWorkspaceFiles(root);
+  if (gitVisibleFiles) {
+    return buildWatchableDirsFromFiles(root, gitVisibleFiles);
+  }
+
   const dirs: string[] = [];
 
   async function walk(dir: string): Promise<void> {
@@ -337,4 +421,21 @@ async function listWatchableDirs(root: string, ignoredDirs: ReadonlySet<string>)
 
   await walk(root);
   return dirs;
+}
+
+function buildWatchableDirsFromFiles(root: string, relativePaths: readonly string[]): string[] {
+  const dirs = new Set<string>([root]);
+
+  for (const relativePath of relativePaths) {
+    let currentDir = path.dirname(path.join(root, relativePath));
+    while (currentDir.startsWith(root)) {
+      dirs.add(currentDir);
+      if (currentDir === root) break;
+      const parentDir = path.dirname(currentDir);
+      if (parentDir === currentDir) break;
+      currentDir = parentDir;
+    }
+  }
+
+  return [...dirs].sort((a, b) => a.localeCompare(b));
 }

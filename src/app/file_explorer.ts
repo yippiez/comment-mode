@@ -33,6 +33,10 @@ export class FileExplorer {
     }
   }
 
+  public collapseAll(entries: readonly CodeFileEntry[]): void {
+    this.collapsedFiles = new Set(entries.map((entry) => entry.relativePath));
+  }
+
   public ensureDirectoryVisible(entries: readonly CodeFileEntry[]): void {
     this.directoryPath = ensureFilesModeDirectoryVisible(entries, this.directoryPath);
   }

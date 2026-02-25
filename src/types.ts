@@ -47,6 +47,8 @@ export type CodeFileEntry = {
   relativePath: string;
   /** Full file text used for rendering and line extraction. */
   content: string;
+  /** Whether `content` currently contains loaded source text. */
+  isContentLoaded: boolean;
   /** Optional syntax-highlighting filetype override. */
   filetype?: string;
   /** Logical file-type chip label (for filtering). */
@@ -57,6 +59,8 @@ export type CodeFileEntry = {
   lineCount: number;
   /** 1-based file line numbers currently marked as uncommitted. */
   uncommittedLines: Set<number>;
+  /** True when the whole file should be marked as uncommitted. */
+  markAllLinesUncommitted: boolean;
 };
 
 /**
