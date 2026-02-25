@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { watch, type FSWatcher } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
-import { CODE_EXTENSIONS, resolveFiletype, resolveTypeLabel, resolveTypePriority } from "./file-types";
+import { isCodeExtension, resolveFileType, resolveTypeLabel, resolveTypePriority } from "./file-types";
 import type { CodeFileEntryPayload } from "./types";
 
 type WorkspaceWatcher = {
@@ -44,7 +44,7 @@ export async function loadCodeFileEntries(
       return {
         relativePath,
         content,
-        filetype: resolveFiletype(relativePath),
+        filetype: resolveFileType(relativePath),
         typeLabel,
         typePriority: resolveTypePriority(typeLabel),
         lineCount,
@@ -76,7 +76,7 @@ export async function listCodeFiles(root: string, ignoredDirs: ReadonlySet<strin
 
       if (!entry.isFile()) continue;
       const ext = path.extname(entry.name).toLowerCase();
-      if (!CODE_EXTENSIONS.has(ext)) continue;
+      if (!isCodeExtension(ext)) continue;
       const relativePath = path.relative(root, path.join(dir, entry.name)).split(path.sep).join("/");
       results.push(relativePath);
     }

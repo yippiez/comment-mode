@@ -21,6 +21,10 @@ async function main(): Promise<void> {
     runtime.close();
   };
 
+  // Register shutdown handler for all termination signals to ensure cleanup runs
+  // SIGINT: Ctrl+C in terminal
+  // SIGTERM: kill command or container stop
+  // exit: Node.js process termination (always runs)
   process.on("SIGINT", () => {
     shutdown();
     process.exit(0);
