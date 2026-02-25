@@ -1,10 +1,31 @@
 import type { KeyEvent } from "@opentui/core";
 import type { PromptComposerField } from "../components/prompt-composer-bar";
-import { SIGNALS } from "./catalog";
-import { emit, SignalGroup } from "./core";
+import { SIGNALS, emit, SignalGroup } from "../signals";
 import type { FocusMode } from "../types";
 import { CHIPS_KEYMAP, CODE_KEYMAP } from "../shortcuts";
-import { subscribeToSource, type EventSource } from "./subscription";
+
+type EventSource<EventName extends string, Handler extends (...args: any[]) => void> = {
+  on: (event: EventName, handler: Handler) => unknown;
+  off?: (event: EventName, handler: Handler) => unknown;
+  removeListener?: (event: EventName, handler: Handler) => unknown;
+};
+
+function subscribeToSource<EventName extends string, Handler extends (...args: any[]) => void>(
+  source: EventSource<EventName, Handler>,
+  eventName: EventName,
+  handler: Handler,
+): () => void {
+  source.on(eventName, handler);
+  return () => {
+    if (typeof source.off === "function") {
+      source.off(eventName, handler);
+      return;
+    }
+    if (typeof source.removeListener === "function") {
+      source.removeListener(eventName, handler);
+    }
+  };
+}
 
 type KeypressSource = EventSource<"keypress", (key: KeyEvent) => void>;
 
@@ -258,4 +279,27 @@ export function registerKeyboardSignalBindings(
   };
 
   return subscribeToSource(source, "keypress", onKeypress);
+}
+
+type ScrollBarChangePayload = { position?: number } | undefined;
+type VerticalScrollBarSource = EventSource<"change", (event: ScrollBarChangePayload) => void>;
+
+export function registerScrollSignalBindings(source: VerticalScrollBarSource): () => void {
+  const onChange = (event: ScrollBarChangePayload): void => {
+    const position = event?.position;
+    if (typeof position !== "number") return;
+    emit(SIGNALS.scrollVertical, position);
+  };
+
+  return subscribeToSource(source, "change", onChange);
+}
+
+type StdoutSource = EventSource<"resize", () => void>;
+
+export function registerSystemSignalBindings(source: StdoutSource): () => void {
+  const onResize = (): void => {
+    emit(SIGNALS.systemStdoutResize);
+  };
+
+  return subscribeToSource(source, "resize", onResize);
 }
