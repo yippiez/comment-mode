@@ -45,10 +45,20 @@ export class DocumentBlocks {
     nextDisplayRow: number,
   ): RenderCursor {
     const rowView = createFileTreeRowView(this.renderer, row, this.getFilesModeViewportWidth());
+    const lineView = new LineNumberRenderable(this.renderer, {
+      width: "100%",
+      target: rowView.codeView,
+      showLineNumbers: false,
+      minWidth: 0,
+      paddingRight: 0,
+      fg: theme.getCodeLineNumberColor(),
+      bg: theme.getTransparentColor(),
+    });
+    lineView.selectable = false;
 
-    this.scrollbox.add(rowView.codeView);
+    this.scrollbox.add(lineView);
     this.lineModel.addBlock({
-      lineView: null,
+      lineView,
       codeView: rowView.codeView,
       defaultLineNumberFg: theme.getCodeLineNumberColor(),
       defaultLineSigns: new Map(),
@@ -71,13 +81,17 @@ export class DocumentBlocks {
 
   public addCollapsedPlaceholderBlock(
     entry: CodeFileEntry,
-    collapsedLineCount: number,
+    collapsedLineCount: number | null,
     dividerWidth: number,
     fileLineStart: number,
     nextLineNumber: number,
     nextDisplayRow: number,
+    labelOverride?: string,
   ): RenderCursor {
-    const label = `↑ ${collapsedLineCount} lines collapsed (file) ↓`;
+    const label = labelOverride ??
+      (typeof collapsedLineCount === "number"
+        ? `↑ ${collapsedLineCount} lines collapsed (file) ↓`
+        : "↑ lazy loaded (open file to load) ↓");
     const content = formatCollapsedContentLine(label, dividerWidth);
 
     const code = new CodeRenderable(this.renderer, {
@@ -157,7 +171,7 @@ export class DocumentBlocks {
 
     for (let lineOffset = 0; lineOffset < renderedLineCount; lineOffset += 1) {
       const fileLine = fileLineStart + lineOffset;
-      if (!entry.uncommittedLines.has(fileLine)) continue;
+      if (!entry.markAllLinesUncommitted && !entry.uncommittedLines.has(fileLine)) continue;
       lineView.setLineSign(lineOffset, {
         before: "▌",
         beforeColor: theme.getUncommittedLineSignColor(),
