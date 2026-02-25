@@ -1,3 +1,10 @@
+/**
+ * Manages the rendering and state of agent timeline updates in the TUI.
+ *
+ * Handles displaying agent updates (with status, messages) as scrollable rows,
+ * tracks line mappings between update IDs and rendered lines, and applies
+ * visual highlights for selection and cursor positions.
+ */
 import { type CliRenderer, type ScrollBoxRenderable } from "@opentui/core";
 import { createAgentRow, type AgentRowDecoration } from "../components/agent-row";
 import { LineModel } from "../line-model";

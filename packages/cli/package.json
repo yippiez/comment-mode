@@ -1,9 +1,0 @@
-{
-  "name": "@comment-mode/cli",
-  "private": true,
-  "type": "module",
-  "module": "src/index.ts",
-  "scripts": {
-    "start": "bun run src/index.ts"
-  }
-}

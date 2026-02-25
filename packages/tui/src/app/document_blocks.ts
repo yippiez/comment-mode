@@ -1,3 +1,6 @@
+/**
+ * Manages document file tree rows, collapsed blocks for rendering placeholders, and code content in the TUI.
+ */
 import {
   CodeRenderable,
   LineNumberRenderable,
