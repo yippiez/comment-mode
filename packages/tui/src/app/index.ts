@@ -3,7 +3,6 @@ import {
   ScrollBoxRenderable,
   TextAttributes,
   TextRenderable,
-  type KeyEvent,
   type CliRenderer,
 } from "@opentui/core";
 import { Camera } from "../controllers/camera";
@@ -36,11 +35,12 @@ import {
 } from "../modes";
 import { Highlight } from "../controllers/highlight";
 import {
+  type KeyboardStateSnapshot,
+  registerAppSignalHandlers,
   registerKeyboardSignalBindings,
   registerScrollSignalBindings,
   registerSystemSignalBindings,
-  type KeyboardStateSnapshot,
-} from "./source_bindings";
+} from "./signal_bindings";
 import {
   renderTypeChips,
 } from "./render";
@@ -51,7 +51,6 @@ import {
   resolvePromptComposerLayout,
   type SelectionLineInfo,
 } from "./selection";
-import { registerAppSignalHandlers } from "./signal_bindings";
 import { FileExplorer } from "./file_explorer";
 import { AgentTimeline } from "./agent_timeline";
 import { DocumentBlocks } from "./document_blocks";
@@ -258,7 +257,6 @@ export class CodeBrowserApp {
       cyclePromptThinkingLevel: (delta) => this.prompt.cycleThinkingLevel(delta),
       refreshPromptModels: () => this.prompt.refreshModels(),
       handlePromptInputKey: (key, consume) => this.prompt.handlePromptInputKey(key, consume),
-      consumeKey: (event) => this.consumeKey(event),
       handleExternalScroll: (position) => this.cursor.handleExternalScroll(position),
       renderContent: () => this.renderContent(),
       applyLineHighlights: () => this.applyLineHighlights(),
@@ -383,11 +381,6 @@ export class CodeBrowserApp {
     const updateId = this.agentTimeline.getUpdateIdAtLine(this.cursor.cursorLine);
     if (!updateId) return undefined;
     return this.agent.findById(updateId);
-  }
-
-  private consumeKey(key: KeyEvent): void {
-    key.preventDefault?.();
-    key.stopPropagation?.();
   }
 
   private isTypeEnabled(type: string): boolean {
