@@ -1,5 +1,8 @@
 {
   "name": "comment-mode",
+  "bin": {
+    "comment": "packages/tui/src/index.ts"
+  },
   "module": "packages/tui/src/index.ts",
   "type": "module",
   "private": true,
@@ -11,7 +14,8 @@
     "static": "bun run packages/tui/src/index.ts",
     "server": "bun run packages/server/src/index.ts",
     "cli": "bun run packages/cli/src/index.ts",
-    "pwa": "bun run packages/pwa/src/index.ts"
+    "pwa": "bun run --watch packages/pwa/src/index.ts",
+    "install": "bun link"
   },
   "devDependencies": {
     "@types/bun": "latest"
@@ -20,6 +24,7 @@
     "typescript": "^5"
   },
   "dependencies": {
-    "@opentui/core": "^0.1.80"
+    "@opentui/core": "^0.1.80",
+    "highlight.js": "^11.11.1"
   }
 }
