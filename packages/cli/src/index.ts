@@ -1,3 +1,5 @@
+#!/usr/bin/env bun
+
 type Command = "health" | "entries" | "models" | "run";
 
 type Options = {
