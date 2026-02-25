@@ -8,6 +8,7 @@
         "@opentui/core": "^0.1.80",
         "highlight.js": "^11.11.1",
         "svelte": "^5.35.6",
+        "web-tree-sitter": "0.25.10",
       },
       "devDependencies": {
         "@types/bun": "latest",
@@ -16,28 +17,8 @@
         "typescript": "^5",
       },
     },
-    "packages/cli": {
-      "name": "@comment-mode/cli",
-    },
-    "packages/pwa": {
-      "name": "@comment-mode/pwa",
-    },
-    "packages/server": {
-      "name": "@comment-mode/server",
-    },
-    "packages/tui": {
-      "name": "@comment-mode/tui",
-    },
   },
   "packages": {
-    "@comment-mode/cli": ["@comment-mode/cli@workspace:packages/cli"],
-
-    "@comment-mode/pwa": ["@comment-mode/pwa@workspace:packages/pwa"],
-
-    "@comment-mode/server": ["@comment-mode/server@workspace:packages/server"],
-
-    "@comment-mode/tui": ["@comment-mode/tui@workspace:packages/tui"],
-
     "@dimforge/rapier2d-simd-compat": ["@dimforge/rapier2d-simd-compat@0.17.3", "", {}, "sha512-bijvwWz6NHsNj5e5i1vtd3dU2pDhthSaTUZSh14DUGGKJfw8eMnlWZsxwHBxB/a3AXVNDjL9abuHw1k9FGR+jg=="],
 
     "@jimp/core": ["@jimp/core@1.6.0", "", { "dependencies": { "@jimp/file-ops": "1.6.0", "@jimp/types": "1.6.0", "@jimp/utils": "1.6.0", "await-to-js": "^3.0.0", "exif-parser": "^0.1.12", "file-type": "^16.0.0", "mime": "3" } }, "sha512-EQQlKU3s9QfdJqiSrZWNTxBs3rKXgO2W+GxNXDtwchF3a4IqxDheFX1ti+Env9hdJXDiYLp2jTRjlxhPthsk8w=="],
@@ -260,7 +241,7 @@
 
     "utif2": ["utif2@4.1.0", "", { "dependencies": { "pako": "^1.0.11" } }, "sha512-+oknB9FHrJ7oW7A2WZYajOcv4FcDR4CfoGB0dPNfxbi4GO05RRnFmt5oa23+9w32EanrYcSJWspUiJkLMs+37w=="],
 
-    "web-tree-sitter": ["web-tree-sitter@0.26.0", "", {}, "sha512-wGGAMnJEMF8wy33iEGxSvnyEOfVLzSaa3x6g66aEHsL/hsgFb6IVPrpacIordAMz198pE9qReCEqFUuM0pnfwg=="],
+    "web-tree-sitter": ["web-tree-sitter@0.25.10", "", { "peerDependencies": { "@types/emscripten": "^1.40.0" }, "optionalPeers": ["@types/emscripten"] }, "sha512-Y09sF44/13XvgVKgO2cNDw5rGk6s26MgoZPXLESvMXeefBf7i6/73eFurre0IsTW6E14Y0ArIzhUMmjoc7xyzA=="],
 
     "xml-parse-from-string": ["xml-parse-from-string@1.0.1", "", {}, "sha512-ErcKwJTF54uRzzNMXq2X5sMIy88zJvfN2DmdoQvy7PAFJ+tPRU6ydWuOKNMyfmOjdyBQTFREi60s0Y0SyI0G0g=="],
 
