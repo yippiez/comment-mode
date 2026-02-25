@@ -95,7 +95,9 @@ export class Prompt {
     this.visible = true;
     this.syncThinkingLevelFromModel();
     emit(SIGNALS.promptFocusModeChange, "prompt");
-    this.promptComposer.open(this.target.prompt);
+    if (!this.isComposerDestroyed()) {
+      this.promptComposer.open(this.target.prompt);
+    }
     this.render();
   }
 
@@ -104,7 +106,9 @@ export class Prompt {
     this.visible = false;
     this.target = null;
     this.anchorLine = null;
-    this.promptComposer.close();
+    if (!this.isComposerDestroyed()) {
+      this.promptComposer.close();
+    }
     emit(SIGNALS.promptFocusModeChange, "code");
   }
 
@@ -129,6 +133,7 @@ export class Prompt {
   }
 
   public handlePromptInputKey(key: KeyEvent, consumeKey: (event: KeyEvent) => void): void {
+    if (this.isComposerDestroyed()) return;
     const handled = this.promptComposer.promptInput.handleKeyPress(key);
     if (!handled) return;
     consumeKey(key);
@@ -259,21 +264,47 @@ export class Prompt {
       : levels[0] ?? Prompt.DEFAULT_THINKING_LEVEL;
   }
 
+  private isComposerDestroyed(): boolean {
+    return this.promptComposer.renderable.isDestroyed || this.promptComposer.promptInput.isDestroyed;
+  }
+
+  private isDestroyedError(error: unknown): boolean {
+    return error instanceof Error && error.message.toLowerCase().includes("destroyed");
+  }
+
   /** Renders prompt composer with current prompt, model, and thinking state. */
   private render(): void {
+    if (this.isComposerDestroyed()) return;
+
     const layout = this.resolveLayout(this.target, this.anchorLine);
-    this.promptComposer.render(
-      {
-        visible: this.visible && Boolean(this.target),
-        field: this.field,
-        model: this.target?.model ?? "",
-        thinkingLevel: this.target?.thinkingLevel ?? Prompt.DEFAULT_THINKING_LEVEL,
-        modelOptions: this.getModelOptions(),
-        thinkingOptions: this.getThinkingLevelsForModel(this.target?.model ?? ""),
-        loading: this.modelListLoading,
-        promptText: this.promptComposer.promptInput.plainText,
-      },
-      layout,
-    );
+    const visible = this.visible && Boolean(this.target);
+    let promptText = "";
+    if (visible) {
+      try {
+        promptText = this.promptComposer.promptInput.plainText;
+      } catch (error) {
+        if (this.isDestroyedError(error)) return;
+        throw error;
+      }
+    }
+
+    try {
+      this.promptComposer.render(
+        {
+          visible,
+          field: this.field,
+          model: this.target?.model ?? "",
+          thinkingLevel: this.target?.thinkingLevel ?? Prompt.DEFAULT_THINKING_LEVEL,
+          modelOptions: this.getModelOptions(),
+          thinkingOptions: this.getThinkingLevelsForModel(this.target?.model ?? ""),
+          loading: this.modelListLoading,
+          promptText,
+        },
+        layout,
+      );
+    } catch (error) {
+      if (this.isDestroyedError(error)) return;
+      throw error;
+    }
   }
 }
