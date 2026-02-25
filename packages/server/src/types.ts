@@ -1,4 +1,4 @@
-import type { resolveFileType } from "./file-types";
+import type { FileType } from "./file-types";
 
 export type ViewMode = "code" | "files";
 
@@ -7,7 +7,7 @@ export type JsonRecord = Record<string, unknown>;
 export type CodeFileEntryPayload = {
   relativePath: string;
   content: string;
-  filetype?: ReturnType<typeof resolveFileType>;
+  filetype?: FileType;
   typeLabel: string;
   typePriority: number;
   lineCount: number;
