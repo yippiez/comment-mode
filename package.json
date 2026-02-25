@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "@opentui/core": "^0.1.80",
-    "highlight.js": "^11.11.1"
+    "highlight.js": "^11.11.1",
+    "svelte": "^5.35.6"
   }
 }
