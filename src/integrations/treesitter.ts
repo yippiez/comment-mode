@@ -24,6 +24,21 @@ const CUSTOM_TREE_SITTER_PARSERS: FiletypeParserOptions[] = [
     },
   },
   {
+    filetype: "python",
+    wasm: "https://unpkg.com/tree-sitter-wasms@0.1.13/out/tree-sitter-python.wasm",
+    queries: {
+      highlights: ["https://raw.githubusercontent.com/tree-sitter/tree-sitter-python/master/queries/highlights.scm"],
+    },
+  },
+  {
+    filetype: "rust",
+    wasm: "https://unpkg.com/tree-sitter-wasms@0.1.13/out/tree-sitter-rust.wasm",
+    queries: {
+      highlights: ["https://raw.githubusercontent.com/tree-sitter/tree-sitter-rust/master/queries/highlights.scm"],
+      injections: ["https://raw.githubusercontent.com/tree-sitter/tree-sitter-rust/master/queries/injections.scm"],
+    },
+  },
+  {
     filetype: "svelte",
     wasm: "https://unpkg.com/tree-sitter-svelte/tree-sitter-svelte.wasm",
     queries: {
