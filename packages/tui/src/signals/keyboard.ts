@@ -1,6 +1,7 @@
 import type { KeyEvent } from "@opentui/core";
 import type { PromptComposerField } from "../components/prompt-composer-bar";
-import { emit, SignalGroup, SIGNALS } from "../signals";
+import { SIGNALS } from "./catalog";
+import { emit, SignalGroup } from "./core";
 import type { FocusMode } from "../types";
 import { CHIPS_KEYMAP, CODE_KEYMAP } from "../shortcuts";
 import { subscribeToSource, type EventSource } from "./subscription";
