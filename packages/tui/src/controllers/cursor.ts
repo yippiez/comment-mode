@@ -43,11 +43,15 @@ export class Cursor {
     totalLines: number,
     targetLine?: number,
     positionMode: "auto" | "top" | "bottom" | "keep" = "auto",
+    targetVisualAnchorLine?: number,
   ): void {
     const previous = this.line;
     this.totalLines = Math.max(0, totalLines);
     if (typeof targetLine === "number" && Number.isFinite(targetLine)) {
       this.line = Math.round(targetLine);
+    }
+    if (typeof targetVisualAnchorLine === "number" && Number.isFinite(targetVisualAnchorLine)) {
+      this.visualAnchorLine = Math.round(targetVisualAnchorLine);
     }
     this.clampState();
     emit(SIGNALS.cursorChanged);

@@ -35,9 +35,12 @@ import {
   modes,
 } from "../modes";
 import { Highlight } from "../controllers/highlight";
-import { registerKeyboardSignalBindings, type KeyboardStateSnapshot } from "../signals/keyboard";
-import { registerScrollSignalBindings } from "../signals/scroll";
-import { registerSystemSignalBindings } from "../signals/system";
+import {
+  registerKeyboardSignalBindings,
+  registerScrollSignalBindings,
+  registerSystemSignalBindings,
+  type KeyboardStateSnapshot,
+} from "./source_bindings";
 import {
   renderTypeChips,
 } from "./render";
@@ -55,6 +58,16 @@ import { DocumentBlocks } from "./document_blocks";
 type CodeBrowserAppOptions = {
   initialAgentUpdates?: AgentUpdate[];
   onAgentUpdatesChanged?: (updates: AgentUpdate[]) => void;
+};
+
+type CursorRestorePoint = {
+  cursorGlobalLine: number;
+  cursorFilePath: string | null;
+  cursorFileLine: number | null;
+  visualMode: boolean;
+  anchorGlobalLine: number | null;
+  anchorFilePath: string | null;
+  anchorFileLine: number | null;
 };
 
 const ACTION_CHIPS: readonly string[] = [];
@@ -472,7 +485,10 @@ export class CodeBrowserApp {
     const currentFilePath = this.lineModel.getCurrentFilePath(this.cursor.cursorLine);
     const changed = this.fileExplorer.toggleCollapse(this.state.viewMode, currentFilePath);
     if (!changed) return;
-    this.renderContent();
+
+    const cursorTargetFilePath =
+      currentFilePath && this.fileExplorer.isCollapsed(currentFilePath) ? currentFilePath : undefined;
+    this.renderContent({ cursorTargetFilePath });
   }
 
   private renderChips(): void {
@@ -492,7 +508,8 @@ export class CodeBrowserApp {
     });
   }
 
-  private renderContent(): void {
+  private renderContent(options: { cursorTargetFilePath?: string } = {}): void {
+    const restorePoint = this.captureCursorRestorePoint();
     clearChildren(this.scrollbox);
     this.lineModel.reset();
     this.visualHighlights.reset();
@@ -642,11 +659,91 @@ export class CodeBrowserApp {
 
     this.lineModel.setTotalLines(nextLineNumber - 1);
     const pendingPath = this.fileExplorer.consumePendingCodeTargetPath();
-    const targetAnchor = pendingPath ? this.lineModel.getFileAnchorByPath(pendingPath) : undefined;
-    this.cursor.configureWithTarget(this.lineModel.totalLines, targetAnchor?.line, "top");
+    const targetPath = options.cursorTargetFilePath ?? pendingPath;
+    const targetAnchor = targetPath ? this.lineModel.getFileAnchorByPath(targetPath) : undefined;
+    if (targetAnchor) {
+      this.cursor.configureWithTarget(this.lineModel.totalLines, targetAnchor.line, "top");
+    } else {
+      const restoreTarget = this.resolveCursorRestoreTarget(restorePoint);
+      this.cursor.configureWithTarget(
+        this.lineModel.totalLines,
+        restoreTarget.cursorLine,
+        "keep",
+        restoreTarget.visualAnchorLine,
+      );
+    }
     if (this.prompt.isVisible) {
       this.prompt.refreshView();
     }
+  }
+
+  private captureCursorRestorePoint(): CursorRestorePoint {
+    const cursorGlobalLine = this.cursor.cursorLine;
+    const cursorInfo = this.lineModel.getVisibleLineInfo(cursorGlobalLine);
+    if (!this.cursor.isVisualModeEnabled) {
+      return {
+        cursorGlobalLine,
+        cursorFilePath: cursorInfo?.filePath ?? null,
+        cursorFileLine: cursorInfo?.fileLine ?? null,
+        visualMode: false,
+        anchorGlobalLine: null,
+        anchorFilePath: null,
+        anchorFileLine: null,
+      };
+    }
+
+    const { start, end } = this.cursor.selectionRange;
+    const anchorGlobalLine = cursorGlobalLine === start ? end : start;
+    const anchorInfo = this.lineModel.getVisibleLineInfo(anchorGlobalLine);
+    return {
+      cursorGlobalLine,
+      cursorFilePath: cursorInfo?.filePath ?? null,
+      cursorFileLine: cursorInfo?.fileLine ?? null,
+      visualMode: true,
+      anchorGlobalLine,
+      anchorFilePath: anchorInfo?.filePath ?? null,
+      anchorFileLine: anchorInfo?.fileLine ?? null,
+    };
+  }
+
+  private resolveCursorRestoreTarget(restorePoint: CursorRestorePoint): {
+    cursorLine: number;
+    visualAnchorLine?: number;
+  } {
+    const cursorLine = this.resolveGlobalLineForRestore(
+      restorePoint.cursorGlobalLine,
+      restorePoint.cursorFilePath,
+      restorePoint.cursorFileLine,
+    );
+    if (!restorePoint.visualMode) {
+      return { cursorLine };
+    }
+
+    return {
+      cursorLine,
+      visualAnchorLine: this.resolveGlobalLineForRestore(
+        restorePoint.anchorGlobalLine ?? restorePoint.cursorGlobalLine,
+        restorePoint.anchorFilePath,
+        restorePoint.anchorFileLine,
+      ),
+    };
+  }
+
+  private resolveGlobalLineForRestore(
+    globalLine: number,
+    filePath: string | null,
+    fileLine: number | null,
+  ): number {
+    if (filePath && typeof fileLine === "number") {
+      const mappedLine = this.lineModel.findGlobalLineForFileLine(filePath, fileLine);
+      if (typeof mappedLine === "number") {
+        return mappedLine;
+      }
+    }
+    if (this.lineModel.totalLines <= 0) {
+      return 1;
+    }
+    return clamp(globalLine, 1, this.lineModel.totalLines);
   }
 
   private renderFilesModeContent(entries: readonly CodeFileEntry[]): void {
