@@ -7,11 +7,10 @@ import { ensurePatchedTreeSitterWorkerPath } from "./worker";
 
 await ensurePatchedTreeSitterWorkerPath();
 
-const rootDir = process.cwd();
 const renderer = await createCliRenderer({ exitOnCtrlC: true });
-const entries = await loadCodeFileEntries(rootDir);
+const entries = await loadCodeFileEntries();
 
-const app = new CodeBrowserApp(renderer, entries, { rootDir });
+const app = new CodeBrowserApp(renderer, entries);
 app.start();
 
 let refreshRunning = false;
@@ -27,7 +26,7 @@ const refreshEntries = async () => {
   do {
     refreshPending = false;
     try {
-      const nextEntries = await loadCodeFileEntries(rootDir);
+      const nextEntries = await loadCodeFileEntries();
       app.refreshEntries(nextEntries);
     } catch {
       // File updates may race with writes; next watch event will re-trigger refresh.
@@ -40,7 +39,7 @@ const workspaceChangeRegistrationId = register(SIGNALS.workspaceChanged, () => {
   void refreshEntries();
 });
 
-const watcher = await watchWorkspace(rootDir);
+const watcher = await watchWorkspace();
 
 renderer.on("destroy", () => {
   app.shutdown();

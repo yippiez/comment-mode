@@ -1,16 +1,11 @@
 import { createServerSocket } from "./server-client";
 import { emit, SIGNALS } from "./signals";
 
-type WatcherOptions = {
-  changeDebounceMs?: number;
-  rebuildDebounceMs?: number;
-};
-
 type WorkspaceWatcher = {
   close: () => void;
 };
 
-export async function watchWorkspace(_root: string, _options: WatcherOptions = {}): Promise<WorkspaceWatcher> {
+export async function watchWorkspace(): Promise<WorkspaceWatcher> {
   let closed = false;
   let activeSocket: Awaited<ReturnType<typeof createServerSocket>> | null = null;
   let detachEvents: (() => void) | null = null;

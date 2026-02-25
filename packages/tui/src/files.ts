@@ -5,12 +5,7 @@ type ServerCodeFileEntry = Omit<CodeFileEntry, "uncommittedLines"> & {
   uncommittedLines: number[];
 };
 
-export async function listCodeFiles(_root: string): Promise<string[]> {
-  const entries = await loadCodeFileEntries(_root);
-  return entries.map((entry) => entry.relativePath);
-}
-
-export async function loadCodeFileEntries(_root: string): Promise<CodeFileEntry[]> {
+export async function loadCodeFileEntries(): Promise<CodeFileEntry[]> {
   const payload = await requestServer<unknown>("workspace.entries.list");
   if (!Array.isArray(payload)) return [];
 

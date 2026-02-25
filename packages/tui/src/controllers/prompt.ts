@@ -34,7 +34,6 @@ export type PromptSubmission = {
 };
 
 type PromptOptions = {
-  rootDir: string;
   promptComposer: PromptComposerBar;
   resolveLayout: (
     target: PromptTarget | null,
@@ -45,7 +44,6 @@ type PromptOptions = {
 export class Prompt {
   private static readonly DEFAULT_THINKING_LEVEL = "auto";
 
-  private readonly rootDir: string;
   private readonly promptComposer: PromptComposerBar;
   private readonly resolveLayout: (
     target: PromptTarget | null,
@@ -62,7 +60,6 @@ export class Prompt {
 
   /** Initializes prompt controller dependencies and callbacks. */
   constructor(options: PromptOptions) {
-    this.rootDir = options.rootDir;
     this.promptComposer = options.promptComposer;
     this.resolveLayout = options.resolveLayout;
   }
@@ -144,75 +141,6 @@ export class Prompt {
     this.render();
   }
 
-  /** Handles keyboard input while prompt composer is focused. */
-  public handleKeypress(
-    keyName: string,
-    _rawKeyName: string | undefined,
-    key: KeyEvent,
-    consumeKey: (event: KeyEvent) => void,
-  ): void {
-    if (keyName === "escape") {
-      consumeKey(key);
-      this.close();
-      return;
-    }
-
-    if (keyName === "tab") {
-      consumeKey(key);
-      this.moveField(1);
-      return;
-    }
-
-    if (this.field === "model") {
-      if (keyName === "left" || keyName === "up") {
-        consumeKey(key);
-        this.cycleModelInternal(-1);
-        return;
-      }
-      if (keyName === "right" || keyName === "down") {
-        consumeKey(key);
-        this.cycleModelInternal(1);
-        return;
-      }
-      if (keyName === "r") {
-        consumeKey(key);
-        void this.refreshAvailableModels();
-        return;
-      }
-      if (keyName === "return" || keyName === "enter") {
-        consumeKey(key);
-        this.moveField(1);
-      }
-      return;
-    }
-
-    if (this.field === "thinking") {
-      if (keyName === "left" || keyName === "up") {
-        consumeKey(key);
-        this.cycleThinkingLevelInternal(-1);
-        return;
-      }
-      if (keyName === "right" || keyName === "down") {
-        consumeKey(key);
-        this.cycleThinkingLevelInternal(1);
-        return;
-      }
-      if (keyName === "return" || keyName === "enter") {
-        consumeKey(key);
-        this.moveField(-2);
-        return;
-      }
-    }
-
-    if (keyName === "return" || keyName === "enter") {
-      consumeKey(key);
-      this.submitFromKeyboard();
-      return;
-    }
-
-    this.handlePromptInputKey(key, consumeKey);
-  }
-
   /** Commits prompt state and hands submission back to app orchestration. */
   private submit(): void {
     if (!this.target) return;
@@ -291,7 +219,7 @@ export class Prompt {
     this.render();
 
     try {
-      const catalog = await listOpencodeModelCatalog(this.rootDir);
+      const catalog = await listOpencodeModelCatalog();
       if (catalog.length > 0) {
         this.availableModels = catalog.map((item) => item.model).sort((a, b) => a.localeCompare(b));
         this.modelVariantsById = new Map(

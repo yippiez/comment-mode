@@ -15,13 +15,11 @@ export type AgentSubmission = {
 };
 
 type AgentOptions = {
-  rootDir: string;
   initialUpdates: AgentUpdate[];
   onUpdatesChanged?: (updates: AgentUpdate[]) => void;
 };
 
 type OpencodeRunRequest = {
-  rootDir: string;
   model: AgentModel;
   variant?: string;
   contextMode?: ViewMode;
@@ -57,7 +55,6 @@ export type OpencodeModelCatalogItem = {
 };
 
 export class Agent {
-  private readonly rootDir: string;
   private readonly onUpdatesChanged?: (updates: AgentUpdate[]) => void;
 
   private updates: AgentUpdate[];
@@ -65,7 +62,6 @@ export class Agent {
   private renderTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(options: AgentOptions) {
-    this.rootDir = options.rootDir;
     this.onUpdatesChanged = options.onUpdatesChanged;
     this.updates = options.initialUpdates.map((update) => ({
       ...update,
@@ -195,7 +191,6 @@ export class Agent {
     let result: OpencodeRunResult;
     try {
       result = await startHeadlessOpencodeRun({
-        rootDir: this.rootDir,
         model: update.model,
         variant: update.variant,
         contextMode: update.contextMode,
@@ -263,7 +258,7 @@ export class Agent {
   }
 }
 
-export async function listOpencodeModelCatalog(_rootDir: string): Promise<OpencodeModelCatalogItem[]> {
+export async function listOpencodeModelCatalog(): Promise<OpencodeModelCatalogItem[]> {
   try {
     const payload = await requestServer<unknown>("opencode.models.list");
     return parseServerModelCatalog(payload);

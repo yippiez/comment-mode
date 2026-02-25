@@ -32,7 +32,7 @@ const SERVER_URL_ENV = "COMMENT_MODE_SERVER_URL";
 const SERVER_PASSWORD_ENV = "COMMENT_MODE_SERVER_PASSWORD";
 const OPEN_TIMEOUT_MS = 10000;
 
-export function getServerConnection(): ServerConnection | null {
+function getServerConnection(): ServerConnection | null {
   const baseUrl = process.env[SERVER_URL_ENV]?.trim();
   const password = process.env[SERVER_PASSWORD_ENV]?.trim();
   if (!baseUrl || !password) return null;
@@ -41,10 +41,6 @@ export function getServerConnection(): ServerConnection | null {
     baseUrl: baseUrl.replace(/\/+$/, ""),
     password,
   };
-}
-
-export function hasServerConnection(): boolean {
-  return getServerConnection() !== null;
 }
 
 export async function requestServer<T>(method: string, params?: unknown): Promise<T> {

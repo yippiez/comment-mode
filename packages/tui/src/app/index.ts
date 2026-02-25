@@ -1,7 +1,5 @@
 import {
   BoxRenderable,
-  CodeRenderable,
-  LineNumberRenderable,
   ScrollBoxRenderable,
   TextAttributes,
   TextRenderable,
@@ -17,25 +15,23 @@ import {
   type PromptTarget,
   type PromptSubmission,
 } from "../controllers/prompt";
-import { createAgentRow, type AgentRowDecoration } from "../components/agent-row";
-import { createFileTreeRowView } from "../components/file-tree-row";
 import { PromptComposerBar, type PromptComposerLayout } from "../components/prompt-composer-bar";
 import { deregister, register, type SignalGroup } from "../signals";
 import { copyToClipboard } from "../utils/clipboard";
 import { Cursor } from "../controllers/cursor";
 import { LineModel } from "../line-model";
-import { AppStateStore } from "../state/app-state";
+import {
+  AppStateStore,
+  recomputeTypeState,
+} from "../controllers/state";
 import { theme } from "../theme";
 import type {
   AgentUpdate,
-  AgentUpdateStatus,
   CodeFileEntry,
   FocusMode,
 } from "../types";
 import { clamp, clearChildren, makeSlashLine } from "../utils/ui";
 import {
-  buildFileTreeRows,
-  type FileTreeRow,
   modes,
 } from "../modes";
 import { Highlight } from "../controllers/highlight";
@@ -43,12 +39,7 @@ import { registerKeyboardSignalBindings, type KeyboardStateSnapshot } from "../s
 import { registerScrollSignalBindings } from "../signals/scroll";
 import { registerSystemSignalBindings } from "../signals/system";
 import {
-  computeAgentContentWidth,
-  computeFilesModeViewportWidth,
-  formatAgentUpdateLine,
-  formatCollapsedContentLine,
   renderTypeChips,
-  wrapTextToWidth,
 } from "./render";
 import {
   buildClipboardSelectionText,
@@ -57,11 +48,11 @@ import {
   resolvePromptComposerLayout,
   type SelectionLineInfo,
 } from "./selection";
-import { ensureFilesModeDirectoryVisible, getParentDirectoryPath } from "../utils/path";
-import { recomputeTypeState } from "./type_filters";
 import { registerAppSignalHandlers } from "./signal_bindings";
+import { FileExplorer } from "./file_explorer";
+import { AgentTimeline } from "./agent_timeline";
+import { DocumentBlocks } from "./document_blocks";
 type CodeBrowserAppOptions = {
-  rootDir: string;
   initialAgentUpdates?: AgentUpdate[];
   onAgentUpdatesChanged?: (updates: AgentUpdate[]) => void;
 };
@@ -70,7 +61,6 @@ const ACTION_CHIPS: readonly string[] = [];
 
 export class CodeBrowserApp {
   private readonly renderer: CliRenderer;
-  private readonly rootDir: string;
   private entries: CodeFileEntry[];
   private readonly state = new AppStateStore();
 
@@ -82,6 +72,7 @@ export class CodeBrowserApp {
   private readonly navigation: Navigation;
   private readonly agent: Agent;
   private readonly prompt: Prompt;
+  private readonly documentBlocks: DocumentBlocks;
 
   private typeCounts: Map<string, number>;
   private sortedTypes: string[];
@@ -91,20 +82,14 @@ export class CodeBrowserApp {
 
   private readonly lineModel = new LineModel();
   private readonly visualHighlights = new Highlight();
+  private readonly fileExplorer = new FileExplorer();
+  private readonly agentTimeline: AgentTimeline;
   private dividerByFilePath = new Map<string, TextRenderable>();
-  private collapsedFiles = new Set<string>();
-  private filesModeDirectoryPath = "";
-  private fileTreeRowsByLine = new Map<number, FileTreeRow>();
-  private pendingCodeTargetFilePath: string | null = null;
-  private agentLineByUpdateId = new Map<string, number>();
-  private updateIdByAgentLine = new Map<number, string>();
-  private agentRowDecorations = new Map<number, AgentRowDecoration>();
   private readonly sourceCleanupFns: Array<() => void> = [];
   private readonly signalRegistrationIds: string[] = [];
 
-  constructor(renderer: CliRenderer, entries: CodeFileEntry[], options: CodeBrowserAppOptions) {
+  constructor(renderer: CliRenderer, entries: CodeFileEntry[], options: CodeBrowserAppOptions = {}) {
     this.renderer = renderer;
-    this.rootDir = options.rootDir;
     this.entries = entries;
 
     this.root = new BoxRenderable(renderer, {
@@ -157,15 +142,20 @@ export class CodeBrowserApp {
     this.cursor = new Cursor({
       camera: this.camera,
     });
+    this.agentTimeline = new AgentTimeline(this.renderer, this.scrollbox, this.lineModel);
+    this.documentBlocks = new DocumentBlocks(
+      this.renderer,
+      this.scrollbox,
+      this.lineModel,
+      this.fileExplorer,
+    );
 
     this.agent = new Agent({
-      rootDir: this.rootDir,
       initialUpdates: options.initialAgentUpdates ?? [],
       onUpdatesChanged: options.onAgentUpdatesChanged,
     });
 
     this.prompt = new Prompt({
-      rootDir: this.rootDir,
       promptComposer: this.promptComposer,
       resolveLayout: (target, fallbackAnchorLine) =>
         this.resolvePromptComposerLayout(target, fallbackAnchorLine),
@@ -175,7 +165,7 @@ export class CodeBrowserApp {
       cursor: this.cursor,
       camera: this.camera,
       lineModel: this.lineModel,
-      getAgentPromptLines: () => [...this.agentLineByUpdateId.values()],
+      getAgentPromptLines: () => this.agentTimeline.getPromptLines(),
       getAnchorDividerDisplayRow: (anchor) => this.getAnchorDividerDisplayRow(anchor),
     });
 
@@ -332,7 +322,7 @@ export class CodeBrowserApp {
       this.state.viewMode,
       this.cursor,
       this.lineModel,
-      this.fileTreeRowsByLine,
+      this.fileExplorer.getRowsByLine(),
     );
   }
 
@@ -353,7 +343,7 @@ export class CodeBrowserApp {
     return buildClipboardSelectionText(
       this.state.viewMode,
       selection,
-      this.fileTreeRowsByLine,
+      this.fileExplorer.getRowsByLine(),
     );
   }
 
@@ -377,7 +367,9 @@ export class CodeBrowserApp {
   }
 
   private getAgentUpdateAtCursorLine(): AgentUpdate | undefined {
-    return this.agent.findByRenderedLine(this.cursor.cursorLine, this.updateIdByAgentLine);
+    const updateId = this.agentTimeline.getUpdateIdAtLine(this.cursor.cursorLine);
+    if (!updateId) return undefined;
+    return this.agent.findById(updateId);
   }
 
   private consumeKey(key: KeyEvent): void {
@@ -447,7 +439,7 @@ export class CodeBrowserApp {
   }
 
   private openSelectedFilesRow(): void {
-    const row = this.fileTreeRowsByLine.get(this.cursor.cursorLine);
+    const row = this.fileExplorer.getRowAtLine(this.cursor.cursorLine);
     if (!row) return;
     if (row.kind === "dir") {
       this.enterCurrentDirectory();
@@ -458,48 +450,28 @@ export class CodeBrowserApp {
 
   private openFileFromExplorer(filePath: string): void {
     this.state.viewMode = modes.setMode("code");
-    this.collapsedFiles.delete(filePath);
-    this.pendingCodeTargetFilePath = filePath;
+    this.fileExplorer.openFile(filePath);
     this.renderContent();
   }
 
   private enterCurrentDirectory(): void {
-    const row = this.fileTreeRowsByLine.get(this.cursor.cursorLine);
-    if (!row || row.kind !== "dir") return;
-    this.filesModeDirectoryPath = row.path;
+    const changed = this.fileExplorer.enterCurrentDirectoryAtLine(this.cursor.cursorLine);
+    if (!changed) return;
     this.renderContent();
     this.cursor.goToLine(1, "top");
   }
 
   private goToParentDirectory(): void {
-    const parent = this.getParentDirectoryPath(this.filesModeDirectoryPath);
-    if (parent === this.filesModeDirectoryPath) return;
-    this.filesModeDirectoryPath = parent;
+    const changed = this.fileExplorer.goToParentDirectory();
+    if (!changed) return;
     this.renderContent();
     this.cursor.goToLine(1, "top");
   }
 
-  private getParentDirectoryPath(filePath: string): string {
-    return getParentDirectoryPath(filePath);
-  }
-
-  private ensureFilesModeDirectoryVisible(entries: readonly CodeFileEntry[]): void {
-    this.filesModeDirectoryPath = ensureFilesModeDirectoryVisible(entries, this.filesModeDirectoryPath);
-  }
-
   private toggleCurrentFileCollapse(): void {
-    if (this.state.viewMode === "files") {
-      return;
-    }
     const currentFilePath = this.lineModel.getCurrentFilePath(this.cursor.cursorLine);
-    if (!currentFilePath) return;
-
-    if (this.collapsedFiles.has(currentFilePath)) {
-      this.collapsedFiles.delete(currentFilePath);
-    } else {
-      this.collapsedFiles.add(currentFilePath);
-    }
-
+    const changed = this.fileExplorer.toggleCollapse(this.state.viewMode, currentFilePath);
+    if (!changed) return;
     this.renderContent();
   }
 
@@ -525,10 +497,8 @@ export class CodeBrowserApp {
     this.lineModel.reset();
     this.visualHighlights.reset();
     this.dividerByFilePath = new Map();
-    this.agentLineByUpdateId = new Map();
-    this.updateIdByAgentLine = new Map();
-    this.agentRowDecorations = new Map();
-    this.fileTreeRowsByLine = new Map();
+    this.agentTimeline.resetForRender();
+    this.fileExplorer.clearRows();
 
     if (this.entries.length === 0) {
       this.renderEmptyState("No code files found.");
@@ -551,7 +521,7 @@ export class CodeBrowserApp {
     }
 
     if (this.state.viewMode === "files") {
-      this.ensureFilesModeDirectoryVisible(entriesToRender);
+      this.fileExplorer.ensureDirectoryVisible(entriesToRender);
       this.renderFilesModeContent(entriesToRender);
       if (this.prompt.isVisible) {
         this.prompt.refreshView();
@@ -582,8 +552,8 @@ export class CodeBrowserApp {
       nextDisplayRow += 1;
       const fileAnchorLine = nextLineNumber;
 
-      if (this.collapsedFiles.has(entry.relativePath)) {
-        const result = this.addCollapsedPlaceholderBlock(
+      if (this.fileExplorer.isCollapsed(entry.relativePath)) {
+        const result = this.documentBlocks.addCollapsedPlaceholderBlock(
           entry,
           entry.lineCount,
           dividerWidth,
@@ -596,7 +566,11 @@ export class CodeBrowserApp {
         while (nextUpdateIndex < updatesForFile.length) {
           const update = updatesForFile[nextUpdateIndex];
           if (!update) break;
-          const agentResult = this.addAgentUpdateWithMessages(update, nextLineNumber, nextDisplayRow);
+          const agentResult = this.agentTimeline.addUpdateWithMessages(
+            update,
+            nextLineNumber,
+            nextDisplayRow,
+          );
           nextLineNumber = agentResult.nextLineNumber;
           nextDisplayRow = agentResult.nextDisplayRow;
           nextUpdateIndex += 1;
@@ -610,7 +584,7 @@ export class CodeBrowserApp {
           const anchorLine = clamp(update.selectionEndFileLine, 1, Math.max(1, entry.lineCount));
           if (anchorLine >= fileLineCursor) {
             const chunkLines = sourceLines.slice(fileLineCursor - 1, anchorLine);
-            const result = this.addCodeBlock(
+            const result = this.documentBlocks.addCodeBlock(
               entry,
               chunkLines.join("\n"),
               fileLineCursor,
@@ -623,7 +597,11 @@ export class CodeBrowserApp {
             fileLineCursor = anchorLine + 1;
           }
 
-          const agentResult = this.addAgentUpdateWithMessages(update, nextLineNumber, nextDisplayRow);
+          const agentResult = this.agentTimeline.addUpdateWithMessages(
+            update,
+            nextLineNumber,
+            nextDisplayRow,
+          );
           nextLineNumber = agentResult.nextLineNumber;
           nextDisplayRow = agentResult.nextDisplayRow;
           nextUpdateIndex += 1;
@@ -631,7 +609,7 @@ export class CodeBrowserApp {
 
         if (fileLineCursor <= entry.lineCount) {
           const chunkLines = sourceLines.slice(fileLineCursor - 1);
-          const result = this.addCodeBlock(
+          const result = this.documentBlocks.addCodeBlock(
             entry,
             chunkLines.join("\n"),
             fileLineCursor,
@@ -647,7 +625,11 @@ export class CodeBrowserApp {
       while (nextUpdateIndex < updatesForFile.length) {
         const update = updatesForFile[nextUpdateIndex];
         if (!update) break;
-        const agentResult = this.addAgentUpdateWithMessages(update, nextLineNumber, nextDisplayRow);
+        const agentResult = this.agentTimeline.addUpdateWithMessages(
+          update,
+          nextLineNumber,
+          nextDisplayRow,
+        );
         nextLineNumber = agentResult.nextLineNumber;
         nextDisplayRow = agentResult.nextDisplayRow;
         nextUpdateIndex += 1;
@@ -659,8 +641,7 @@ export class CodeBrowserApp {
     }
 
     this.lineModel.setTotalLines(nextLineNumber - 1);
-    const pendingPath = this.pendingCodeTargetFilePath;
-    this.pendingCodeTargetFilePath = null;
+    const pendingPath = this.fileExplorer.consumePendingCodeTargetPath();
     const targetAnchor = pendingPath ? this.lineModel.getFileAnchorByPath(pendingPath) : undefined;
     this.cursor.configureWithTarget(this.lineModel.totalLines, targetAnchor?.line, "top");
     if (this.prompt.isVisible) {
@@ -669,7 +650,7 @@ export class CodeBrowserApp {
   }
 
   private renderFilesModeContent(entries: readonly CodeFileEntry[]): void {
-    const rows = buildFileTreeRows(entries, this.filesModeDirectoryPath);
+    const rows = this.fileExplorer.buildRows(entries);
     if (rows.length === 0) {
       this.renderEmptyState("No files in tree.");
       this.cursor.configure(0);
@@ -681,7 +662,7 @@ export class CodeBrowserApp {
 
     for (const row of rows) {
       const rowDisplayStart = nextDisplayRow;
-      const rowResult = this.addFileTreeRowBlock(row, nextLineNumber, nextDisplayRow);
+      const rowResult = this.documentBlocks.addFileTreeRowBlock(row, nextLineNumber, nextDisplayRow);
       nextLineNumber = rowResult.nextLineNumber;
       nextDisplayRow = rowResult.nextDisplayRow;
 
@@ -694,7 +675,11 @@ export class CodeBrowserApp {
 
         const updatesForFile = this.getUpdatesForFile(row.filePath);
         for (const update of updatesForFile) {
-          const agentResult = this.addAgentUpdateWithMessages(update, nextLineNumber, nextDisplayRow);
+          const agentResult = this.agentTimeline.addUpdateWithMessages(
+            update,
+            nextLineNumber,
+            nextDisplayRow,
+          );
           nextLineNumber = agentResult.nextLineNumber;
           nextDisplayRow = agentResult.nextDisplayRow;
         }
@@ -703,347 +688,6 @@ export class CodeBrowserApp {
 
     this.lineModel.setTotalLines(nextLineNumber - 1);
     this.cursor.configure(this.lineModel.totalLines);
-  }
-
-  private addFileTreeRowBlock(
-    row: FileTreeRow,
-    nextLineNumber: number,
-    nextDisplayRow: number,
-  ): { nextLineNumber: number; nextDisplayRow: number; blockStartLine: number } {
-    const rowView = createFileTreeRowView(this.renderer, row, this.getFilesModeViewportWidth());
-
-    this.scrollbox.add(rowView.codeView);
-    this.lineModel.addBlock({
-      lineView: null,
-      codeView: rowView.codeView,
-      defaultLineNumberFg: theme.getCodeLineNumberColor(),
-      defaultLineSigns: new Map(),
-      blockKind: "file",
-      fileLineStart: null,
-      renderedLines: [rowView.renderedLine],
-      lineStart: nextLineNumber,
-      lineCount: 1,
-      displayRowStart: nextDisplayRow,
-      filePath: row.filePath,
-    });
-
-    this.fileTreeRowsByLine.set(nextLineNumber, row);
-    return {
-      nextLineNumber: nextLineNumber + 1,
-      nextDisplayRow: nextDisplayRow + 1,
-      blockStartLine: nextLineNumber,
-    };
-  }
-
-  private getFilesModeViewportWidth(): number {
-    return computeFilesModeViewportWidth(
-      Math.floor(this.scrollbox.viewport.width),
-      Math.floor(this.scrollbox.width),
-      this.renderer.width,
-    );
-  }
-
-  private addCollapsedPlaceholderBlock(
-    entry: CodeFileEntry,
-    collapsedLineCount: number,
-    dividerWidth: number,
-    fileLineStart: number,
-    nextLineNumber: number,
-    nextDisplayRow: number,
-  ): { nextLineNumber: number; nextDisplayRow: number; blockStartLine: number } {
-    const label = `↑ ${collapsedLineCount} lines collapsed (file) ↓`;
-    const content = this.formatCollapsedContentLine(label, dividerWidth);
-
-    const code = new CodeRenderable(this.renderer, {
-      width: "100%",
-      content,
-      syntaxStyle: theme.getSyntaxStyle(),
-      wrapMode: "none",
-      bg: theme.getCollapsedBackgroundColor(),
-    });
-    code.selectable = false;
-
-    const lineView = new LineNumberRenderable(this.renderer, {
-      width: "100%",
-      target: code,
-      showLineNumbers: false,
-      minWidth: 0,
-      paddingRight: 0,
-      fg: theme.getCollapsedForegroundColor(),
-      bg: theme.getCollapsedBackgroundColor(),
-    });
-    lineView.selectable = false;
-
-    this.scrollbox.add(lineView);
-    this.lineModel.addBlock({
-      lineView,
-      codeView: code,
-      defaultLineNumberFg: theme.getCollapsedForegroundColor(),
-      defaultLineSigns: new Map(),
-      blockKind: "collapsed",
-      fileLineStart,
-      renderedLines: [content],
-      lineStart: nextLineNumber,
-      lineCount: 1,
-      displayRowStart: nextDisplayRow,
-      filePath: entry.relativePath,
-    });
-
-    return {
-      nextLineNumber: nextLineNumber + 1,
-      nextDisplayRow: nextDisplayRow + 1,
-      blockStartLine: nextLineNumber,
-    };
-  }
-
-  private formatCollapsedContentLine(label: string, width: number): string {
-    return formatCollapsedContentLine(label, width);
-  }
-
-  private addCodeBlock(
-    entry: CodeFileEntry,
-    content: string,
-    fileLineStart: number,
-    lineCount: number,
-    nextLineNumber: number,
-    nextDisplayRow: number,
-  ): { nextLineNumber: number; nextDisplayRow: number; blockStartLine: number } {
-    const renderedLineCount = Math.max(1, lineCount);
-    const renderedLines = content.split("\n");
-    const code = new CodeRenderable(this.renderer, {
-      width: "100%",
-      content,
-      filetype: entry.filetype,
-      syntaxStyle: theme.getSyntaxStyle(),
-      wrapMode: "none",
-      bg: theme.getTransparentColor(),
-      conceal: false,
-    });
-    code.selectable = false;
-
-    const lineView = new LineNumberRenderable(this.renderer, {
-      width: "100%",
-      target: code,
-      showLineNumbers: true,
-      minWidth: Math.max(2, String(Math.max(1, entry.lineCount)).length),
-      paddingRight: 1,
-      lineNumberOffset: fileLineStart - 1,
-      fg: theme.getCodeLineNumberColor(),
-      bg: theme.getTransparentColor(),
-    });
-    lineView.selectable = false;
-
-    for (let lineOffset = 0; lineOffset < renderedLineCount; lineOffset += 1) {
-      const fileLine = fileLineStart + lineOffset;
-      if (!entry.uncommittedLines.has(fileLine)) continue;
-      lineView.setLineSign(lineOffset, {
-        before: "▌",
-        beforeColor: theme.getUncommittedLineSignColor(),
-      });
-    }
-    const defaultLineSigns = new Map(lineView.getLineSigns());
-
-    this.scrollbox.add(lineView);
-    this.lineModel.addBlock({
-      lineView,
-      codeView: code,
-      defaultLineNumberFg: theme.getCodeLineNumberColor(),
-      defaultLineSigns,
-      blockKind: "code",
-      fileLineStart,
-      renderedLines,
-      lineStart: nextLineNumber,
-      lineCount: renderedLineCount,
-      displayRowStart: nextDisplayRow,
-      filePath: entry.relativePath,
-    });
-
-    return {
-      nextLineNumber: nextLineNumber + renderedLineCount,
-      nextDisplayRow: nextDisplayRow + renderedLineCount,
-      blockStartLine: nextLineNumber,
-    };
-  }
-
-  private addAgentUpdateBlock(
-    update: AgentUpdate,
-    nextLineNumber: number,
-    nextDisplayRow: number,
-  ): { nextLineNumber: number; nextDisplayRow: number; blockStartLine: number } {
-    const paddingLeft = 1;
-    const paddingRight = 1;
-    const wrappedLines = this.wrapTextToWidth(
-      this.formatAgentUpdateLine(update),
-      this.getAgentContentWidth(paddingLeft, paddingRight),
-    );
-
-    let lineCursor = nextLineNumber;
-    let rowCursor = nextDisplayRow;
-    const blockStartLine = nextLineNumber;
-
-    for (const line of wrappedLines) {
-      const decoration = createAgentRow(this.renderer, {
-        content: line,
-        baseBg: this.getAgentStatusBg(update.status),
-        baseFg: theme.getAgentRowForegroundColor(),
-        selectedBg: theme.getAgentRowSelectedBackgroundColor(),
-        selectedFg: theme.getAgentRowSelectedForegroundColor(),
-        cursorBg: theme.getAgentRowCursorBackgroundColor(),
-        cursorFg: theme.getAgentRowCursorForegroundColor(),
-        paddingLeft,
-        paddingRight,
-        bold: true,
-      });
-
-      this.scrollbox.add(decoration.row);
-      this.lineModel.addBlock({
-        lineView: null,
-        codeView: null,
-        defaultLineNumberFg: theme.getAgentRowForegroundColor(),
-        defaultLineSigns: new Map(),
-        blockKind: "agent",
-        fileLineStart: update.selectionEndFileLine,
-        renderedLines: [line],
-        lineStart: lineCursor,
-        lineCount: 1,
-        displayRowStart: rowCursor,
-        filePath: update.filePath,
-      });
-
-      this.updateIdByAgentLine.set(lineCursor, update.id);
-      this.agentRowDecorations.set(lineCursor, decoration);
-      lineCursor += 1;
-      rowCursor += 1;
-    }
-
-    this.agentLineByUpdateId.set(update.id, blockStartLine);
-    return {
-      nextLineNumber: lineCursor,
-      nextDisplayRow: rowCursor,
-      blockStartLine,
-    };
-  }
-
-  private addAgentUpdateWithMessages(
-    update: AgentUpdate,
-    nextLineNumber: number,
-    nextDisplayRow: number,
-  ): { nextLineNumber: number; nextDisplayRow: number; blockStartLine: number } {
-    const main = this.addAgentUpdateBlock(update, nextLineNumber, nextDisplayRow);
-    return this.addAgentMessageBlocks(update, main.nextLineNumber, main.nextDisplayRow);
-  }
-
-  private addAgentMessageBlocks(
-    update: AgentUpdate,
-    nextLineNumber: number,
-    nextDisplayRow: number,
-  ): { nextLineNumber: number; nextDisplayRow: number; blockStartLine: number } {
-    const recentMessages = update.messages.slice(-3);
-    if (recentMessages.length === 0) {
-      return {
-        nextLineNumber,
-        nextDisplayRow,
-        blockStartLine: nextLineNumber,
-      };
-    }
-
-    let lineCursor = nextLineNumber;
-    let rowCursor = nextDisplayRow;
-    let blockStartLine: number | null = null;
-    for (const message of recentMessages) {
-      const result = this.addAgentMessageBlock(update, message, lineCursor, rowCursor);
-      lineCursor = result.nextLineNumber;
-      rowCursor = result.nextDisplayRow;
-      if (blockStartLine === null) {
-        blockStartLine = result.blockStartLine;
-      }
-    }
-
-    return {
-      nextLineNumber: lineCursor,
-      nextDisplayRow: rowCursor,
-      blockStartLine: blockStartLine ?? nextLineNumber,
-    };
-  }
-
-  private addAgentMessageBlock(
-    update: AgentUpdate,
-    message: string,
-    nextLineNumber: number,
-    nextDisplayRow: number,
-  ): { nextLineNumber: number; nextDisplayRow: number; blockStartLine: number } {
-    const paddingLeft = 2;
-    const paddingRight = 1;
-    const wrappedLines = this.wrapTextToWidth(
-      ` ${message}`,
-      this.getAgentContentWidth(paddingLeft, paddingRight),
-    );
-
-    let lineCursor = nextLineNumber;
-    let rowCursor = nextDisplayRow;
-    const blockStartLine = nextLineNumber;
-
-    for (const line of wrappedLines) {
-      const decoration = createAgentRow(this.renderer, {
-        content: line,
-        baseBg: theme.getAgentMessageBackgroundColor(),
-        baseFg: theme.getAgentMessageForegroundColor(),
-        selectedBg: theme.getAgentRowSelectedBackgroundColor(),
-        selectedFg: theme.getAgentRowSelectedForegroundColor(),
-        cursorBg: theme.getAgentRowCursorBackgroundColor(),
-        cursorFg: theme.getAgentRowCursorForegroundColor(),
-        paddingLeft,
-        paddingRight,
-      });
-
-      this.scrollbox.add(decoration.row);
-      this.lineModel.addBlock({
-        lineView: null,
-        codeView: null,
-        defaultLineNumberFg: theme.getAgentMessageForegroundColor(),
-        defaultLineSigns: new Map(),
-        blockKind: "agent",
-        fileLineStart: update.selectionEndFileLine,
-        renderedLines: [line],
-        lineStart: lineCursor,
-        lineCount: 1,
-        displayRowStart: rowCursor,
-        filePath: update.filePath,
-      });
-
-      this.updateIdByAgentLine.set(lineCursor, update.id);
-      this.agentRowDecorations.set(lineCursor, decoration);
-      lineCursor += 1;
-      rowCursor += 1;
-    }
-
-    return {
-      nextLineNumber: lineCursor,
-      nextDisplayRow: rowCursor,
-      blockStartLine,
-    };
-  }
-
-  private formatAgentUpdateLine(update: AgentUpdate): string {
-    return formatAgentUpdateLine(update);
-  }
-
-  private getAgentContentWidth(paddingLeft: number, paddingRight: number): number {
-    return computeAgentContentWidth(
-      Math.floor(this.scrollbox.viewport.width),
-      Math.floor(this.scrollbox.width),
-      this.renderer.width,
-      paddingLeft,
-      paddingRight,
-    );
-  }
-
-  private wrapTextToWidth(text: string, width: number): string[] {
-    return wrapTextToWidth(text, width);
-  }
-
-  private getAgentStatusBg(status: AgentUpdateStatus): string {
-    return theme.getAgentStatusBackgroundColor(status);
   }
 
   private getUpdatesForFile(filePath: string): AgentUpdate[] {
@@ -1092,24 +736,7 @@ export class CodeBrowserApp {
     const { start: selectionStart, end: selectionEnd } = this.cursor.selectionRange;
     const cursorLine = this.cursor.cursorLine;
     this.visualHighlights.apply(this.lineModel.blocks, selectionStart, selectionEnd, cursorLine);
-    this.applyAgentRowHighlights(selectionStart, selectionEnd, cursorLine);
-  }
-
-  private applyAgentRowHighlights(selectionStart: number, selectionEnd: number, cursorLine: number): void {
-    for (const [line, decoration] of this.agentRowDecorations.entries()) {
-      let bg = decoration.baseBg;
-      let fg = decoration.baseFg;
-      if (line === cursorLine) {
-        bg = decoration.cursorBg;
-        fg = decoration.cursorFg;
-      } else if (line >= selectionStart && line <= selectionEnd) {
-        bg = decoration.selectedBg;
-        fg = decoration.selectedFg;
-      }
-      decoration.row.backgroundColor = bg;
-      decoration.text.fg = fg;
-      decoration.row.requestRender();
-    }
+    this.agentTimeline.applyHighlights(selectionStart, selectionEnd, cursorLine);
   }
 
   private deleteCurrentAgentPrompt(): void {
@@ -1146,11 +773,7 @@ export class CodeBrowserApp {
   }
 
   private pruneCollapsedFiles(): void {
-    const existing = new Set(this.entries.map((entry) => entry.relativePath));
-    for (const filePath of this.collapsedFiles) {
-      if (existing.has(filePath)) continue;
-      this.collapsedFiles.delete(filePath);
-    }
+    this.fileExplorer.pruneCollapsedFiles(this.entries);
   }
 
 }
