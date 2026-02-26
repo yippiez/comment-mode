@@ -6,6 +6,7 @@ export class AppStateStore {
   public focusMode: FocusMode = "code";
   public viewMode: ViewMode = "code";
   public selectedChipIndex = 0;
+  public chipWindowStartIndex = 0;
 }
 
 type RecomputeTypeStateResult = {

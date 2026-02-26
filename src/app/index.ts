@@ -8,7 +8,7 @@ import {
 import { Camera } from "../controllers/camera";
 import { OpenCode, type OpenCodeSubmission } from "../integrations/opencode";
 import { Layout } from "../controllers/layout";
-import { hydrateCodeFileEntry } from "../files";
+import { hydrateCodeFileEntry, isMissingCodeFileError } from "../files";
 import { Navigation } from "../controllers/navigation";
 import {
   Prompt,
@@ -119,7 +119,7 @@ export class CodeBrowserApp {
       id: "chips",
       width: "100%",
       flexDirection: "row",
-      flexWrap: "wrap",
+      flexWrap: "no-wrap",
       gap: 1,
       marginBottom: 1,
     });
@@ -265,6 +265,7 @@ export class CodeBrowserApp {
       refreshPromptModels: () => this.prompt.refreshModels(),
       handlePromptInputKey: (key, consume) => this.prompt.handlePromptInputKey(key, consume),
       handleExternalScroll: (position) => this.cursor.handleExternalScroll(position),
+      renderChips: () => this.renderChips(),
       renderContent: () => this.renderContent(),
       applyLineHighlights: () => this.applyLineHighlights(),
       refreshPromptView: () => this.prompt.refreshView(),
@@ -494,11 +495,12 @@ export class CodeBrowserApp {
   }
 
   private renderChips(): void {
-    renderTypeChips({
+    this.state.chipWindowStartIndex = renderTypeChips({
       renderer: this.renderer,
       chipsRow: this.chipsRow,
       sortedTypes: this.sortedTypes,
       selectedChipIndex: this.state.selectedChipIndex,
+      chipWindowStartIndex: this.state.chipWindowStartIndex,
       chipsFocused: this.state.focusMode === "chips",
       getTypeCount: (type) => this.typeCounts.get(type) ?? 0,
       isTypeEnabled: (type) => this.isTypeEnabled(type),
@@ -914,8 +916,15 @@ export class CodeBrowserApp {
         this.pendingEntryLoads.delete(entry.relativePath);
         this.renderContent({ cursorTargetFilePath: entry.relativePath });
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         this.pendingEntryLoads.delete(entry.relativePath);
+        if (!isMissingCodeFileError(error)) return;
+
+        const nextEntries = this.entries.filter(
+          (candidate) => candidate.relativePath !== entry.relativePath,
+        );
+        if (nextEntries.length === this.entries.length) return;
+        this.refreshEntries(nextEntries);
       });
   }
 

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { watch, type FSWatcher } from "node:fs";
+import { existsSync, watch, type FSWatcher } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { isCodeExtension, resolveFileType, resolveTypeLabel, resolveTypePriority } from "./file-types";
@@ -244,7 +244,10 @@ function listGitWorkspaceFiles(root: string): string[] | null {
     return null;
   }
 
-  return [...new Set((lsFiles.stdout ?? "").split("\0").filter(Boolean))];
+  return [...new Set((lsFiles.stdout ?? "").split("\0").filter(Boolean))].filter((relativePath) => {
+    const absolutePath = path.join(root, relativePath);
+    return existsSync(absolutePath);
+  });
 }
 
 function filterGitIgnored(root: string, files: string[]): string[] {

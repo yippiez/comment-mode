@@ -41,6 +41,11 @@ type ScrollBarChangePayload = { position?: number } | undefined;
 type VerticalScrollBarSource = EventSource<"change", (event: ScrollBarChangePayload) => void>;
 
 type StdoutSource = EventSource<"resize", () => void>;
+type ProcessSignalSource = {
+  on?: (event: "SIGWINCH", handler: () => void) => unknown;
+  off?: (event: "SIGWINCH", handler: () => void) => unknown;
+  removeListener?: (event: "SIGWINCH", handler: () => void) => unknown;
+};
 
 export type KeyboardStateSnapshot = {
   promptVisible: boolean;
@@ -326,7 +331,24 @@ export function registerSystemSignalBindings(source: StdoutSource): () => void {
     emit(SIGNALS.systemStdoutResize);
   };
 
-  return subscribeToSource(source, "resize", onResize);
+  const unsubscribeStdout = subscribeToSource(source, "resize", onResize);
+  const runtimeProcess = globalThis.process as ProcessSignalSource | undefined;
+
+  if (typeof runtimeProcess?.on === "function") {
+    runtimeProcess.on("SIGWINCH", onResize);
+    return () => {
+      unsubscribeStdout();
+      if (typeof runtimeProcess.off === "function") {
+        runtimeProcess.off("SIGWINCH", onResize);
+        return;
+      }
+      if (typeof runtimeProcess.removeListener === "function") {
+        runtimeProcess.removeListener("SIGWINCH", onResize);
+      }
+    };
+  }
+
+  return unsubscribeStdout;
 }
 
 type RegisterAppSignalHandlersOptions = {
@@ -365,6 +387,7 @@ type RegisterAppSignalHandlersOptions = {
   refreshPromptModels: () => void;
   handlePromptInputKey: (key: KeyEvent, consume: (event: KeyEvent) => void) => void;
   handleExternalScroll: (position: number) => void;
+  renderChips: () => void;
   renderContent: () => void;
   applyLineHighlights: () => void;
   refreshPromptView: () => void;
@@ -372,6 +395,8 @@ type RegisterAppSignalHandlersOptions = {
 };
 
 export function registerAppSignalHandlers(options: RegisterAppSignalHandlersOptions): void {
+  let pendingResizeRerender: ReturnType<typeof setTimeout> | undefined;
+
   options.onSignal(SIGNALS.themeToggle, () => {
     options.toggleTheme();
   });
@@ -518,7 +543,14 @@ export function registerAppSignalHandlers(options: RegisterAppSignalHandlersOpti
   });
 
   options.onSignal(SIGNALS.systemStdoutResize, () => {
-    options.renderContent();
+    if (pendingResizeRerender) {
+      clearTimeout(pendingResizeRerender);
+    }
+    pendingResizeRerender = setTimeout(() => {
+      pendingResizeRerender = undefined;
+      options.renderChips();
+      options.renderContent();
+    }, 40);
   });
 
   options.onSignal(SIGNALS.cursorChanged, () => {
