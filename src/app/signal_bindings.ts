@@ -18,7 +18,6 @@ const CODE_KEYMAP = {
   enter: "open_prompt",
   return: "open_prompt",
   escape: "escape_visual",
-  q: "quit",
 } as const;
 
 const CHIPS_KEYMAP = {
@@ -269,9 +268,6 @@ export function registerKeyboardSignalBindings(
       return;
     }
 
-    if (mappedAction === "quit") {
-      emitHandled(key, SIGNALS.appQuit);
-    }
   };
 
   const onKeypress = (key: KeyEvent): void => {
@@ -281,6 +277,11 @@ export function registerKeyboardSignalBindings(
 
     if (state.promptVisible) {
       routePrompt(keyName, key);
+      return;
+    }
+
+    if (keyName === "q") {
+      emitHandled(key, SIGNALS.appQuit);
       return;
     }
 
