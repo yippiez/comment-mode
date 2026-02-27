@@ -1,0 +1,189 @@
+{
+  "title": "How the live-reload function happens",
+  "prompt": "Explain how live-reload works in this repository: how filesystem events trigger entry reload and UI refresh.",
+  "createdAt": "2026-02-27T13:57:27Z",
+  "files": [
+    {
+      "id": "src/main.ts",
+      "label": "main.ts",
+      "path": "src/main.ts",
+      "items": [
+        {
+          "type": "relevance",
+          "symbol": "=>",
+          "text": "Orchestrates live-reload by connecting watcher to signal-driven refresh."
+        },
+        {
+          "type": "calls",
+          "symbol": "->",
+          "text": "Calls watchWorkspace() to start the filesystem watcher.",
+          "target": "src/live-reload.ts"
+        },
+        {
+          "type": "calls",
+          "symbol": "->",
+          "text": "Registers SIGNALS.workspaceChanged handler that triggers refreshEntries().",
+          "target": "src/signals.ts"
+        },
+        {
+          "type": "calls",
+          "symbol": "->",
+          "text": "refreshEntries() calls loadCodeFileEntries() to re-scan files.",
+          "target": "src/files.ts"
+        },
+        {
+          "type": "calls",
+          "symbol": "->",
+          "text": "refreshEntries() calls app.refreshEntries(nextEntries) to update the UI.",
+          "target": "src/app/index.ts"
+        },
+        {
+          "type": "dependency",
+          "symbol": "⫘",
+          "text": "Closes watcher on renderer destroy to stop live-reload.",
+          "target": "src/live-reload.ts"
+        }
+      ]
+    },
+    {
+      "id": "src/live-reload.ts",
+      "label": "live-reload.ts",
+      "path": "src/live-reload.ts",
+      "items": [
+        {
+          "type": "relevance",
+          "symbol": "=>",
+          "text": "Bridges workspace watcher events into SIGNALS.workspaceChanged emits."
+        },
+        {
+          "type": "calls",
+          "symbol": "->",
+          "text": "Calls getIgnoredDirs(process.cwd()) to compute ignore set before watching.",
+          "target": "src/workspace.ts"
+        },
+        {
+          "type": "calls",
+          "symbol": "->",
+          "text": "Calls workspace.watchWorkspace(root, ignoredDirs, () => emit(SIGNALS.workspaceChanged)).",
+          "target": "src/workspace.ts"
+        },
+        {
+          "type": "dependency",
+          "symbol": "⫘",
+          "text": "Uses emit() from signals to broadcast workspaceChanged.",
+          "target": "src/signals.ts"
+        }
+      ]
+    },
+    {
+      "id": "src/workspace.ts",
+      "label": "workspace.ts",
+      "path": "src/workspace.ts",
+      "items": [
+        {
+          "type": "relevance",
+          "symbol": "=>",
+          "text": "Implements debounced directory watchers and rebuild-on-rename logic."
+        },
+        {
+          "type": "dependency",
+          "symbol": "⫘",
+          "text": "Creates node fs.watch watchers to observe file changes in directories."
+        },
+        {
+          "type": "calls",
+          "symbol": "->",
+          "text": "scheduleChange() debounces rapid events before invoking onChange callback."
+        },
+        {
+          "type": "calls",
+          "symbol": "->",
+          "text": "scheduleRebuild() triggers rebuildWatchers() to recompute watched directories."
+        },
+        {
+          "type": "calls",
+          "symbol": "->",
+          "text": "listWatchableDirs() uses git ls-files when repository present for efficiency."
+        },
+        {
+          "type": "dependency",
+          "symbol": "⫘",
+          "text": "Uses git commands to optimize file listing and ignore handling."
+        }
+      ]
+    },
+    {
+      "id": "src/signals.ts",
+      "label": "signals.ts",
+      "path": "src/signals.ts",
+      "items": [
+        {
+          "type": "relevance",
+          "symbol": "=>",
+          "text": "Provides in-process pub/sub used to notify app of workspace changes."
+        },
+        {
+          "type": "calls",
+          "symbol": "->",
+          "text": "emit() synchronously invokes registered handlers with try/catch error handling."
+        },
+        {
+          "type": "calls",
+          "symbol": "->",
+          "text": "register() stores handlers and returns ids used for deregistration."
+        }
+      ]
+    },
+    {
+      "id": "src/files.ts",
+      "label": "files.ts",
+      "path": "src/files.ts",
+      "items": [
+        {
+          "type": "relevance",
+          "symbol": "=>",
+          "text": "loadCodeFileEntries() rescans workspace and returns CodeFileEntry list."
+        },
+        {
+          "type": "calls",
+          "symbol": "->",
+          "text": "Calls getIgnoredDirs(root) to honor .gitignore and common ignores.",
+          "target": "src/workspace.ts"
+        },
+        {
+          "type": "calls",
+          "symbol": "->",
+          "text": "Delegates file listing and optional content reads to workspace.loadCodeFileEntries().",
+          "target": "src/workspace.ts"
+        },
+        {
+          "type": "calls",
+          "symbol": "->",
+          "text": "hydrateCodeFileEntry() lazy-loads file content and triggers render when ready."
+        }
+      ]
+    },
+    {
+      "id": "src/app/index.ts",
+      "label": "index.ts",
+      "path": "src/app/index.ts",
+      "items": [
+        {
+          "type": "relevance",
+          "symbol": "=>",
+          "text": "Applies updated entries to UI; refreshEntries triggers full re-render."
+        },
+        {
+          "type": "calls",
+          "symbol": "->",
+          "text": "refreshEntries() recomputes types, prunes, and re-renders content and chips."
+        },
+        {
+          "type": "calls",
+          "symbol": "->",
+          "text": "scheduleFileContentLoad() lazy-loads file content and re-renders when ready."
+        }
+      ]
+    }
+  ]
+}
