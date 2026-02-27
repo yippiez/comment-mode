@@ -11,7 +11,7 @@
         {
           "type": "relevance",
           "symbol": "=>",
-          "text": "Orchestrates live-reload by connecting watcher to signal-driven refresh."
+          "text": "Orchestrates live-reload: starts watcher, registers signal handlers, defines refreshEntries()."
         },
         {
           "type": "calls",
@@ -28,13 +28,19 @@
         {
           "type": "calls",
           "symbol": "->",
-          "text": "refreshEntries() calls loadCodeFileEntries() to re-scan files.",
+          "text": "refreshEntries() uses running/pending flags to debounce concurrent refreshes.",
           "target": "src/files.ts"
         },
         {
           "type": "calls",
           "symbol": "->",
-          "text": "refreshEntries() calls app.refreshEntries(nextEntries) to update the UI.",
+          "text": "Calls loadCodeFileEntries(rootDir) to rescan workspace files.",
+          "target": "src/files.ts"
+        },
+        {
+          "type": "calls",
+          "symbol": "->",
+          "text": "Calls app.refreshEntries(nextEntries) to update UI with new entries.",
           "target": "src/app/index.ts"
         },
         {
@@ -58,19 +64,19 @@
         {
           "type": "calls",
           "symbol": "->",
-          "text": "Calls getIgnoredDirs(process.cwd()) to compute ignore set before watching.",
+          "text": "Calls getIgnoredDirs(rootDir) to compute ignore set before watching.",
           "target": "src/workspace.ts"
         },
         {
           "type": "calls",
           "symbol": "->",
-          "text": "Calls workspace.watchWorkspace(root, ignoredDirs, () => emit(SIGNALS.workspaceChanged)).",
+          "text": "Calls workspace.watchWorkspace() with onChange callback that emits SIGNALS.workspaceChanged.",
           "target": "src/workspace.ts"
         },
         {
           "type": "dependency",
           "symbol": "⫘",
-          "text": "Uses emit() from signals to broadcast workspaceChanged.",
+          "text": "Uses emit() from signals to broadcast workspaceChanged events.",
           "target": "src/signals.ts"
         }
       ]
@@ -83,32 +89,37 @@
         {
           "type": "relevance",
           "symbol": "=>",
-          "text": "Implements debounced directory watchers and rebuild-on-rename logic."
+          "text": "Implements debounced fs.watch watchers and rebuild-on-rename logic."
         },
         {
           "type": "dependency",
           "symbol": "⫘",
-          "text": "Creates node fs.watch watchers to observe file changes in directories."
+          "text": "Uses Node's fs.watch() to observe file changes in directories."
         },
         {
           "type": "calls",
           "symbol": "->",
-          "text": "scheduleChange() debounces rapid events before invoking onChange callback."
+          "text": "scheduleChange() debounces rapid events (80ms) before invoking onChange callback."
         },
         {
           "type": "calls",
           "symbol": "->",
-          "text": "scheduleRebuild() triggers rebuildWatchers() to recompute watched directories."
+          "text": "scheduleRebuild() debounces (160ms) and triggers rebuildWatchers() to recompute watched dirs."
         },
         {
           "type": "calls",
           "symbol": "->",
-          "text": "listWatchableDirs() uses git ls-files when repository present for efficiency."
+          "text": "rebuildWatchers() closes stale watchers, creates new ones for added/removed directories."
+        },
+        {
+          "type": "calls",
+          "symbol": "->",
+          "text": "listWatchableDirs() uses git ls-files when repository present for efficient file listing."
         },
         {
           "type": "dependency",
           "symbol": "⫘",
-          "text": "Uses git commands to optimize file listing and ignore handling."
+          "text": "Uses git commands to optimize file listing and .gitignore handling."
         }
       ]
     },
@@ -120,7 +131,12 @@
         {
           "type": "relevance",
           "symbol": "=>",
-          "text": "Provides in-process pub/sub used to notify app of workspace changes."
+          "text": "Provides in-process pub/sub to notify app of workspace changes."
+        },
+        {
+          "type": "calls",
+          "symbol": "->",
+          "text": "SIGNALS.workspaceChanged: SignalGroup used to broadcast filesystem change events."
         },
         {
           "type": "calls",
@@ -130,7 +146,7 @@
         {
           "type": "calls",
           "symbol": "->",
-          "text": "register() stores handlers and returns ids used for deregistration."
+          "text": "register() stores handlers and returns UUIDs used for deregistration."
         }
       ]
     },
@@ -176,12 +192,17 @@
         {
           "type": "calls",
           "symbol": "->",
-          "text": "refreshEntries() recomputes types, prunes, and re-renders content and chips."
+          "text": "refreshEntries() updates this.entries, recomputes types, and re-renders chips and content."
         },
         {
           "type": "calls",
           "symbol": "->",
           "text": "scheduleFileContentLoad() lazy-loads file content and re-renders when ready."
+        },
+        {
+          "type": "calls",
+          "symbol": "->",
+          "text": "pruneAgentUpdates() removes agent prompts for deleted files."
         }
       ]
     }
