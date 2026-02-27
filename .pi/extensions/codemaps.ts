@@ -44,13 +44,17 @@ interface LegacyCodemapRef {
 
 type ListAction =
 	| { type: "back"; selectedIndex: number }
-	| { type: "refresh"; selectedIndex: number }
+	| { type: "refresh"; selectedIndex: number; absolutePath: string }
 	| { type: "open"; selectedIndex: number; absolutePath: string };
 
 type ViewAction =
 	| { type: "back"; selectedIndex: number; collapsedFileIds: string[] }
 	| { type: "regenerate"; selectedIndex: number; collapsedFileIds: string[] }
 	| { type: "open"; selectedIndex: number; collapsedFileIds: string[]; file: CodemapFileItem };
+
+type CodemapViewResult =
+	| { type: "back" }
+	| { type: "refresh"; prompt: string; absolutePath: string };
 
 type RelationSymbolSpacing = Record<string, number>;
 type ThemeBackgroundKey = "selectedBg" | "customMessageBg" | "userMessageBg";
@@ -73,6 +77,10 @@ const RELATION_SYMBOL_SPACING: RelationSymbolSpacing = {
 
 function codeMapsDir(cwd: string): string {
 	return join(cwd, ".pi", "codemaps");
+}
+
+function toWorkspaceRelativePath(cwd: string, filePath: string): string {
+	return filePath.startsWith(`${cwd}/`) ? filePath.slice(cwd.length + 1) : filePath;
 }
 
 function getRelationDisplayLabel(type: string): string {
@@ -414,7 +422,9 @@ class CodemapListScreen {
 			return;
 		}
 		if (data === "r") {
-			this.done({ type: "refresh", selectedIndex: this.selectedIndex });
+			const selected = this.entries[this.selectedIndex];
+			if (!selected) return;
+			this.done({ type: "refresh", selectedIndex: this.selectedIndex, absolutePath: selected.absolutePath });
 			return;
 		}
 		if ((matchesKey(data, "enter") || matchesKey(data, "return")) && this.entries.length > 0) {
@@ -462,7 +472,7 @@ class CodemapListScreen {
 		}
 
 		lines.push(makeDivider(this.theme, w));
-		lines.push(truncateToWidth(this.theme.fg("dim", "enter open  r refresh  q back"), w));
+		lines.push(truncateToWidth(this.theme.fg("dim", "enter open  r refresh selected  q back"), w));
 		return lines.slice(0, totalRows);
 	}
 }
@@ -640,21 +650,25 @@ async function openFileInEditor(ctx: ExtensionCommandContext, file: CodemapFileI
 }
 
 function buildCodemapPrompt(userPrompt: string, outputPath: string, overwrite: boolean): string {
-	const overwriteLine = overwrite ? "Overwrite the existing file at that exact path." : "Create a new file at that exact path.";
-	return `You are creating a codemap JSON file for this repository.
+	const taskLine = overwrite
+		? `Refresh the outdated codemap at ${outputPath}.`
+		: `Create a codemap at ${outputPath}.`;
+	const pathRule = overwrite
+		? "- Read the existing codemap first, then overwrite that exact file."
+		: "- Create the codemap at that exact file path.";
+	return `Task: ${taskLine}
 
-User request: ${userPrompt}
-Output path: ${outputPath}
+Request: ${userPrompt}
 
 Requirements:
-- Investigate the repository with read/grep/find/bash tools before writing the codemap.
+- Investigate the repository with read/grep/find/bash tools before writing.
 - Do not edit repository source files.
-- Write exactly one JSON file to the output path above.
-- ${overwriteLine}
-- Do not create any additional codemap files.
-- After writing the file, respond with only: Saved codemap: ${outputPath}
+- ${pathRule}
+- Write exactly one JSON file and do not create any additional codemap files.
+- Update outdated codemap information so the saved analysis reflects the current repository.
+- Return exactly: Saved codemap: ${outputPath}
 
-The JSON file must match this shape exactly:
+JSON shape:
 {
   "title": string,
   "prompt": string,
@@ -677,25 +691,14 @@ The JSON file must match this shape exactly:
   ]
 }
 
-Rules for the codemap content:
-- The codemap answers the user request, not a generic code summary.
-- Keep the file list compact and focused on the request.
-- Each file row uses basename-only label in "label".
-- Each file row stores the full repository-relative path in "path".
-- Each relation item is a natural-language explanation tied to the user request.
-- Each relation item should be precise and short.
-- Prefer one sentence per item.
-- Aim for roughly 8-18 words per item unless a little more detail is necessary.
-- Keep details high-signal: name the role, the call, or the dependency, then stop.
-- Avoid filler, repetition, and broad summaries.
-- Built-in relation types:
-  - relevance uses symbol =>
-  - calls uses symbol ->
-  - dependency uses symbol ⫘
-- You may add "target" only when it helps clarify the relation.
-- Prefer 3-8 files unless the request truly needs more.
+Codemap rules:
+- Answer the request directly, not a generic summary.
+- Keep the file list focused and compact.
+- Use basename-only labels and repository-relative paths.
+- Keep each item precise, short, and high-signal.
+- Prefer 3-8 files unless the request clearly needs more.
 
-Return no markdown fences and no prose explanation outside the final one-line confirmation.`;
+No markdown fences. No extra prose.`;
 }
 
 async function waitForCodemapAtPath(absolutePath: string, baselineMtimeMs: number | null): Promise<void> {
@@ -731,11 +734,7 @@ async function runCodemapGeneration(
 	ctx.ui.setWorkingMessage(overwrite ? "Regenerating codemap..." : "Creating codemap...");
 	try {
 		const prompt = buildCodemapPrompt(userPrompt, outputPath, overwrite);
-		if (ctx.isIdle()) {
-			pi.sendUserMessage(prompt);
-		} else {
-			pi.sendUserMessage(prompt, { deliverAs: "followUp" });
-		}
+		pi.sendUserMessage(prompt);
 		await ctx.waitForIdle();
 		await waitForCodemapAtPath(absolutePath, baselineMtimeMs);
 		return await readCodemapDocument(absolutePath);
@@ -765,15 +764,29 @@ async function showCodemapList(pi: ExtensionAPI, ctx: ExtensionCommandContext): 
 		selectedIndex = action.selectedIndex;
 		if (action.type === "back") return;
 		if (action.type === "refresh") {
-			entries = await listSavedCodemaps(ctx.cwd);
-			if (entries.length === 0) {
-				ctx.ui.notify("No codemaps found after refresh.", "info");
-				return;
+			try {
+				const document = await readCodemapDocument(action.absolutePath);
+				const relativePath = toWorkspaceRelativePath(ctx.cwd, action.absolutePath);
+				await runCodemapGeneration(pi, ctx, document.prompt, relativePath, true);
+				ctx.ui.notify(`Codemap refreshed: ${relativePath}`, "info");
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				ctx.ui.notify(`Failed to refresh codemap: ${message}`, "error");
 			}
-			selectedIndex = clampIndex(selectedIndex, entries.length);
-			continue;
+			return;
 		}
-		await showCodemapView(pi, ctx, action.absolutePath);
+		const result = await showCodemapView(ctx, action.absolutePath);
+		if (result.type === "refresh") {
+			try {
+				const relativePath = toWorkspaceRelativePath(ctx.cwd, result.absolutePath);
+				await runCodemapGeneration(pi, ctx, result.prompt, relativePath, true);
+				ctx.ui.notify(`Codemap refreshed: ${relativePath}`, "info");
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				ctx.ui.notify(`Failed to refresh codemap: ${message}`, "error");
+			}
+			return;
+		}
 		entries = await listSavedCodemaps(ctx.cwd);
 		if (entries.length === 0) {
 			ctx.ui.notify("No codemaps remain on disk.", "info");
@@ -783,14 +796,14 @@ async function showCodemapList(pi: ExtensionAPI, ctx: ExtensionCommandContext): 
 	}
 }
 
-async function showCodemapView(pi: ExtensionAPI, ctx: ExtensionCommandContext, absolutePath: string): Promise<void> {
+async function showCodemapView(ctx: ExtensionCommandContext, absolutePath: string): Promise<CodemapViewResult> {
 	let document: CodemapDocument;
 	try {
 		document = await readCodemapDocument(absolutePath);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		ctx.ui.notify(`Failed to load codemap: ${message}`, "error");
-		return;
+		return { type: "back" };
 	}
 	let selectedIndex = 0;
 	let collapsedFileIds = new Set<string>();
@@ -811,27 +824,12 @@ async function showCodemapView(pi: ExtensionAPI, ctx: ExtensionCommandContext, a
 		selectedIndex = clampIndex(action.selectedIndex, document.files.length);
 		collapsedFileIds = new Set(action.collapsedFileIds);
 
-		if (action.type === "back") return;
+		if (action.type === "back") return { type: "back" };
 		if (action.type === "open") {
 			await openFileInEditor(ctx, action.file);
 			continue;
 		}
-		try {
-			const relativePath = absolutePath.startsWith(`${ctx.cwd}/`) ? absolutePath.slice(ctx.cwd.length + 1) : absolutePath;
-			document = await runCodemapGeneration(pi, ctx, document.prompt, relativePath, true);
-			selectedIndex = clampIndex(selectedIndex, document.files.length);
-			const nextCollapsed = new Set<string>();
-			for (const fileId of collapsedFileIds) {
-				if (document.files.some((file) => file.id === fileId)) {
-					nextCollapsed.add(fileId);
-				}
-			}
-			collapsedFileIds = nextCollapsed;
-			ctx.ui.notify(`Codemap refreshed: ${relativePath}`, "info");
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			ctx.ui.notify(`Failed to refresh codemap: ${message}`, "error");
-		}
+		return { type: "refresh", prompt: document.prompt, absolutePath };
 	}
 }
 
