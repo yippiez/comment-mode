@@ -43,6 +43,7 @@ export class DocumentBlocks {
     row: FileTreeRow,
     nextLineNumber: number,
     nextDisplayRow: number,
+    lineModelFilePath = row.filePath,
   ): RenderCursor {
     const rowView = createFileTreeRowView(this.renderer, row, this.getFilesModeViewportWidth());
     const lineView = new LineNumberRenderable(this.renderer, {
@@ -68,7 +69,7 @@ export class DocumentBlocks {
       lineStart: nextLineNumber,
       lineCount: 1,
       displayRowStart: nextDisplayRow,
-      filePath: row.filePath,
+      filePath: lineModelFilePath,
     });
 
     this.fileExplorer.setRowAtLine(nextLineNumber, row);
@@ -80,7 +81,8 @@ export class DocumentBlocks {
   }
 
   public addCollapsedPlaceholderBlock(
-    entry: CodeFileEntry,
+    filePath: string,
+    filetype: string | undefined,
     collapsedLineCount: number | null,
     dividerWidth: number,
     fileLineStart: number,
@@ -97,6 +99,7 @@ export class DocumentBlocks {
     const code = new CodeRenderable(this.renderer, {
       width: "100%",
       content,
+      filetype,
       syntaxStyle: theme.getSyntaxStyle(),
       wrapMode: "none",
       bg: theme.getCollapsedBackgroundColor(),
@@ -126,7 +129,7 @@ export class DocumentBlocks {
       lineStart: nextLineNumber,
       lineCount: 1,
       displayRowStart: nextDisplayRow,
-      filePath: entry.relativePath,
+      filePath,
     });
 
     return {

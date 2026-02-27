@@ -49,7 +49,6 @@ type ProcessSignalSource = {
 export type KeyboardStateSnapshot = {
   promptVisible: boolean;
   focusMode: FocusMode;
-  viewMode: "code" | "files";
   promptField: PromptComposerField | null;
 };
 
@@ -79,9 +78,7 @@ export function registerKeyboardSignalBindings(
   source: KeypressSource,
   getState: () => KeyboardStateSnapshot,
 ): () => void {
-  let pendingLeaderAt: number | null = null;
   let pendingGChordAt: number | null = null;
-  const leaderTimeoutMs = 500;
   const gChordTimeoutMs = 500;
 
   const emitHandled = (key: KeyEvent, signalGroup: SignalGroup, ...args: unknown[]): void => {
@@ -145,28 +142,6 @@ export function registerKeyboardSignalBindings(
 
   const routeCode = (keyName: string, rawKeyName: string | undefined, key: KeyEvent): void => {
     const now = Date.now();
-    const leaderActive = pendingLeaderAt !== null && now - pendingLeaderAt <= leaderTimeoutMs;
-    if (leaderActive && keyName === "o") {
-      pendingLeaderAt = null;
-      pendingGChordAt = null;
-      emitHandled(key, SIGNALS.filesToggleExplorer);
-      return;
-    }
-
-    const { viewMode } = getState();
-    if (keyName === "space" && viewMode !== "files") {
-      pendingLeaderAt = now;
-      return;
-    }
-
-    if (keyName === "o" && viewMode === "files") {
-      pendingLeaderAt = null;
-      pendingGChordAt = null;
-      emitHandled(key, SIGNALS.filesToggleExplorer);
-      return;
-    }
-
-    pendingLeaderAt = null;
 
     const mappedAction = CODE_KEYMAP[keyName as keyof typeof CODE_KEYMAP];
     if (mappedAction === "escape_visual") {
@@ -259,12 +234,7 @@ export function registerKeyboardSignalBindings(
       return;
     }
 
-    if (keyName === "space" && viewMode === "files") {
-      emitHandled(key, SIGNALS.filesEnterDirectory);
-      return;
-    }
-
-    if (keyName === "backspace" && viewMode === "files") {
+    if (keyName === "backspace") {
       emitHandled(key, SIGNALS.filesParentDir);
       return;
     }

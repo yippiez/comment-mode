@@ -15,7 +15,7 @@ import type { PromptComposerBar, PromptComposerLayout } from "./prompt-composer-
 import type { FileExplorer } from "./file_explorer";
 import type { AgentTimeline } from "./agent_timeline";
 import type { DocumentBlocks } from "./document_blocks";
-import { modes } from "./view_modes";
+import type { VirtualCodeBlocks } from "./virtual_code_blocks";
 import { theme } from "../theme";
 import { clearChildren, makeSlashLine } from "../utils/ui";
 import { clamp } from "../utils/math";
@@ -47,6 +47,7 @@ type CursorRestorePoint = {
 
 type RenderContentOptions = {
   cursorTargetFilePath?: string;
+  preferFirstAnchor?: boolean;
 };
 
 type AppRendererOptions = {
@@ -60,6 +61,7 @@ type AppRendererOptions = {
   lineModel: LineModel;
   visualHighlights: Highlight;
   fileExplorer: FileExplorer;
+  virtualCodeBlocks: VirtualCodeBlocks;
   agentTimeline: AgentTimeline;
   documentBlocks: DocumentBlocks;
   getEntries: () => CodeFileEntry[];
@@ -93,6 +95,7 @@ export class AppRenderer {
   private readonly lineModel: LineModel;
   private readonly visualHighlights: Highlight;
   private readonly fileExplorer: FileExplorer;
+  private readonly virtualCodeBlocks: VirtualCodeBlocks;
   private readonly agentTimeline: AgentTimeline;
   private readonly documentBlocks: DocumentBlocks;
   private readonly getEntries: () => CodeFileEntry[];
@@ -120,6 +123,7 @@ export class AppRenderer {
     this.lineModel = options.lineModel;
     this.visualHighlights = options.visualHighlights;
     this.fileExplorer = options.fileExplorer;
+    this.virtualCodeBlocks = options.virtualCodeBlocks;
     this.agentTimeline = options.agentTimeline;
     this.documentBlocks = options.documentBlocks;
     this.getEntries = options.getEntries;
@@ -186,25 +190,11 @@ export class AppRenderer {
     }
 
     const filteredEntries = entries.filter((entry) => this.isTypeEnabled(entry.typeLabel));
-    if (filteredEntries.length === 0) {
+    const virtualBlocks = this.virtualCodeBlocks.getRenderableBlocks(filteredEntries, this.isTypeEnabled);
+
+    if (filteredEntries.length === 0 && virtualBlocks.length === 0) {
       this.renderEmptyState("No files for selected types.");
       this.cursor.configure(0);
-      return;
-    }
-
-    const entriesToRender = modes.filterEntries(this.state.viewMode, filteredEntries);
-    if (entriesToRender.length === 0) {
-      this.renderEmptyState(modes.getEmptyStateMessage(this.state.viewMode));
-      this.cursor.configure(0);
-      return;
-    }
-
-    if (this.state.viewMode === "files") {
-      this.fileExplorer.ensureDirectoryVisible(entriesToRender);
-      this.renderFilesModeContent(entriesToRender);
-      if (this.isPromptVisible()) {
-        this.refreshPromptView();
-      }
       return;
     }
 
@@ -212,7 +202,85 @@ export class AppRenderer {
     let nextLineNumber = 1;
     let nextDisplayRow = 0;
 
-    for (const entry of entriesToRender) {
+    for (const virtualBlock of virtualBlocks) {
+      const dividerRow = nextDisplayRow;
+      this.lineModel.markDivider(nextDisplayRow);
+      const divider = new TextRenderable(this.renderer, {
+        width: "100%",
+        overflow: "hidden",
+        truncate: true,
+        wrapMode: "none",
+        content: makeSlashLine(virtualBlock.descriptor.title, dividerWidth),
+        fg: theme.getDividerForegroundColor(),
+        bg: theme.getDividerBackgroundColor(),
+      });
+      this.dividerByFilePath.set(virtualBlock.descriptor.anchorPath, divider);
+      this.scrollbox.add(divider);
+      nextDisplayRow += 1;
+
+      const blockAnchorLine = nextLineNumber;
+      this.virtualCodeBlocks.setAnchorLine(virtualBlock.descriptor.id, blockAnchorLine);
+
+      if (virtualBlock.collapsed) {
+        const result = this.documentBlocks.addCollapsedPlaceholderBlock(
+          virtualBlock.descriptor.anchorPath,
+          undefined,
+          null,
+          dividerWidth,
+          1,
+          nextLineNumber,
+          nextDisplayRow,
+          "↑ virtual block collapsed ↓",
+        );
+        nextLineNumber = result.nextLineNumber;
+        nextDisplayRow = result.nextDisplayRow;
+      } else if (virtualBlock.rows.length === 0) {
+        const result = this.documentBlocks.addCollapsedPlaceholderBlock(
+          virtualBlock.descriptor.anchorPath,
+          undefined,
+          0,
+          dividerWidth,
+          1,
+          nextLineNumber,
+          nextDisplayRow,
+          "↑ no files available ↓",
+        );
+        nextLineNumber = result.nextLineNumber;
+        nextDisplayRow = result.nextDisplayRow;
+      } else {
+        for (const row of virtualBlock.rows) {
+          const rowResult = this.documentBlocks.addFileTreeRowBlock(
+            row,
+            nextLineNumber,
+            nextDisplayRow,
+            this.virtualCodeBlocks.getLineModelPathForRow(row),
+          );
+          nextLineNumber = rowResult.nextLineNumber;
+          nextDisplayRow = rowResult.nextDisplayRow;
+        }
+      }
+
+      const updatesForVirtualBlock = this.getUpdatesForFile(virtualBlock.descriptor.promptFilePath);
+      for (const update of updatesForVirtualBlock) {
+        const agentResult = this.agentTimeline.addUpdateWithMessages(
+          update,
+          nextLineNumber,
+          nextDisplayRow,
+        );
+        nextLineNumber = agentResult.nextLineNumber;
+        nextDisplayRow = agentResult.nextDisplayRow;
+      }
+
+      if (nextLineNumber > blockAnchorLine) {
+        this.lineModel.addFileAnchor({
+          line: blockAnchorLine,
+          dividerRow,
+          filePath: virtualBlock.descriptor.anchorPath,
+        });
+      }
+    }
+
+    for (const entry of filteredEntries) {
       const updatesForFile = this.getUpdatesForFile(entry.relativePath);
       let nextUpdateIndex = 0;
       const dividerRow = nextDisplayRow;
@@ -233,7 +301,8 @@ export class AppRenderer {
 
       if (this.fileExplorer.isCollapsed(entry.relativePath)) {
         const result = this.documentBlocks.addCollapsedPlaceholderBlock(
-          entry,
+          entry.relativePath,
+          entry.filetype,
           entry.isContentLoaded ? entry.lineCount : null,
           dividerWidth,
           1,
@@ -257,7 +326,8 @@ export class AppRenderer {
       } else if (!entry.isContentLoaded) {
         this.scheduleFileContentLoad(entry);
         const result = this.documentBlocks.addCollapsedPlaceholderBlock(
-          entry,
+          entry.relativePath,
+          entry.filetype,
           null,
           dividerWidth,
           1,
@@ -334,7 +404,10 @@ export class AppRenderer {
 
     this.lineModel.setTotalLines(nextLineNumber - 1);
     const pendingPath = this.fileExplorer.consumePendingCodeTargetPath();
-    const targetPath = options.cursorTargetFilePath ?? pendingPath;
+    const preferredAnchorPath = options.preferFirstAnchor
+      ? this.lineModel.getFileAnchor(0)?.filePath
+      : undefined;
+    const targetPath = options.cursorTargetFilePath ?? pendingPath ?? preferredAnchorPath;
     const targetAnchor = targetPath ? this.lineModel.getFileAnchorByPath(targetPath) : undefined;
     if (targetAnchor) {
       this.cursor.configureWithTarget(this.lineModel.totalLines, targetAnchor.line, "keep");
@@ -401,47 +474,6 @@ export class AppRenderer {
     const resolved = divider.y - this.scrollbox.content.y;
     if (!Number.isFinite(resolved)) return anchor.dividerRow;
     return Math.max(0, Math.round(resolved));
-  }
-
-  private renderFilesModeContent(entries: readonly CodeFileEntry[]): void {
-    const rows = this.fileExplorer.buildRows(entries);
-    if (rows.length === 0) {
-      this.renderEmptyState("No files in tree.");
-      this.cursor.configure(0);
-      return;
-    }
-
-    let nextDisplayRow = 0;
-    let nextLineNumber = 1;
-
-    for (const row of rows) {
-      const rowDisplayStart = nextDisplayRow;
-      const rowResult = this.documentBlocks.addFileTreeRowBlock(row, nextLineNumber, nextDisplayRow);
-      nextLineNumber = rowResult.nextLineNumber;
-      nextDisplayRow = rowResult.nextDisplayRow;
-
-      if (row.kind === "file") {
-        this.lineModel.addFileAnchor({
-          line: rowResult.blockStartLine,
-          dividerRow: rowDisplayStart,
-          filePath: row.filePath,
-        });
-
-        const updatesForFile = this.getUpdatesForFile(row.filePath);
-        for (const update of updatesForFile) {
-          const agentResult = this.agentTimeline.addUpdateWithMessages(
-            update,
-            nextLineNumber,
-            nextDisplayRow,
-          );
-          nextLineNumber = agentResult.nextLineNumber;
-          nextDisplayRow = agentResult.nextDisplayRow;
-        }
-      }
-    }
-
-    this.lineModel.setTotalLines(nextLineNumber - 1);
-    this.cursor.configure(this.lineModel.totalLines);
   }
 
   private renderEmptyState(message: string): void {

@@ -1,8 +1,7 @@
 import type { PromptTarget } from "../controllers/prompt";
 import type { Cursor } from "../controllers/cursor";
 import type { LineModel } from "../line-model";
-import { modes, type FileTreeRow, type ModeSelectionLineInfo } from "./view_modes";
-import type { ViewMode } from "../types";
+import type { FileTreeRow, ModeSelectionLineInfo } from "./view_modes";
 import { clamp } from "../utils/math";
 import type { PromptComposerLayout } from "./prompt-composer-bar";
 
@@ -29,56 +28,69 @@ export function collectSelectionLineInfos(cursor: Cursor, lineModel: LineModel):
 }
 
 export function createPromptTargetFromSelection(
-  viewMode: ViewMode,
   cursor: Cursor,
   lineModel: LineModel,
   fileTreeRowsByLine: ReadonlyMap<number, FileTreeRow>,
+  projectRootPath: string,
 ): PromptTarget | null {
   const selection = collectSelectionLineInfos(cursor, lineModel);
   if (selection.length === 0) return null;
 
-  const modeSelection = modes.buildPromptSelection(viewMode, {
-    selection,
-    fileTreeRowsByLine,
-  });
-  if (!modeSelection) return null;
+  const virtualRows = selection
+    .map((line) => fileTreeRowsByLine.get(line.globalLine))
+    .filter((row): row is FileTreeRow => Boolean(row));
+  const isPureVirtualSelection = virtualRows.length === selection.length && virtualRows.length > 0;
+  if (isPureVirtualSelection) {
+    const selectedPaths = dedupePreserveOrder(
+      virtualRows.map((row) => normalizeSelectionPath(row.filePath, projectRootPath)),
+    );
+    if (selectedPaths.length === 0) return null;
 
-  return buildPromptTarget(viewMode, modeSelection.selection, modeSelection.selectedText);
-}
+    const last = selection[selection.length - 1];
+    if (!last) return null;
+    const selectedText = [
+      "Mode: VIRTUAL FILE",
+      `Selected items: ${String(selectedPaths.length)}`,
+      "Selection:",
+      ...selectedPaths.map((path) => `- ${path}`),
+    ].join("\n");
 
-export function buildClipboardSelectionText(
-  viewMode: ViewMode,
-  selection: readonly SelectionLineInfo[],
-  fileTreeRowsByLine: ReadonlyMap<number, FileTreeRow>,
-): string {
-  const modeClipboard = modes.buildClipboardText(viewMode, {
-    selection,
-    fileTreeRowsByLine,
-  });
-  if (modeClipboard) return modeClipboard;
+    return {
+      viewMode: "virtual",
+      filePath: projectRootPath,
+      selectionStartFileLine: 1,
+      selectionEndFileLine: 1,
+      anchorLine: last.globalLine,
+      selectedText,
+      prompt: "",
+      model: "opencode/big-pickle",
+    };
+  }
 
-  return selection.map((line) => line.text).join("\n").trimEnd();
-}
+  const selectedCodeLines = selection.filter(
+    (line) => line.blockKind === "code" && typeof line.fileLine === "number",
+  );
+  if (selectedCodeLines.length !== selection.length) return null;
 
-export function buildPromptTarget(
-  viewMode: ViewMode,
-  selection: readonly SelectionLineInfo[],
-  selectedText: string,
-): PromptTarget | null {
-  const first = selection[0];
-  const last = selection[selection.length - 1];
-  if (!first || !last) return null;
+  const uniquePath = resolveSinglePath(selectedCodeLines.map((line) => line.filePath));
+  if (uniquePath === null) return null;
 
-  const primaryFilePath = first.filePath;
-  const primaryFileLines = selection
-    .filter((line) => line.filePath === primaryFilePath && typeof line.fileLine === "number")
-    .map((line) => line.fileLine as number);
-  const selectionStartFileLine = primaryFileLines.length > 0 ? Math.min(...primaryFileLines) : 1;
-  const selectionEndFileLine = primaryFileLines.length > 0 ? Math.max(...primaryFileLines) : 1;
+  const last = selectedCodeLines[selectedCodeLines.length - 1];
+  if (!last) return null;
+
+  const fileLines = selectedCodeLines.map((line) => line.fileLine as number);
+  const selectionStartFileLine = Math.min(...fileLines);
+  const selectionEndFileLine = Math.max(...fileLines);
+  const selectedText = [
+    "Mode: CODE",
+    `File: ${uniquePath}`,
+    "Selected code:",
+    ...selectedCodeLines.map((line) => `${String(line.fileLine)}: ${line.text}`),
+  ].join("\n");
 
   return {
-    viewMode,
-    filePath: primaryFilePath,
+    viewMode: "code",
+    filePath: uniquePath,
     selectionStartFileLine,
     selectionEndFileLine,
     anchorLine: last.globalLine,
@@ -86,6 +98,53 @@ export function buildPromptTarget(
     prompt: "",
     model: "opencode/big-pickle",
   };
+}
+
+export function buildClipboardSelectionText(
+  selection: readonly SelectionLineInfo[],
+  fileTreeRowsByLine: ReadonlyMap<number, FileTreeRow>,
+): string {
+  const virtualRows = selection
+    .map((line) => fileTreeRowsByLine.get(line.globalLine))
+    .filter((row): row is FileTreeRow => Boolean(row));
+  const isPureVirtualSelection = virtualRows.length === selection.length && virtualRows.length > 0;
+  if (isPureVirtualSelection) {
+    const selectedPaths = dedupePreserveOrder(
+      virtualRows.map((row) => normalizeSelectionPath(row.filePath, ".")),
+    );
+    return selectedPaths.join("\n");
+  }
+
+  const codeLines = selection.filter(
+    (line) => line.blockKind === "code" && typeof line.fileLine === "number",
+  );
+  if (codeLines.length !== selection.length) return "";
+  const uniquePath = resolveSinglePath(codeLines.map((line) => line.filePath));
+  if (uniquePath === null) return "";
+
+  return codeLines.map((line) => line.text).join("\n").trimEnd();
+}
+
+function resolveSinglePath(paths: readonly string[]): string | null {
+  const unique = new Set(paths);
+  if (unique.size !== 1) return null;
+  const [first] = unique;
+  return first ?? null;
+}
+
+function dedupePreserveOrder(values: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const output: string[] = [];
+  for (const value of values) {
+    if (seen.has(value)) continue;
+    seen.add(value);
+    output.push(value);
+  }
+  return output;
+}
+
+function normalizeSelectionPath(path: string, fallback: string): string {
+  return path.length > 0 ? path : fallback;
 }
 
 export function resolvePromptComposerLayout(options: {

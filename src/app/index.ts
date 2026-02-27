@@ -30,9 +30,6 @@ import type {
   FocusMode,
 } from "../types";
 import { wrapIndex } from "../utils/math";
-import {
-  modes,
-} from "./view_modes";
 import { Highlight } from "../controllers/highlight";
 import {
   type KeyboardStateSnapshot,
@@ -51,6 +48,7 @@ import { FileExplorer } from "./file_explorer";
 import { AgentTimeline } from "./agent_timeline";
 import { DocumentBlocks } from "./document_blocks";
 import { AppRenderer } from "./renderer";
+import { VirtualCodeBlocks } from "./virtual_code_blocks";
 type CodeBrowserAppOptions = {
   initialAgentUpdates?: AgentUpdate[];
   onAgentUpdatesChanged?: (updates: AgentUpdate[]) => void;
@@ -84,6 +82,7 @@ export class CodeBrowserApp {
   private readonly lineModel = new LineModel();
   private readonly visualHighlights = new Highlight();
   private readonly fileExplorer = new FileExplorer();
+  private readonly virtualCodeBlocks = new VirtualCodeBlocks(this.fileExplorer);
   private readonly agentTimeline: AgentTimeline;
   private readonly pendingEntryLoads = new Set<string>();
   private lazyContentModeEnabled = false;
@@ -174,6 +173,7 @@ export class CodeBrowserApp {
       lineModel: this.lineModel,
       visualHighlights: this.visualHighlights,
       fileExplorer: this.fileExplorer,
+      virtualCodeBlocks: this.virtualCodeBlocks,
       agentTimeline: this.agentTimeline,
       documentBlocks: this.documentBlocks,
       getEntries: () => this.entries,
@@ -203,7 +203,6 @@ export class CodeBrowserApp {
     this.typeCounts = new Map();
     this.sortedTypes = [];
     this.enabledTypes = new Map();
-    this.state.viewMode = modes.getMode();
     this.enableLazyContentModeIfNeeded();
     this.recomputeTypesState();
     this.applyTheme();
@@ -213,7 +212,7 @@ export class CodeBrowserApp {
     this.pruneAgentUpdates();
     this.registerBindings();
     this.state.focusMode = "code";
-    this.renderAll();
+    this.renderAll({ preferFirstAnchor: this.lazyContentModeEnabled });
     this.prompt.start();
   }
 
@@ -223,7 +222,7 @@ export class CodeBrowserApp {
     this.pruneCollapsedFiles();
     this.pruneAgentUpdates();
     this.recomputeTypesState();
-    this.renderAll();
+    this.renderAll({ preferFirstAnchor: this.lazyContentModeEnabled });
   }
 
   public getAgentUpdates(): AgentUpdate[] {
@@ -310,16 +309,16 @@ export class CodeBrowserApp {
     return {
       promptVisible: this.prompt.isVisible,
       focusMode: this.state.focusMode,
-      viewMode: this.state.viewMode,
       promptField: this.prompt.isVisible ? this.prompt.currentField : null,
     };
   }
 
   private openFromCurrentSelection(): void {
-    if (this.state.viewMode === "files" && !this.cursor.isVisualModeEnabled) {
-      this.openSelectedFilesRow();
-      return;
+    if (!this.cursor.isVisualModeEnabled) {
+      const opened = this.openSelectedVirtualRow();
+      if (opened) return;
     }
+
     void this.openPromptFromCodeSelection();
   }
 
@@ -339,14 +338,19 @@ export class CodeBrowserApp {
       }
     }
 
-    this.renderAll({ cursorTargetFilePath: target.filePath });
+    this.renderAll({
+      cursorTargetFilePath:
+        target.source === "virtual" ? this.virtualCodeBlocks.getDefaultAnchorPath() : target.filePath,
+    });
   }
 
-  private resolveEditorTarget(): { filePath: string; fileLine: number } | null {
-    if (this.state.viewMode === "files") {
-      const row = this.fileExplorer.getRowAtLine(this.cursor.cursorLine);
-      if (!row || row.kind !== "file") return null;
-      return { filePath: row.filePath, fileLine: 1 };
+  private resolveEditorTarget(): { filePath: string; fileLine: number; source: "virtual" | "content" } | null {
+    const virtualTarget = this.virtualCodeBlocks.resolveEditorTargetAtLine(this.cursor.cursorLine);
+    if (virtualTarget) {
+      return {
+        ...virtualTarget,
+        source: "virtual",
+      };
     }
 
     const update = this.getAgentUpdateAtCursorLine();
@@ -354,14 +358,17 @@ export class CodeBrowserApp {
       return {
         filePath: update.filePath,
         fileLine: update.selectionEndFileLine,
+        source: "content",
       };
     }
 
     const lineInfo = this.lineModel.getVisibleLineInfo(this.cursor.cursorLine);
     if (!lineInfo) return null;
+    if (lineInfo.filePath.startsWith("virtual://")) return null;
     return {
       filePath: lineInfo.filePath,
       fileLine: typeof lineInfo.fileLine === "number" ? lineInfo.fileLine : 1,
+      source: "content",
     };
   }
 
@@ -373,7 +380,7 @@ export class CodeBrowserApp {
         this.cursor.cursorLine;
       this.prompt.open({
         updateId: update.id,
-        viewMode: update.contextMode ?? this.state.viewMode,
+        viewMode: update.contextMode,
         filePath: update.filePath,
         selectionStartFileLine: update.selectionStartFileLine,
         selectionEndFileLine: update.selectionEndFileLine,
@@ -394,10 +401,10 @@ export class CodeBrowserApp {
   /** Builds a prompt target payload from current visual selection in active file. */
   private createPromptTargetFromSelection(): PromptTarget | null {
     return createPromptTargetFromSelection(
-      this.state.viewMode,
       this.cursor,
       this.lineModel,
-      this.fileExplorer.getRowsByLine(),
+      this.virtualCodeBlocks.getRowsByLine(),
+      this.virtualCodeBlocks.getDefaultPromptFilePath(),
     );
   }
 
@@ -416,9 +423,8 @@ export class CodeBrowserApp {
 
   private buildClipboardSelectionText(selection: readonly SelectionLineInfo[]): string {
     return buildClipboardSelectionText(
-      this.state.viewMode,
       selection,
-      this.fileExplorer.getRowsByLine(),
+      this.virtualCodeBlocks.getRowsByLine(),
     );
   }
 
@@ -478,9 +484,11 @@ export class CodeBrowserApp {
   }
 
   private toggleFilesExplorerMode(): void {
-    const nextMode = this.state.viewMode === "files" ? "code" : "files";
-    this.state.viewMode = modes.setMode(nextMode);
-    this.renderContent();
+    this.enabledTypes.set(FileExplorer.FILE_PAGE_TYPE_LABEL, true);
+    this.virtualCodeBlocks.setFileBlockCollapsed(false);
+    this.renderChips();
+    this.renderContent({ cursorTargetFilePath: this.virtualCodeBlocks.getDefaultAnchorPath() });
+    this.cursor.goToLineAtMinVisibleHeight(this.cursor.cursorLine);
   }
 
   /** Cycles to next theme and re-renders themed UI surfaces. */
@@ -495,45 +503,48 @@ export class CodeBrowserApp {
   }
 
   private toggleCurrentStructureCollapse(): void {
-    if (this.state.viewMode === "files") {
+    const currentFilePath = this.lineModel.getCurrentFilePath(this.cursor.cursorLine);
+    if (this.virtualCodeBlocks.toggleFileBlockCollapseAtLine(this.cursor.cursorLine) || currentFilePath === ".") {
+      this.renderContent({ cursorTargetFilePath: this.virtualCodeBlocks.getDefaultAnchorPath() });
       return;
     }
     this.toggleCurrentFileCollapse();
   }
 
-  private openSelectedFilesRow(): void {
-    const row = this.fileExplorer.getRowAtLine(this.cursor.cursorLine);
-    if (!row) return;
-    if (row.kind === "dir") {
-      this.enterCurrentDirectory();
-      return;
+  private openSelectedVirtualRow(): boolean {
+    const result = this.virtualCodeBlocks.openAtLine(this.cursor.cursorLine);
+    if (result.enteredDirectory) {
+      this.renderContent({ cursorTargetFilePath: this.virtualCodeBlocks.getDefaultAnchorPath() });
+      this.cursor.goToLineAtMinVisibleHeight(this.cursor.cursorLine);
+      return true;
     }
-    this.openFileFromExplorer(row.filePath);
+    if (!result.openedFilePath) return false;
+    this.openFileFromExplorer(result.openedFilePath);
+    return true;
   }
 
   private openFileFromExplorer(filePath: string): void {
-    this.state.viewMode = modes.setMode("code");
     this.fileExplorer.openFile(filePath);
     this.renderContent();
   }
 
   private enterCurrentDirectory(): void {
-    const changed = this.fileExplorer.enterCurrentDirectoryAtLine(this.cursor.cursorLine);
+    const changed = this.virtualCodeBlocks.enterDirectoryAtLine(this.cursor.cursorLine);
     if (!changed) return;
-    this.renderContent();
-    this.cursor.goToLine(1, "top");
+    this.renderContent({ cursorTargetFilePath: this.virtualCodeBlocks.getDefaultAnchorPath() });
+    this.cursor.goToLineAtMinVisibleHeight(this.cursor.cursorLine);
   }
 
   private goToParentDirectory(): void {
-    const changed = this.fileExplorer.goToParentDirectory();
+    const changed = this.virtualCodeBlocks.goToParentDirectoryForLine(this.cursor.cursorLine);
     if (!changed) return;
-    this.renderContent();
-    this.cursor.goToLine(1, "top");
+    this.renderContent({ cursorTargetFilePath: this.virtualCodeBlocks.getDefaultAnchorPath() });
+    this.cursor.goToLineAtMinVisibleHeight(this.cursor.cursorLine);
   }
 
   private toggleCurrentFileCollapse(): void {
     const currentFilePath = this.lineModel.getCurrentFilePath(this.cursor.cursorLine);
-    const changed = this.fileExplorer.toggleCollapse(this.state.viewMode, currentFilePath);
+    const changed = this.fileExplorer.toggleCollapse(currentFilePath);
     if (!changed) return;
 
     const cursorTargetFilePath =
@@ -548,7 +559,7 @@ export class CodeBrowserApp {
     this.appRenderer.renderChips();
   }
 
-  private renderContent(options: { cursorTargetFilePath?: string } = {}): void {
+  private renderContent(options: { cursorTargetFilePath?: string; preferFirstAnchor?: boolean } = {}): void {
     this.appRenderer.renderContent(options);
   }
 
@@ -556,7 +567,7 @@ export class CodeBrowserApp {
     return Layout.getUpdatesForFile(this.agent.getMutableUpdates(), filePath);
   }
 
-  private renderAll(options: { cursorTargetFilePath?: string } = {}): void {
+  private renderAll(options: { cursorTargetFilePath?: string; preferFirstAnchor?: boolean } = {}): void {
     this.appRenderer.renderAll(options);
   }
 
@@ -596,6 +607,7 @@ export class CodeBrowserApp {
       this.enabledTypes,
       this.state.selectedChipIndex,
       ACTION_CHIPS.length,
+      this.virtualCodeBlocks.getSupplementalTypes(),
     );
     this.typeCounts = nextState.typeCounts;
     this.sortedTypes = nextState.sortedTypes;
@@ -605,6 +617,7 @@ export class CodeBrowserApp {
 
   private pruneAgentUpdates(): void {
     const existing = new Set(this.entries.map((entry) => entry.relativePath));
+    existing.add(".");
     this.agent.pruneForEntries(existing);
   }
 
@@ -619,7 +632,6 @@ export class CodeBrowserApp {
 
     this.lazyContentModeEnabled = true;
     this.fileExplorer.collapseAll(this.entries);
-    this.state.viewMode = modes.setMode("files");
   }
 
   private scheduleFileContentLoad(entry: CodeFileEntry): void {

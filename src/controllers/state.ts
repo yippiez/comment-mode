@@ -1,13 +1,18 @@
-import type { CodeFileEntry, FocusMode, ViewMode } from "../types";
+import type { CodeFileEntry, FocusMode } from "../types";
 import { clamp } from "../utils/math";
 import { getParentPosixPath } from "../utils/path";
 
 export class AppStateStore {
   public focusMode: FocusMode = "code";
-  public viewMode: ViewMode = "code";
   public selectedChipIndex = 0;
   public chipWindowStartIndex = 0;
 }
+
+export type SupplementalTypeState = {
+  typeLabel: string;
+  typePriority: number;
+  count: number;
+};
 
 type RecomputeTypeStateResult = {
   typeCounts: Map<string, number>;
@@ -21,6 +26,7 @@ export function recomputeTypeState(
   previousEnabled: ReadonlyMap<string, boolean>,
   selectedChipIndex: number,
   actionChipCount: number,
+  supplementalTypes: readonly SupplementalTypeState[] = [],
 ): RecomputeTypeStateResult {
   const typeCounts = new Map<string, number>();
   const typePriorities = new Map<string, number>();
@@ -29,6 +35,15 @@ export function recomputeTypeState(
     const existingPriority = typePriorities.get(entry.typeLabel);
     if (existingPriority === undefined || entry.typePriority < existingPriority) {
       typePriorities.set(entry.typeLabel, entry.typePriority);
+    }
+  }
+
+  for (const supplemental of supplementalTypes) {
+    if (!supplemental.typeLabel) continue;
+    typeCounts.set(supplemental.typeLabel, (typeCounts.get(supplemental.typeLabel) ?? 0) + supplemental.count);
+    const existingPriority = typePriorities.get(supplemental.typeLabel);
+    if (existingPriority === undefined || supplemental.typePriority < existingPriority) {
+      typePriorities.set(supplemental.typeLabel, supplemental.typePriority);
     }
   }
 
@@ -52,7 +67,7 @@ export function recomputeTypeState(
   };
 }
 
-export function ensureFilesModeDirectoryVisible(
+export function ensureExplorerDirectoryVisible(
   entries: readonly CodeFileEntry[],
   directoryPath: string,
 ): string {

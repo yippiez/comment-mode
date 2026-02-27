@@ -1,16 +1,24 @@
-import { ensureFilesModeDirectoryVisible } from "../controllers/state";
+import { ensureExplorerDirectoryVisible } from "../controllers/state";
 import { buildFileTreeRows, type FileTreeRow } from "./view_modes";
-import type { CodeFileEntry, ViewMode } from "../types";
+import type { CodeFileEntry } from "../types";
 import { getParentPosixPath } from "../utils/path";
 
 export class FileExplorer {
+  public static readonly FILE_PAGE_ID = "FILE";
+  public static readonly FILE_PAGE_TYPE_LABEL = "FILE";
+  public static readonly FILE_PAGE_PRIORITY = -100;
+  public static readonly FILE_PAGE_ANCHOR_PATH = "virtual://FILE";
+
   private collapsedFiles = new Set<string>();
   private directoryPath = "";
   private fileTreeRowsByLine = new Map<number, FileTreeRow>();
+  private filePageCollapsed = false;
+  private filePageAnchorLine: number | null = null;
   private pendingCodeTargetFilePath: string | null = null;
 
   public clearRows(): void {
     this.fileTreeRowsByLine = new Map();
+    this.filePageAnchorLine = null;
   }
 
   public getRowsByLine(): ReadonlyMap<number, FileTreeRow> {
@@ -23,6 +31,27 @@ export class FileExplorer {
 
   public getRowAtLine(line: number): FileTreeRow | undefined {
     return this.fileTreeRowsByLine.get(line);
+  }
+
+  public setFilePageAnchorLine(line: number): void {
+    this.filePageAnchorLine = line;
+  }
+
+  public getFilePageAnchorLine(): number | null {
+    return this.filePageAnchorLine;
+  }
+
+  public isFilePageCollapsed(): boolean {
+    return this.filePageCollapsed;
+  }
+
+  public setFilePageCollapsed(collapsed: boolean): void {
+    this.filePageCollapsed = collapsed;
+  }
+
+  public toggleFilePageCollapsed(): boolean {
+    this.filePageCollapsed = !this.filePageCollapsed;
+    return this.filePageCollapsed;
   }
 
   public pruneCollapsedFiles(entries: readonly CodeFileEntry[]): void {
@@ -38,7 +67,7 @@ export class FileExplorer {
   }
 
   public ensureDirectoryVisible(entries: readonly CodeFileEntry[]): void {
-    this.directoryPath = ensureFilesModeDirectoryVisible(entries, this.directoryPath);
+    this.directoryPath = ensureExplorerDirectoryVisible(entries, this.directoryPath);
   }
 
   public buildRows(entries: readonly CodeFileEntry[]): FileTreeRow[] {
@@ -74,8 +103,8 @@ export class FileExplorer {
     return this.collapsedFiles.has(filePath);
   }
 
-  public toggleCollapse(viewMode: ViewMode, currentFilePath: string | undefined): boolean {
-    if (viewMode === "files" || !currentFilePath) return false;
+  public toggleCollapse(currentFilePath: string | undefined): boolean {
+    if (!currentFilePath) return false;
     if (this.collapsedFiles.has(currentFilePath)) {
       this.collapsedFiles.delete(currentFilePath);
     } else {
