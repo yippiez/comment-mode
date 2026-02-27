@@ -29,7 +29,7 @@ type RenderTypeChipsOptions = {
   selectedChipIndex: number;
   chipWindowStartIndex: number;
   chipsFocused: boolean;
-  getTypeCount: (type: string) => number;
+  getTypeCounts: (type: string) => { shown: number; hidden: number };
   isTypeEnabled: (type: string) => boolean;
   onChipSelected: (index: number) => void;
   onToggleSelectedChip: () => void;
@@ -66,7 +66,7 @@ type AppRendererOptions = {
   documentBlocks: DocumentBlocks;
   getEntries: () => CodeFileEntry[];
   getSortedTypes: () => readonly string[];
-  getTypeCount: (type: string) => number;
+  getTypeCounts: (type: string) => { shown: number; hidden: number };
   isTypeEnabled: (type: string) => boolean;
   getFocusMode: () => FocusMode;
   onChipSelected: (index: number) => void;
@@ -100,7 +100,7 @@ export class AppRenderer {
   private readonly documentBlocks: DocumentBlocks;
   private readonly getEntries: () => CodeFileEntry[];
   private readonly getSortedTypes: () => readonly string[];
-  private readonly getTypeCount: (type: string) => number;
+  private readonly getTypeCounts: (type: string) => { shown: number; hidden: number };
   private readonly isTypeEnabled: (type: string) => boolean;
   private readonly getFocusMode: () => FocusMode;
   private readonly onChipSelected: (index: number) => void;
@@ -128,7 +128,7 @@ export class AppRenderer {
     this.documentBlocks = options.documentBlocks;
     this.getEntries = options.getEntries;
     this.getSortedTypes = options.getSortedTypes;
-    this.getTypeCount = options.getTypeCount;
+    this.getTypeCounts = options.getTypeCounts;
     this.isTypeEnabled = options.isTypeEnabled;
     this.getFocusMode = options.getFocusMode;
     this.onChipSelected = options.onChipSelected;
@@ -166,7 +166,7 @@ export class AppRenderer {
       selectedChipIndex: this.state.selectedChipIndex,
       chipWindowStartIndex: this.state.chipWindowStartIndex,
       chipsFocused: this.getFocusMode() === "chips",
-      getTypeCount: this.getTypeCount,
+      getTypeCounts: this.getTypeCounts,
       isTypeEnabled: this.isTypeEnabled,
       onChipSelected: this.onChipSelected,
       onToggleSelectedChip: this.onToggleSelectedChip,
@@ -564,7 +564,12 @@ export function renderTypeChips(options: RenderTypeChipsOptions): number {
     return 0;
   }
 
-  const chipLabels = options.sortedTypes.map((type) => `${type} (${options.getTypeCount(type)})`);
+  const chipLabels = options.sortedTypes.map((type) => {
+    const counts = options.getTypeCounts(type);
+    return counts.hidden > 0
+      ? `${type} (${counts.shown}/${counts.hidden})`
+      : `${type} (${counts.shown})`;
+  });
   const chipWidths = chipLabels.map((label) => Math.max(1, displayWidth(label) + 2));
   const selectedChipIndex = clampIndex(options.selectedChipIndex, 0, chipWidths.length - 1);
   const viewportWidth = resolveChipsViewportWidth(options);

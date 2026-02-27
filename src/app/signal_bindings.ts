@@ -14,6 +14,7 @@ const CODE_KEYMAP = {
   pagedown: "page_down",
   v: "toggle_visual",
   c: "collapse_file",
+  i: "ignore_file",
   y: "yank_selection",
   enter: "open_prompt",
   return: "open_prompt",
@@ -248,6 +249,11 @@ export function registerKeyboardSignalBindings(
       return;
     }
 
+    if (mappedAction === "ignore_file") {
+      emitHandled(key, SIGNALS.filesIgnoreCurrent);
+      return;
+    }
+
   };
 
   const onKeypress = (key: KeyEvent): void => {
@@ -302,6 +308,11 @@ export function registerKeyboardSignalBindings(
 
     if (keyName === "tab") {
       emitHandled(key, SIGNALS.focusToggleCodeChips);
+      return;
+    }
+
+    if (keyName === "r") {
+      emitHandled(key, SIGNALS.filesResetVisibility);
       return;
     }
 
@@ -387,6 +398,8 @@ type RegisterAppSignalHandlersOptions = {
   enterCurrentDirectory: () => void;
   goToParentDirectory: () => void;
   toggleCurrentStructureCollapse: () => void;
+  ignoreCurrentFile: () => void;
+  resetVisibilityState: () => void;
   jumpToTop: () => void;
   jumpToBottom: () => void;
   jumpToNextFile: () => void;
@@ -507,6 +520,14 @@ export function registerAppSignalHandlers(options: RegisterAppSignalHandlersOpti
 
   options.onSignal(SIGNALS.filesCollapseCurrent, () => {
     options.toggleCurrentStructureCollapse();
+  });
+
+  options.onSignal(SIGNALS.filesIgnoreCurrent, () => {
+    options.ignoreCurrentFile();
+  });
+
+  options.onSignal(SIGNALS.filesResetVisibility, () => {
+    options.resetVisibilityState();
   });
 
   options.onSignal(SIGNALS.navJumpTop, () => {

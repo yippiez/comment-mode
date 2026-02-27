@@ -10,6 +10,7 @@ export class FileExplorer {
   public static readonly FILE_PAGE_ANCHOR_PATH = "virtual://FILE";
 
   private collapsedFiles = new Set<string>();
+  private ignoredFiles = new Set<string>();
   private directoryPath = "";
   private fileTreeRowsByLine = new Map<number, FileTreeRow>();
   private filePageCollapsed = false;
@@ -62,8 +63,41 @@ export class FileExplorer {
     }
   }
 
+  public pruneIgnoredFiles(entries: readonly CodeFileEntry[]): void {
+    const existing = new Set(entries.map((entry) => entry.relativePath));
+    for (const filePath of this.ignoredFiles) {
+      if (existing.has(filePath)) continue;
+      this.ignoredFiles.delete(filePath);
+    }
+  }
+
   public collapseAll(entries: readonly CodeFileEntry[]): void {
     this.collapsedFiles = new Set(entries.map((entry) => entry.relativePath));
+  }
+
+  public expandAll(): boolean {
+    const hadCollapsedFiles = this.collapsedFiles.size > 0;
+    const wasFilePageCollapsed = this.filePageCollapsed;
+    this.collapsedFiles = new Set();
+    this.filePageCollapsed = false;
+    return hadCollapsedFiles || wasFilePageCollapsed;
+  }
+
+  public ignoreFile(filePath: string | undefined): boolean {
+    if (!filePath) return false;
+    if (this.ignoredFiles.has(filePath)) return false;
+    this.ignoredFiles.add(filePath);
+    return true;
+  }
+
+  public isIgnored(filePath: string): boolean {
+    return this.ignoredFiles.has(filePath);
+  }
+
+  public unignoreAll(): boolean {
+    if (this.ignoredFiles.size === 0) return false;
+    this.ignoredFiles = new Set();
+    return true;
   }
 
   public ensureDirectoryVisible(entries: readonly CodeFileEntry[]): void {

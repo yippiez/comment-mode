@@ -76,6 +76,7 @@ export class CodeBrowserApp {
   private readonly documentBlocks: DocumentBlocks;
 
   private typeCounts: Map<string, number>;
+  private hiddenTypeCounts: Map<string, number>;
   private sortedTypes: string[];
   private enabledTypes: Map<string, boolean>;
 
@@ -180,9 +181,9 @@ export class CodeBrowserApp {
       virtualCodeBlocks: this.virtualCodeBlocks,
       agentTimeline: this.agentTimeline,
       documentBlocks: this.documentBlocks,
-      getEntries: () => this.entries,
+      getEntries: () => this.getVisibleEntries(),
       getSortedTypes: () => this.sortedTypes,
-      getTypeCount: (type) => this.typeCounts.get(type) ?? 0,
+      getTypeCounts: (type) => this.getTypeCounts(type),
       isTypeEnabled: (type) => this.isTypeEnabled(type),
       getFocusMode: () => this.state.focusMode,
       onChipSelected: (index) => {
@@ -205,6 +206,7 @@ export class CodeBrowserApp {
     });
 
     this.typeCounts = new Map();
+    this.hiddenTypeCounts = new Map();
     this.sortedTypes = [];
     this.enabledTypes = new Map();
     this.enableLazyContentModeIfNeeded();
@@ -224,6 +226,7 @@ export class CodeBrowserApp {
     this.entries = entries;
     this.enableLazyContentModeIfNeeded();
     this.pruneCollapsedFiles();
+    this.pruneIgnoredFiles();
     this.pruneAgentUpdates();
     this.recomputeTypesState();
     this.renderAll({ preferFirstAnchor: this.lazyContentModeEnabled });
@@ -269,6 +272,8 @@ export class CodeBrowserApp {
       enterCurrentDirectory: () => this.enterCurrentDirectory(),
       goToParentDirectory: () => this.goToParentDirectory(),
       toggleCurrentStructureCollapse: () => this.toggleCurrentStructureCollapse(),
+      ignoreCurrentFile: () => this.ignoreCurrentFile(),
+      resetVisibilityState: () => this.resetVisibilityState(),
       jumpToTop: () => this.navigation.jumpToTop(),
       jumpToBottom: () => this.navigation.jumpToBottom(),
       jumpToNextFile: () => this.navigation.jumpToNextFile(),
@@ -576,6 +581,41 @@ export class CodeBrowserApp {
     }
   }
 
+  private ignoreCurrentFile(): void {
+    const filePath = this.resolveIgnorableFilePathAtCursor();
+    if (!filePath) return;
+    const changed = this.fileExplorer.ignoreFile(filePath);
+    if (!changed) return;
+
+    this.recomputeTypesState();
+    this.renderAll();
+  }
+
+  private resolveIgnorableFilePathAtCursor(): string | null {
+    const row = this.virtualCodeBlocks.getRowAtLine(this.cursor.cursorLine);
+    if (row?.kind === "file") {
+      return this.entries.some((entry) => entry.relativePath === row.filePath) ? row.filePath : null;
+    }
+
+    const currentFilePath = this.lineModel.getCurrentFilePath(this.cursor.cursorLine);
+    if (!currentFilePath || currentFilePath === "." || currentFilePath.startsWith("virtual://")) {
+      return null;
+    }
+    return this.entries.some((entry) => entry.relativePath === currentFilePath) ? currentFilePath : null;
+  }
+
+  private resetVisibilityState(): void {
+    this.fileExplorer.unignoreAll();
+    this.fileExplorer.expandAll();
+    this.recomputeTypesState();
+
+    for (const type of this.sortedTypes) {
+      this.enabledTypes.set(type, true);
+    }
+
+    this.renderAll();
+  }
+
   private renderChips(): void {
     this.appRenderer.renderChips();
   }
@@ -625,6 +665,19 @@ export class CodeBrowserApp {
     return this.appRenderer.getAnchorDividerDisplayRow(anchor);
   }
 
+  private getVisibleEntries(): CodeFileEntry[] {
+    return this.entries.filter((entry) => !this.fileExplorer.isIgnored(entry.relativePath));
+  }
+
+  private getTypeCounts(type: string): { shown: number; hidden: number } {
+    const hidden = this.hiddenTypeCounts.get(type) ?? 0;
+    const total = this.typeCounts.get(type) ?? 0;
+    return {
+      shown: Math.max(0, total - hidden),
+      hidden,
+    };
+  }
+
   private recomputeTypesState(): void {
     const nextState = recomputeTypeState(
       this.entries,
@@ -634,9 +687,19 @@ export class CodeBrowserApp {
       this.virtualCodeBlocks.getSupplementalTypes(),
     );
     this.typeCounts = nextState.typeCounts;
+    this.hiddenTypeCounts = this.computeHiddenTypeCounts();
     this.sortedTypes = nextState.sortedTypes;
     this.enabledTypes = nextState.enabledTypes;
     this.state.selectedChipIndex = nextState.selectedChipIndex;
+  }
+
+  private computeHiddenTypeCounts(): Map<string, number> {
+    const hiddenTypeCounts = new Map<string, number>();
+    for (const entry of this.entries) {
+      if (!this.fileExplorer.isIgnored(entry.relativePath)) continue;
+      hiddenTypeCounts.set(entry.typeLabel, (hiddenTypeCounts.get(entry.typeLabel) ?? 0) + 1);
+    }
+    return hiddenTypeCounts;
   }
 
   private pruneAgentUpdates(): void {
@@ -647,6 +710,10 @@ export class CodeBrowserApp {
 
   private pruneCollapsedFiles(): void {
     this.fileExplorer.pruneCollapsedFiles(this.entries);
+  }
+
+  private pruneIgnoredFiles(): void {
+    this.fileExplorer.pruneIgnoredFiles(this.entries);
   }
 
   private enableLazyContentModeIfNeeded(): void {

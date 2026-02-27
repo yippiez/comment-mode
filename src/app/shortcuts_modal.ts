@@ -44,6 +44,8 @@ const SHORTCUT_SECTIONS: readonly ShortcutSection[] = [
       { keys: "Enter", description: "Open file/directory or open prompt" },
       { keys: "Backspace", description: "Go to parent directory" },
       { keys: "c", description: "Collapse/expand current structure" },
+      { keys: "i", description: "Ignore current file from view" },
+      { keys: "r", description: "Reset chips, collapse, and ignore" },
       { keys: "e", description: "Open current location in $EDITOR" },
       { keys: "x", description: "Delete agent update at cursor" },
     ],

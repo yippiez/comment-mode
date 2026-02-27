@@ -118,6 +118,8 @@ export const SIGNALS = {
   filesEnterDirectory: SignalGroup.fromStr("files:enter_directory"),
   filesParentDir: SignalGroup.fromStr("files:parent_dir"),
   filesCollapseCurrent: SignalGroup.fromStr("files:collapse_current"),
+  filesIgnoreCurrent: SignalGroup.fromStr("files:ignore_current"),
+  filesResetVisibility: SignalGroup.fromStr("files:reset_visibility"),
   navJumpTop: SignalGroup.fromStr("nav:jump_top"),
   navJumpBottom: SignalGroup.fromStr("nav:jump_bottom"),
   navJumpNextFile: SignalGroup.fromStr("nav:jump_next_file"),
