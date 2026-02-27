@@ -676,6 +676,16 @@ export class CodeBrowserApp {
       }
     }
 
+    if (typeof cursor.fileLine === "number") {
+      const closestByLine = this.findClosestLineByPersistedFileLine(filePath, cursor.fileLine);
+      if (typeof closestByLine === "number") {
+        return {
+          line: closestByLine,
+          shouldRetry: false,
+        };
+      }
+    }
+
     const firstLineInFile = this.lineModel.findFirstGlobalLineForFilePath(filePath);
     if (typeof firstLineInFile === "number") {
       return {
@@ -711,6 +721,35 @@ export class CodeBrowserApp {
         const distance = typeof preferredFileLine === "number"
           ? Math.abs(candidateFileLine - preferredFileLine)
           : 0;
+
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestLine = candidateGlobalLine;
+          continue;
+        }
+
+        if (distance === bestDistance && (bestLine === undefined || candidateGlobalLine < bestLine)) {
+          bestLine = candidateGlobalLine;
+        }
+      }
+    }
+
+    return bestLine;
+  }
+
+  private findClosestLineByPersistedFileLine(filePath: string, preferredFileLine: number): number | undefined {
+    let bestLine: number | undefined;
+    let bestDistance = Number.POSITIVE_INFINITY;
+
+    for (const block of this.lineModel.blocks) {
+      if (block.filePath !== filePath || block.blockKind !== "code") continue;
+      if (block.fileLineStart === null) continue;
+
+      const blockLength = Math.max(1, block.lineEnd - block.lineStart + 1);
+      for (let offset = 0; offset < blockLength; offset += 1) {
+        const candidateGlobalLine = block.lineStart + offset;
+        const candidateFileLine = block.fileLineStart + offset;
+        const distance = Math.abs(candidateFileLine - preferredFileLine);
 
         if (distance < bestDistance) {
           bestDistance = distance;

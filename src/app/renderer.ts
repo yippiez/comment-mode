@@ -9,7 +9,7 @@ import type { PromptTarget } from "../controllers/prompt";
 import type { Cursor } from "../controllers/cursor";
 import type { AppStateStore } from "../controllers/state";
 import type { Highlight } from "../controllers/highlight";
-import type { AgentUpdate, CodeFileEntry, FocusMode } from "../types";
+import type { AgentUpdate, BlockKind, CodeFileEntry, FocusMode } from "../types";
 import type { LineModel } from "../line-model";
 import type { PromptComposerBar, PromptComposerLayout } from "./prompt-composer-bar";
 import type { FileExplorer } from "./file_explorer";
@@ -35,14 +35,27 @@ type RenderTypeChipsOptions = {
   onToggleSelectedChip: () => void;
 };
 
+type RestoreLineReference = {
+  globalLine: number;
+  filePath: string | null;
+  fileLine: number | null;
+  lineText: string | null;
+  blockKind: BlockKind | null;
+  agentUpdateId: string | null;
+  agentLineOffset: number | null;
+};
+
 type CursorRestorePoint = {
-  cursorGlobalLine: number;
-  cursorFilePath: string | null;
-  cursorFileLine: number | null;
+  cursor: RestoreLineReference;
   visualMode: boolean;
-  anchorGlobalLine: number | null;
-  anchorFilePath: string | null;
-  anchorFileLine: number | null;
+  anchor: RestoreLineReference | null;
+};
+
+type RestoreLineCandidateScore = {
+  blockKindPenalty: number;
+  fileLineDistance: number;
+  globalLineDistance: number;
+  globalLine: number;
 };
 
 type RenderContentOptions = {
@@ -83,6 +96,13 @@ const CHIP_GAP_WIDTH = 1;
 const CHIP_OVERFLOW_LEFT_INDICATOR = "<-";
 const CHIP_OVERFLOW_RIGHT_INDICATOR = "->";
 const CHIP_OVERFLOW_INDICATOR_COLOR = "#00ffff";
+
+const BLOCK_KIND_RESTORE_ORDER: Record<BlockKind, readonly BlockKind[]> = {
+  code: ["code", "collapsed", "file", "agent"],
+  collapsed: ["collapsed", "code", "file", "agent"],
+  file: ["file", "collapsed", "code", "agent"],
+  agent: ["agent", "code", "collapsed", "file"],
+};
 
 export class AppRenderer {
   private readonly renderer: CliRenderer;
@@ -494,31 +514,40 @@ export class AppRenderer {
   }
 
   private captureCursorRestorePoint(): CursorRestorePoint {
-    const cursorGlobalLine = this.cursor.cursorLine;
-    const cursorInfo = this.lineModel.getVisibleLineInfo(cursorGlobalLine);
+    const cursorReference = this.captureRestoreLineReference(this.cursor.cursorLine);
     if (!this.cursor.isVisualModeEnabled) {
       return {
-        cursorGlobalLine,
-        cursorFilePath: cursorInfo?.filePath ?? null,
-        cursorFileLine: cursorInfo?.fileLine ?? null,
+        cursor: cursorReference,
         visualMode: false,
-        anchorGlobalLine: null,
-        anchorFilePath: null,
-        anchorFileLine: null,
+        anchor: null,
       };
     }
 
     const { start, end } = this.cursor.selectionRange;
-    const anchorGlobalLine = cursorGlobalLine === start ? end : start;
-    const anchorInfo = this.lineModel.getVisibleLineInfo(anchorGlobalLine);
+    const anchorGlobalLine = this.cursor.cursorLine === start ? end : start;
     return {
-      cursorGlobalLine,
-      cursorFilePath: cursorInfo?.filePath ?? null,
-      cursorFileLine: cursorInfo?.fileLine ?? null,
+      cursor: cursorReference,
       visualMode: true,
-      anchorGlobalLine,
-      anchorFilePath: anchorInfo?.filePath ?? null,
-      anchorFileLine: anchorInfo?.fileLine ?? null,
+      anchor: this.captureRestoreLineReference(anchorGlobalLine),
+    };
+  }
+
+  private captureRestoreLineReference(globalLine: number): RestoreLineReference {
+    const lineInfo = this.lineModel.getVisibleLineInfo(globalLine);
+    const blockKind = lineInfo?.blockKind ?? null;
+    const agentUpdateId =
+      blockKind === "agent" ? this.agentTimeline.getUpdateIdAtLine(globalLine) ?? null : null;
+    const promptLine =
+      agentUpdateId !== null ? this.agentTimeline.getPromptLineForUpdateId(agentUpdateId) : undefined;
+
+    return {
+      globalLine,
+      filePath: lineInfo?.filePath ?? null,
+      fileLine: lineInfo?.fileLine ?? null,
+      lineText: lineInfo?.text ?? null,
+      blockKind,
+      agentUpdateId,
+      agentLineOffset: typeof promptLine === "number" ? Math.max(0, globalLine - promptLine) : null,
     };
   }
 
@@ -526,41 +555,213 @@ export class AppRenderer {
     cursorLine: number;
     visualAnchorLine?: number;
   } {
-    const cursorLine = this.resolveGlobalLineForRestore(
-      restorePoint.cursorGlobalLine,
-      restorePoint.cursorFilePath,
-      restorePoint.cursorFileLine,
-    );
+    const cursorLine = this.resolveGlobalLineForRestore(restorePoint.cursor);
     if (!restorePoint.visualMode) {
       return { cursorLine };
     }
 
+    const anchorReference = restorePoint.anchor ?? restorePoint.cursor;
     return {
       cursorLine,
-      visualAnchorLine: this.resolveGlobalLineForRestore(
-        restorePoint.anchorGlobalLine ?? restorePoint.cursorGlobalLine,
-        restorePoint.anchorFilePath,
-        restorePoint.anchorFileLine,
-      ),
+      visualAnchorLine: this.resolveGlobalLineForRestore(anchorReference),
     };
   }
 
-  private resolveGlobalLineForRestore(
-    globalLine: number,
-    filePath: string | null,
-    fileLine: number | null,
-  ): number {
-    if (filePath && typeof fileLine === "number") {
-      const mappedLine = this.lineModel.findGlobalLineForFileLine(filePath, fileLine);
-      if (typeof mappedLine === "number") {
-        return mappedLine;
-      }
-    }
-    if (this.lineModel.totalLines <= 0) {
+  private resolveGlobalLineForRestore(reference: RestoreLineReference): number {
+    const totalLines = this.lineModel.totalLines;
+    if (totalLines <= 0) {
       return 1;
     }
-    return clamp(globalLine, 1, this.lineModel.totalLines);
+
+    const stickyAgentLine = this.resolveAgentLineForRestore(reference);
+    if (typeof stickyAgentLine === "number") {
+      return stickyAgentLine;
+    }
+
+    const filePath = reference.filePath;
+    if (!filePath) {
+      return clamp(reference.globalLine, 1, totalLines);
+    }
+
+    const firstLineInFile = this.lineModel.findFirstGlobalLineForFilePath(filePath);
+    if (typeof firstLineInFile !== "number") {
+      return clamp(reference.globalLine, 1, totalLines);
+    }
+
+    const preferredFileLine = typeof reference.fileLine === "number" ? reference.fileLine : null;
+    const normalizedLineText = normalizeLineTextForRestore(reference.lineText);
+
+    if (preferredFileLine !== null) {
+      const mappedByLine = this.lineModel.findGlobalLineForFileLine(filePath, preferredFileLine);
+      if (typeof mappedByLine === "number") {
+        if (normalizedLineText === null) {
+          return mappedByLine;
+        }
+
+        const mappedText = normalizeLineTextForRestore(
+          this.lineModel.getVisibleLineInfo(mappedByLine)?.text ?? null,
+        );
+        if (mappedText === normalizedLineText) {
+          return mappedByLine;
+        }
+      }
+    }
+
+    if (normalizedLineText !== null) {
+      const matchedByText = this.findClosestLineByText(
+        filePath,
+        normalizedLineText,
+        preferredFileLine,
+        reference.globalLine,
+        reference.blockKind,
+      );
+      if (typeof matchedByText === "number") {
+        return matchedByText;
+      }
+    }
+
+    if (preferredFileLine !== null) {
+      const closestByFileLine = this.findClosestLineByFileLine(
+        filePath,
+        preferredFileLine,
+        reference.globalLine,
+        reference.blockKind,
+      );
+      if (typeof closestByFileLine === "number") {
+        return closestByFileLine;
+      }
+    }
+
+    return firstLineInFile;
   }
+
+  private resolveAgentLineForRestore(reference: RestoreLineReference): number | undefined {
+    if (!reference.agentUpdateId) return undefined;
+    const range = this.agentTimeline.getLineRangeForUpdateId(reference.agentUpdateId);
+    if (!range) return undefined;
+    const offset = reference.agentLineOffset ?? 0;
+    return clamp(range.start + offset, range.start, range.end);
+  }
+
+  private findClosestLineByText(
+    filePath: string,
+    normalizedLineText: string,
+    preferredFileLine: number | null,
+    preferredGlobalLine: number,
+    preferredBlockKind: BlockKind | null,
+  ): number | undefined {
+    let bestLine: number | undefined;
+    let bestScore: RestoreLineCandidateScore | undefined;
+
+    for (const block of this.lineModel.blocks) {
+      if (block.filePath !== filePath) continue;
+
+      for (let offset = 0; offset < block.renderedLines.length; offset += 1) {
+        const candidateText = normalizeLineTextForRestore(block.renderedLines[offset] ?? null);
+        if (candidateText !== normalizedLineText) continue;
+
+        const candidateGlobalLine = block.lineStart + offset;
+        const candidateFileLine = block.fileLineStart === null ? null : block.fileLineStart + offset;
+        const score = this.buildRestoreLineCandidateScore(
+          block.blockKind,
+          candidateFileLine,
+          candidateGlobalLine,
+          preferredBlockKind,
+          preferredFileLine,
+          preferredGlobalLine,
+        );
+        if (!this.isBetterRestoreLineCandidate(score, bestScore)) continue;
+        bestScore = score;
+        bestLine = candidateGlobalLine;
+      }
+    }
+
+    return bestLine;
+  }
+
+  private findClosestLineByFileLine(
+    filePath: string,
+    preferredFileLine: number,
+    preferredGlobalLine: number,
+    preferredBlockKind: BlockKind | null,
+  ): number | undefined {
+    let bestLine: number | undefined;
+    let bestScore: RestoreLineCandidateScore | undefined;
+
+    for (const block of this.lineModel.blocks) {
+      if (block.filePath !== filePath) continue;
+      if (block.fileLineStart === null) continue;
+
+      const blockLength = Math.max(1, block.lineEnd - block.lineStart + 1);
+      for (let offset = 0; offset < blockLength; offset += 1) {
+        const candidateGlobalLine = block.lineStart + offset;
+        const candidateFileLine = block.fileLineStart + offset;
+        const score = this.buildRestoreLineCandidateScore(
+          block.blockKind,
+          candidateFileLine,
+          candidateGlobalLine,
+          preferredBlockKind,
+          preferredFileLine,
+          preferredGlobalLine,
+        );
+        if (!this.isBetterRestoreLineCandidate(score, bestScore)) continue;
+        bestScore = score;
+        bestLine = candidateGlobalLine;
+      }
+    }
+
+    return bestLine;
+  }
+
+  private buildRestoreLineCandidateScore(
+    candidateBlockKind: BlockKind,
+    candidateFileLine: number | null,
+    candidateGlobalLine: number,
+    preferredBlockKind: BlockKind | null,
+    preferredFileLine: number | null,
+    preferredGlobalLine: number,
+  ): RestoreLineCandidateScore {
+    return {
+      blockKindPenalty: resolveBlockKindPenalty(candidateBlockKind, preferredBlockKind),
+      fileLineDistance:
+        typeof preferredFileLine === "number" && typeof candidateFileLine === "number"
+          ? Math.abs(candidateFileLine - preferredFileLine)
+          : typeof preferredFileLine === "number"
+            ? Number.MAX_SAFE_INTEGER
+            : 0,
+      globalLineDistance: Math.abs(candidateGlobalLine - preferredGlobalLine),
+      globalLine: candidateGlobalLine,
+    };
+  }
+
+  private isBetterRestoreLineCandidate(
+    candidate: RestoreLineCandidateScore,
+    currentBest: RestoreLineCandidateScore | undefined,
+  ): boolean {
+    if (!currentBest) return true;
+    if (candidate.blockKindPenalty !== currentBest.blockKindPenalty) {
+      return candidate.blockKindPenalty < currentBest.blockKindPenalty;
+    }
+    if (candidate.fileLineDistance !== currentBest.fileLineDistance) {
+      return candidate.fileLineDistance < currentBest.fileLineDistance;
+    }
+    if (candidate.globalLineDistance !== currentBest.globalLineDistance) {
+      return candidate.globalLineDistance < currentBest.globalLineDistance;
+    }
+    return candidate.globalLine < currentBest.globalLine;
+  }
+}
+
+function resolveBlockKindPenalty(candidate: BlockKind, preferred: BlockKind | null): number {
+  if (!preferred) return 0;
+  const order = BLOCK_KIND_RESTORE_ORDER[preferred];
+  const index = order.indexOf(candidate);
+  return index >= 0 ? index : order.length;
+}
+
+function normalizeLineTextForRestore(value: string | null): string | null {
+  if (typeof value !== "string") return null;
+  return value.endsWith("\r") ? value.slice(0, -1) : value;
 }
 
 export function renderTypeChips(options: RenderTypeChipsOptions): number {

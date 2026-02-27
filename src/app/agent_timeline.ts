@@ -22,12 +22,18 @@ type RenderCursor = {
   blockStartLine: number;
 };
 
+type AgentLineRange = {
+  start: number;
+  end: number;
+};
+
 export class AgentTimeline {
   private readonly renderer: CliRenderer;
   private readonly scrollbox: ScrollBoxRenderable;
   private readonly lineModel: LineModel;
 
   private agentLineByUpdateId = new Map<string, number>();
+  private agentLineRangeByUpdateId = new Map<string, AgentLineRange>();
   private updateIdByAgentLine = new Map<number, string>();
   private agentRowDecorations = new Map<number, AgentRowDecoration>();
 
@@ -39,12 +45,21 @@ export class AgentTimeline {
 
   public resetForRender(): void {
     this.agentLineByUpdateId = new Map();
+    this.agentLineRangeByUpdateId = new Map();
     this.updateIdByAgentLine = new Map();
     this.agentRowDecorations = new Map();
   }
 
   public getPromptLines(): number[] {
     return [...this.agentLineByUpdateId.values()];
+  }
+
+  public getPromptLineForUpdateId(updateId: string): number | undefined {
+    return this.agentLineByUpdateId.get(updateId);
+  }
+
+  public getLineRangeForUpdateId(updateId: string): AgentLineRange | undefined {
+    return this.agentLineRangeByUpdateId.get(updateId);
   }
 
   public getUpdateIdAtLine(line: number): string | undefined {
@@ -57,7 +72,12 @@ export class AgentTimeline {
     nextDisplayRow: number,
   ): RenderCursor {
     const main = this.addUpdateBlock(update, nextLineNumber, nextDisplayRow);
-    return this.addMessageBlocks(update, main.nextLineNumber, main.nextDisplayRow);
+    const withMessages = this.addMessageBlocks(update, main.nextLineNumber, main.nextDisplayRow);
+    this.agentLineRangeByUpdateId.set(update.id, {
+      start: main.blockStartLine,
+      end: Math.max(main.blockStartLine, withMessages.nextLineNumber - 1),
+    });
+    return withMessages;
   }
 
   public applyHighlights(selectionStart: number, selectionEnd: number, cursorLine: number): void {
