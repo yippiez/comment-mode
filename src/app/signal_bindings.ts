@@ -405,6 +405,7 @@ type RegisterAppSignalHandlersOptions = {
 
 export function registerAppSignalHandlers(options: RegisterAppSignalHandlersOptions): void {
   let pendingResizeRerender: ReturnType<typeof setTimeout> | undefined;
+  let pendingResizeSettleRerender: ReturnType<typeof setTimeout> | undefined;
 
   options.onSignal(SIGNALS.themeToggle, () => {
     options.toggleTheme();
@@ -559,9 +560,19 @@ export function registerAppSignalHandlers(options: RegisterAppSignalHandlersOpti
     if (pendingResizeRerender) {
       clearTimeout(pendingResizeRerender);
     }
+    if (pendingResizeSettleRerender) {
+      clearTimeout(pendingResizeSettleRerender);
+      pendingResizeSettleRerender = undefined;
+    }
+
     pendingResizeRerender = setTimeout(() => {
       pendingResizeRerender = undefined;
       options.renderAll();
+
+      pendingResizeSettleRerender = setTimeout(() => {
+        pendingResizeSettleRerender = undefined;
+        options.renderAll();
+      }, 90);
     }, 40);
   });
 
