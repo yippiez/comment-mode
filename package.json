@@ -8,7 +8,7 @@
   "private": true,
   "scripts": {
     "dev": "bun run --watch src/index.ts",
-    "static": "bun run src/index.ts",
+    "static": "bun install && comment src/index.ts",
     "install": "bun link"
   },
   "devDependencies": {
