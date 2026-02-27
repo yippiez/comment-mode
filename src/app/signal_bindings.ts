@@ -41,6 +41,7 @@ type ScrollBarChangePayload = { position?: number } | undefined;
 type VerticalScrollBarSource = EventSource<"change", (event: ScrollBarChangePayload) => void>;
 
 type StdoutSource = EventSource<"resize", () => void>;
+type FocusSource = EventSource<"focus", () => void>;
 type ProcessSignalSource = {
   on?: (event: "SIGWINCH", handler: () => void) => unknown;
   off?: (event: "SIGWINCH", handler: () => void) => unknown;
@@ -348,18 +349,32 @@ export function registerScrollSignalBindings(source: VerticalScrollBarSource): (
   return subscribeToSource(source, "change", onChange);
 }
 
-export function registerSystemSignalBindings(source: StdoutSource): () => void {
+export function registerSystemSignalBindings(source: StdoutSource, focusSource?: FocusSource): () => void {
   const onResize = (): void => {
     emit(SIGNALS.systemStdoutResize);
   };
 
-  const unsubscribeStdout = subscribeToSource(source, "resize", onResize);
+  const cleanupFns: Array<() => void> = [subscribeToSource(source, "resize", onResize)];
+
+  if (focusSource) {
+    const onFocus = (): void => {
+      emit(SIGNALS.onFocus);
+    };
+    cleanupFns.push(subscribeToSource(focusSource, "focus", onFocus));
+  }
+
+  const cleanupBindings = (): void => {
+    for (const cleanup of cleanupFns.splice(0)) {
+      cleanup();
+    }
+  };
+
   const runtimeProcess = globalThis.process as ProcessSignalSource | undefined;
 
   if (typeof runtimeProcess?.on === "function") {
     runtimeProcess.on("SIGWINCH", onResize);
     return () => {
-      unsubscribeStdout();
+      cleanupBindings();
       if (typeof runtimeProcess.off === "function") {
         runtimeProcess.off("SIGWINCH", onResize);
         return;
@@ -370,7 +385,7 @@ export function registerSystemSignalBindings(source: StdoutSource): () => void {
     };
   }
 
-  return unsubscribeStdout;
+  return cleanupBindings;
 }
 
 type RegisterAppSignalHandlersOptions = {

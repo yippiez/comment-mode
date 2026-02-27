@@ -53,6 +53,10 @@ const workspaceChangeRegistrationId = register(SIGNALS.workspaceChanged, () => {
   void refreshEntries();
 });
 
+const focusRegistrationId = register(SIGNALS.onFocus, () => {
+  void refreshEntries();
+});
+
 const watcher = await watchWorkspace(rootDir);
 
 renderer.on("destroy", () => {
@@ -61,5 +65,6 @@ renderer.on("destroy", () => {
   persistedStateWriter.dispose();
   app.shutdown();
   deregister(workspaceChangeRegistrationId);
+  deregister(focusRegistrationId);
   watcher.close();
 });

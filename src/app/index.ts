@@ -353,7 +353,7 @@ export class CodeBrowserApp {
       registerKeyboardSignalBindings(this.renderer.keyInput, () => this.getKeyboardStateSnapshot()),
     );
     this.sourceCleanupFns.push(registerScrollSignalBindings(this.scrollbox.verticalScrollBar));
-    this.sourceCleanupFns.push(registerSystemSignalBindings(process.stdout));
+    this.sourceCleanupFns.push(registerSystemSignalBindings(process.stdout, this.renderer));
   }
 
   private unregisterBindings(): void {

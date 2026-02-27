@@ -138,5 +138,6 @@ export const SIGNALS = {
   agentRenderRequested: SignalGroup.fromStr("agent:render_requested"),
   scrollVertical: SignalGroup.fromStr("scroll:vertical"),
   systemStdoutResize: SignalGroup.fromStr("system:stdout_resize"),
+  onFocus: SignalGroup.fromStr("on:focus"),
   workspaceChanged: SignalGroup.fromStr("workspace:changed"),
 } as const;
