@@ -14,6 +14,7 @@ import {
   type PromptSubmission,
 } from "../controllers/prompt";
 import { PromptComposerBar, type PromptComposerLayout } from "./prompt-composer-bar";
+import { ShortcutsModal } from "./shortcuts_modal";
 import { deregister, register, type SignalGroup } from "../signals";
 import { copyToClipboard } from "../utils/clipboard";
 import { openFileInEditor } from "../utils/editor";
@@ -66,6 +67,7 @@ export class CodeBrowserApp {
   private readonly chipsRow: BoxRenderable;
   private readonly scrollbox: ScrollBoxRenderable;
   private readonly promptComposer: PromptComposerBar;
+  private readonly shortcutsModal: ShortcutsModal;
   private readonly camera: Camera;
   private readonly navigation: Navigation;
   private readonly agent: OpenCode;
@@ -123,8 +125,10 @@ export class CodeBrowserApp {
     this.root.add(this.scrollbox);
 
     this.promptComposer = new PromptComposerBar(renderer);
+    this.shortcutsModal = new ShortcutsModal(renderer);
 
     this.root.add(this.promptComposer.renderable);
+    this.root.add(this.shortcutsModal.renderable);
     this.renderer.root.add(this.root);
     this.chipsRow.focusable = false;
     this.scrollbox.focusable = false;
@@ -242,6 +246,9 @@ export class CodeBrowserApp {
 
     registerAppSignalHandlers({
       onSignal: (signalGroup, handler) => this.onSignal(signalGroup, handler),
+      toggleShortcutsModal: () => this.toggleShortcutsModal(),
+      scrollShortcutsModalByLines: (delta) => this.scrollShortcutsModalByLines(delta),
+      scrollShortcutsModalByPages: (delta) => this.scrollShortcutsModalByPages(delta),
       toggleTheme: () => this.toggleTheme(),
       getFocusMode: () => this.state.focusMode,
       setFocusMode: (mode) => this.setFocusMode(mode),
@@ -310,6 +317,7 @@ export class CodeBrowserApp {
       promptVisible: this.prompt.isVisible,
       focusMode: this.state.focusMode,
       promptField: this.prompt.isVisible ? this.prompt.currentField : null,
+      shortcutsVisible: this.shortcutsModal.isVisible,
     };
   }
 
@@ -500,6 +508,19 @@ export class CodeBrowserApp {
   /** Applies active theme colors to always-mounted UI containers and overlays. */
   private applyTheme(): void {
     this.appRenderer.applyTheme();
+    this.shortcutsModal.applyTheme();
+  }
+
+  private toggleShortcutsModal(): void {
+    this.shortcutsModal.toggle();
+  }
+
+  private scrollShortcutsModalByLines(delta: number): void {
+    this.shortcutsModal.scrollByLines(delta);
+  }
+
+  private scrollShortcutsModalByPages(delta: number): void {
+    this.shortcutsModal.scrollByPage(delta);
   }
 
   private toggleCurrentStructureCollapse(): void {
@@ -569,6 +590,9 @@ export class CodeBrowserApp {
 
   private renderAll(options: { cursorTargetFilePath?: string; preferFirstAnchor?: boolean } = {}): void {
     this.appRenderer.renderAll(options);
+    if (this.shortcutsModal.isVisible) {
+      this.shortcutsModal.refreshLayout();
+    }
   }
 
   private getViewportHeight(): number {

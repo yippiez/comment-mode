@@ -50,12 +50,16 @@ export type KeyboardStateSnapshot = {
   promptVisible: boolean;
   focusMode: FocusMode;
   promptField: PromptComposerField | null;
+  shortcutsVisible: boolean;
 };
 
 const consumeKeyEvent = (key: KeyEvent): void => {
   key.preventDefault?.();
   key.stopPropagation?.();
 };
+
+const isShortcutsToggleKey = (keyName: string, rawKeyName: string | undefined, key: KeyEvent): boolean =>
+  keyName === "?" || rawKeyName === "?" || (keyName === "/" && Boolean(key.shift));
 
 function subscribeToSource<EventName extends string, Handler extends (...args: any[]) => void>(
   source: EventSource<EventName, Handler>,
@@ -256,6 +260,36 @@ export function registerKeyboardSignalBindings(
       return;
     }
 
+    if (isShortcutsToggleKey(keyName, rawKeyName, key)) {
+      emitHandled(key, SIGNALS.shortcutsToggle);
+      return;
+    }
+
+    if (state.shortcutsVisible) {
+      if (keyName === "escape") {
+        emitHandled(key, SIGNALS.shortcutsToggle);
+        return;
+      }
+      if (keyName === "up") {
+        emitHandled(key, SIGNALS.shortcutsScrollLines, -1);
+        return;
+      }
+      if (keyName === "down") {
+        emitHandled(key, SIGNALS.shortcutsScrollLines, 1);
+        return;
+      }
+      if (keyName === "pageup") {
+        emitHandled(key, SIGNALS.shortcutsScrollPages, -1);
+        return;
+      }
+      if (keyName === "pagedown") {
+        emitHandled(key, SIGNALS.shortcutsScrollPages, 1);
+        return;
+      }
+      consumeKeyEvent(key);
+      return;
+    }
+
     if (keyName === "q") {
       emitHandled(key, SIGNALS.appQuit);
       return;
@@ -330,6 +364,9 @@ export function registerSystemSignalBindings(source: StdoutSource): () => void {
 
 type RegisterAppSignalHandlersOptions = {
   onSignal: (signalGroup: SignalGroup, handler: (...args: unknown[]) => void) => void;
+  toggleShortcutsModal: () => void;
+  scrollShortcutsModalByLines: (delta: number) => void;
+  scrollShortcutsModalByPages: (delta: number) => void;
   toggleTheme: () => void;
   getFocusMode: () => FocusMode;
   setFocusMode: (mode: FocusMode) => void;
@@ -376,6 +413,22 @@ type RegisterAppSignalHandlersOptions = {
 export function registerAppSignalHandlers(options: RegisterAppSignalHandlersOptions): void {
   let pendingResizeRerender: ReturnType<typeof setTimeout> | undefined;
   let pendingResizeSettleRerender: ReturnType<typeof setTimeout> | undefined;
+
+  options.onSignal(SIGNALS.shortcutsToggle, () => {
+    options.toggleShortcutsModal();
+  });
+
+  options.onSignal(SIGNALS.shortcutsScrollLines, (...args) => {
+    const delta = toSignedUnit(args[0]);
+    if (delta === null) return;
+    options.scrollShortcutsModalByLines(delta);
+  });
+
+  options.onSignal(SIGNALS.shortcutsScrollPages, (...args) => {
+    const delta = toSignedUnit(args[0]);
+    if (delta === null) return;
+    options.scrollShortcutsModalByPages(delta);
+  });
 
   options.onSignal(SIGNALS.themeToggle, () => {
     options.toggleTheme();

@@ -99,6 +99,9 @@ export function deregister(registrationId: string): boolean {
 
 export const SIGNALS = {
   appQuit: SignalGroup.fromStr("app:quit"),
+  shortcutsToggle: SignalGroup.fromStr("shortcuts:toggle"),
+  shortcutsScrollLines: SignalGroup.fromStr("shortcuts:scroll_lines"),
+  shortcutsScrollPages: SignalGroup.fromStr("shortcuts:scroll_pages"),
   themeToggle: SignalGroup.fromStr("theme:toggle"),
   focusToggleCodeChips: SignalGroup.fromStr("focus:toggle_code_chips"),
   chipsMove: SignalGroup.fromStr("chips:move"),
