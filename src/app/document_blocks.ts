@@ -11,7 +11,7 @@ import { createFileTreeRowView } from "./file-tree-row";
 import { LineModel } from "../line-model";
 import { theme } from "../theme";
 import type { CodeFileEntry } from "../types";
-import { computeFilesModeViewportWidth, formatCollapsedContentLine } from "./render";
+import { computeFilesModeViewportWidth, formatCollapsedContentLine } from "./renderer";
 import { FileExplorer } from "./file_explorer";
 import type { FileTreeRow } from "./view_modes";
 

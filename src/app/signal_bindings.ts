@@ -216,6 +216,12 @@ export function registerKeyboardSignalBindings(
       return;
     }
 
+    if (keyName === "e") {
+      pendingGChordAt = null;
+      emitHandled(key, SIGNALS.filesOpenInEditor);
+      return;
+    }
+
     pendingGChordAt = null;
 
     if (mappedAction === "open_prompt") {
@@ -370,6 +376,7 @@ type RegisterAppSignalHandlersOptions = {
   copySelectionToClipboard: () => Promise<void>;
   toggleFilesExplorerMode: () => void;
   openFromCurrentSelection: () => void;
+  openCurrentSelectionInEditor: () => void;
   enterCurrentDirectory: () => void;
   goToParentDirectory: () => void;
   toggleCurrentStructureCollapse: () => void;
@@ -388,6 +395,7 @@ type RegisterAppSignalHandlersOptions = {
   refreshPromptModels: () => void;
   handlePromptInputKey: (key: KeyEvent, consume: (event: KeyEvent) => void) => void;
   handleExternalScroll: (position: number) => void;
+  renderAll: () => void;
   renderChips: () => void;
   renderContent: () => void;
   applyLineHighlights: () => void;
@@ -459,6 +467,10 @@ export function registerAppSignalHandlers(options: RegisterAppSignalHandlersOpti
 
   options.onSignal(SIGNALS.filesEnterOrOpen, () => {
     options.openFromCurrentSelection();
+  });
+
+  options.onSignal(SIGNALS.filesOpenInEditor, () => {
+    options.openCurrentSelectionInEditor();
   });
 
   options.onSignal(SIGNALS.filesEnterDirectory, () => {
@@ -549,8 +561,7 @@ export function registerAppSignalHandlers(options: RegisterAppSignalHandlersOpti
     }
     pendingResizeRerender = setTimeout(() => {
       pendingResizeRerender = undefined;
-      options.renderChips();
-      options.renderContent();
+      options.renderAll();
     }, 40);
   });
 

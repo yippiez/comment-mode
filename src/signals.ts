@@ -111,6 +111,7 @@ export const SIGNALS = {
   selectionYank: SignalGroup.fromStr("selection:yank"),
   filesToggleExplorer: SignalGroup.fromStr("files:toggle_explorer"),
   filesEnterOrOpen: SignalGroup.fromStr("files:enter_or_open"),
+  filesOpenInEditor: SignalGroup.fromStr("files:open_in_editor"),
   filesEnterDirectory: SignalGroup.fromStr("files:enter_directory"),
   filesParentDir: SignalGroup.fromStr("files:parent_dir"),
   filesCollapseCurrent: SignalGroup.fromStr("files:collapse_current"),

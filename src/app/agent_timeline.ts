@@ -13,7 +13,7 @@ import type { AgentUpdate } from "../types";
 import {
   computeAgentContentWidth,
   formatAgentUpdateLine,
-} from "./render";
+} from "./renderer";
 import { wrapTextToWidth } from "../utils/text";
 
 type RenderCursor = {
