@@ -1,0 +1,137 @@
+{
+  "title": "Where collapse code-block logic lives",
+  "prompt": "Where does collapse code block logic happen and how is it wired through the app?",
+  "createdAt": "2026-02-27T11:52:01.000Z",
+  "files": [
+    {
+      "id": "src/app/signal_bindings.ts",
+      "label": "signal_bindings.ts",
+      "path": "src/app/signal_bindings.ts",
+      "items": [
+        {
+          "type": "relevance",
+          "symbol": "=>",
+          "text": "Maps the `c` key to the collapse action.",
+          "target": "registerKeyboardSignalBindings / CODE_KEYMAP / routeCode"
+        },
+        {
+          "type": "calls",
+          "symbol": "->",
+          "text": "Emits the collapse signal after keybinding dispatch.",
+          "target": "SIGNALS.filesCollapseCurrent"
+        }
+      ]
+    },
+    {
+      "id": "src/signals.ts",
+      "label": "signals.ts",
+      "path": "src/signals.ts",
+      "items": [
+        {
+          "type": "relevance",
+          "symbol": "=>",
+          "text": "Defines the signal that carries collapse requests.",
+          "target": "SIGNALS.filesCollapseCurrent"
+        }
+      ]
+    },
+    {
+      "id": "src/app/index.ts",
+      "label": "index.ts",
+      "path": "src/app/index.ts",
+      "items": [
+        {
+          "type": "relevance",
+          "symbol": "=>",
+          "text": "Owns collapse handlers and the render branch for collapsed files.",
+          "target": "CodeBrowserApp.toggleCurrentStructureCollapse / toggleCurrentFileCollapse / renderContent / enableLazyContentModeIfNeeded"
+        },
+        {
+          "type": "calls",
+          "symbol": "->",
+          "text": "Calls `FileExplorer.toggleCollapse` for the current file.",
+          "target": "src/app/file_explorer.ts"
+        },
+        {
+          "type": "calls",
+          "symbol": "->",
+          "text": "Calls `DocumentBlocks.addCollapsedPlaceholderBlock` for collapsed rendering.",
+          "target": "src/app/document_blocks.ts"
+        },
+        {
+          "type": "dependency",
+          "symbol": "⫘",
+          "text": "Depends on `LineModel` to keep cursor and navigation state coherent.",
+          "target": "src/line-model.ts"
+        }
+      ]
+    },
+    {
+      "id": "src/app/file_explorer.ts",
+      "label": "file_explorer.ts",
+      "path": "src/app/file_explorer.ts",
+      "items": [
+        {
+          "type": "relevance",
+          "symbol": "=>",
+          "text": "Owns per-file collapse state.",
+          "target": "FileExplorer.toggleCollapse / FileExplorer.openFile / FileExplorer.isCollapsed"
+        },
+        {
+          "type": "dependency",
+          "symbol": "⫘",
+          "text": "Render decisions depend on its `collapsedFiles` set."
+        }
+      ]
+    },
+    {
+      "id": "src/app/document_blocks.ts",
+      "label": "document_blocks.ts",
+      "path": "src/app/document_blocks.ts",
+      "items": [
+        {
+          "type": "relevance",
+          "symbol": "=>",
+          "text": "Builds the collapsed placeholder block shown in the UI.",
+          "target": "DocumentBlocks.addCollapsedPlaceholderBlock"
+        },
+        {
+          "type": "dependency",
+          "symbol": "⫘",
+          "text": "Depends on render helpers and line-model registration."
+        }
+      ]
+    },
+    {
+      "id": "src/app/render.ts",
+      "label": "render.ts",
+      "path": "src/app/render.ts",
+      "items": [
+        {
+          "type": "relevance",
+          "symbol": "=>",
+          "text": "Formats the centered text inside the collapsed row.",
+          "target": "formatCollapsedContentLine"
+        }
+      ]
+    },
+    {
+      "id": "src/line-model.ts",
+      "label": "line-model.ts",
+      "path": "src/line-model.ts",
+      "items": [
+        {
+          "type": "relevance",
+          "symbol": "=>",
+          "text": "Records collapsed blocks for cursor, selection, and navigation.",
+          "target": "LineModel.addBlock"
+        },
+        {
+          "type": "dependency",
+          "symbol": "⫘",
+          "text": "The collapse UI depends on it to preserve visible line info."
+        }
+      ]
+    }
+  ]
+}
