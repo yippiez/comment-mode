@@ -1,8 +1,8 @@
 # comment-mode
 
-Review based workflow for coding agents
-
-![onboard](assets/onboard.gif)
+<div align="center">
+  <img src="assets/onboard.gif" width="400" />
+</div>
 
 ## Installation
 
@@ -10,6 +10,15 @@ Review based workflow for coding agents
 git clone
 bun install
 ```
+
+## Themes
+
+| Theme | Preview |
+|-------|---------|
+| vague | ![vague](assets/vague.jpg) |
+| opencode | ![opencode](assets/opencode.jpg) |
+| tokyoNight | ![tokyoNight](assets/tokyonight.jpg) |
+| soda | ![soda](assets/soda.jpg) |
 
 ## Shortcuts
 
@@ -65,12 +74,3 @@ bun install
 | `Model: r` | Refresh model list |
 | `Thinking: Left` / `Up` | Previous reasoning level |
 | `Thinking: Right` / `Down` | Next reasoning level |
-
-## Themes
-
-| Theme | Preview |
-|-------|---------|
-| vague | ![vague](assets/vague.jpg) |
-| opencode | ![opencode](assets/opencode.jpg) |
-| tokyoNight | ![tokyoNight](assets/tokyonight.jpg) |
-| soda | ![soda](assets/soda.jpg) |
