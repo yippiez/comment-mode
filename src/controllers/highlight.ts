@@ -18,6 +18,9 @@ export class Highlight {
   private activeCodeViews = new Set<CodeRenderable>();
 
   public reset(): void {
+    for (const codeView of this.activeCodeViews) {
+      this.clearCodeSelection(codeView);
+    }
     this.activeCodeViews = new Set();
   }
 

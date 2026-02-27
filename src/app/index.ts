@@ -15,7 +15,7 @@ import {
 } from "../controllers/prompt";
 import { PromptComposerBar, type PromptComposerLayout } from "./prompt-composer-bar";
 import { ShortcutsModal } from "./shortcuts_modal";
-import { deregister, register, type SignalGroup } from "../signals";
+import { SIGNALS, deregister, register, type SignalGroup } from "../signals";
 import { copyToClipboard } from "../utils/clipboard";
 import { openFileInEditor } from "../utils/editor";
 import { Cursor } from "../controllers/cursor";
@@ -50,9 +50,23 @@ import { AgentTimeline } from "./agent_timeline";
 import { DocumentBlocks } from "./document_blocks";
 import { AppRenderer } from "./renderer";
 import { VirtualCodeBlocks } from "./virtual_code_blocks";
+import {
+  PERSISTED_UI_STATE_VERSION,
+  type PersistedCursorState,
+  type PersistedUiState,
+} from "../persistence";
+
 type CodeBrowserAppOptions = {
+  workspaceRootDir?: string;
+  initialPersistedUiState?: PersistedUiState | null;
   initialAgentUpdates?: AgentUpdate[];
   onAgentUpdatesChanged?: (updates: AgentUpdate[]) => void;
+};
+
+type LastCodeCursorSnapshot = {
+  filePath: string;
+  fileLine: number;
+  lineText: string | null;
 };
 
 const ACTION_CHIPS: readonly string[] = [];
@@ -60,6 +74,7 @@ const LAZY_CONTENT_MODE_FILE_THRESHOLD = 250;
 
 export class CodeBrowserApp {
   private readonly renderer: CliRenderer;
+  private readonly workspaceRootDir: string;
   private entries: CodeFileEntry[];
   private readonly state = new AppStateStore();
 
@@ -89,11 +104,14 @@ export class CodeBrowserApp {
   private readonly agentTimeline: AgentTimeline;
   private readonly pendingEntryLoads = new Set<string>();
   private lazyContentModeEnabled = false;
+  private pendingPersistedCursorState: PersistedCursorState | null = null;
+  private lastCodeCursorSnapshot: LastCodeCursorSnapshot | null = null;
   private readonly sourceCleanupFns: Array<() => void> = [];
   private readonly signalRegistrationIds: string[] = [];
 
   constructor(renderer: CliRenderer, entries: CodeFileEntry[], options: CodeBrowserAppOptions = {}) {
     this.renderer = renderer;
+    this.workspaceRootDir = options.workspaceRootDir ?? process.cwd();
     this.entries = entries;
 
     this.root = new BoxRenderable(renderer, {
@@ -157,11 +175,13 @@ export class CodeBrowserApp {
     );
 
     this.agent = new OpenCode({
+      rootDir: this.workspaceRootDir,
       initialUpdates: options.initialAgentUpdates ?? [],
       onUpdatesChanged: options.onAgentUpdatesChanged,
     });
 
     this.prompt = new Prompt({
+      rootDir: this.workspaceRootDir,
       promptComposer: this.promptComposer,
       resolveLayout: (target, fallbackAnchorLine) =>
         this.resolvePromptComposerLayout(target, fallbackAnchorLine),
@@ -210,7 +230,11 @@ export class CodeBrowserApp {
     this.sortedTypes = [];
     this.enabledTypes = new Map();
     this.enableLazyContentModeIfNeeded();
-    this.recomputeTypesState();
+    if (options.initialPersistedUiState) {
+      this.applyPersistedUiState(options.initialPersistedUiState);
+    } else {
+      this.recomputeTypesState();
+    }
     this.applyTheme();
   }
 
@@ -219,6 +243,7 @@ export class CodeBrowserApp {
     this.registerBindings();
     this.state.focusMode = "code";
     this.renderAll({ preferFirstAnchor: this.lazyContentModeEnabled });
+    this.restorePersistedCursorState();
     this.prompt.start();
   }
 
@@ -234,6 +259,31 @@ export class CodeBrowserApp {
 
   public getAgentUpdates(): AgentUpdate[] {
     return this.agent.getUpdates();
+  }
+
+  public getPersistenceSnapshot(): PersistedUiState {
+    const persistedCursor = this.resolveCursorForPersistence();
+    const enabledTypeLabels: Record<string, boolean> = {};
+    const sortedEntries = [...this.enabledTypes.entries()].sort(([a], [b]) => a.localeCompare(b));
+    for (const [typeLabel, enabled] of sortedEntries) {
+      enabledTypeLabels[typeLabel] = enabled;
+    }
+
+    return {
+      version: PERSISTED_UI_STATE_VERSION,
+      chips: {
+        selectedChipIndex: this.state.selectedChipIndex,
+        chipWindowStartIndex: this.state.chipWindowStartIndex,
+        enabledTypeLabels,
+      },
+      files: {
+        ignoredPaths: this.fileExplorer.getIgnoredFiles(),
+        collapsedPaths: this.fileExplorer.getCollapsedFiles(),
+        fileBlockCollapsed: this.fileExplorer.isFilePageCollapsed(),
+        directoryPath: this.fileExplorer.getDirectoryPath(),
+      },
+      cursor: persistedCursor,
+    };
   }
 
   public shutdown(): void {
@@ -297,6 +347,8 @@ export class CodeBrowserApp {
       submitPromptToAgent: (submission) => this.submitPromptToAgent(submission),
     });
 
+    this.onSignal(SIGNALS.cursorChanged, () => this.updateLastCodeCursorSnapshot());
+
     this.sourceCleanupFns.push(
       registerKeyboardSignalBindings(this.renderer.keyInput, () => this.getKeyboardStateSnapshot()),
     );
@@ -344,7 +396,7 @@ export class CodeBrowserApp {
     try {
       this.renderer.suspend();
       suspended = true;
-      openFileInEditor(target.filePath, target.fileLine);
+      openFileInEditor(target.filePath, target.fileLine, this.workspaceRootDir);
     } finally {
       if (suspended) {
         this.renderer.resume();
@@ -473,6 +525,206 @@ export class CodeBrowserApp {
   private setFocusMode(mode: FocusMode): void {
     this.state.focusMode = mode;
     this.renderChips();
+  }
+
+  private updateLastCodeCursorSnapshot(): void {
+    const lineInfo = this.lineModel.getVisibleLineInfo(this.cursor.cursorLine);
+    if (!lineInfo || lineInfo.blockKind !== "code") return;
+    if (!isPersistableFilePath(lineInfo.filePath)) return;
+    if (typeof lineInfo.fileLine !== "number") return;
+
+    this.lastCodeCursorSnapshot = {
+      filePath: lineInfo.filePath,
+      fileLine: lineInfo.fileLine,
+      lineText: lineInfo.text,
+    };
+  }
+
+  private resolveCursorForPersistence(): PersistedCursorState {
+    this.updateLastCodeCursorSnapshot();
+
+    const currentLineInfo = this.lineModel.getVisibleLineInfo(this.cursor.cursorLine);
+    if (
+      currentLineInfo?.blockKind === "collapsed" &&
+      this.lastCodeCursorSnapshot &&
+      this.entries.some((entry) => entry.relativePath === this.lastCodeCursorSnapshot?.filePath)
+    ) {
+      const mappedGlobalLine = this.lineModel.findGlobalLineForFileLine(
+        this.lastCodeCursorSnapshot.filePath,
+        this.lastCodeCursorSnapshot.fileLine,
+      );
+      return {
+        globalLine: mappedGlobalLine ?? this.cursor.cursorLine,
+        filePath: this.lastCodeCursorSnapshot.filePath,
+        fileLine: this.lastCodeCursorSnapshot.fileLine,
+        lineText: this.lastCodeCursorSnapshot.lineText,
+      };
+    }
+
+    return {
+      globalLine: this.cursor.cursorLine,
+      filePath: currentLineInfo?.filePath ?? null,
+      fileLine: currentLineInfo?.fileLine ?? null,
+      lineText: currentLineInfo?.text ?? null,
+    };
+  }
+
+  private applyPersistedUiState(persistedState: PersistedUiState): void {
+    this.state.selectedChipIndex = toNonNegativeInteger(persistedState.chips.selectedChipIndex);
+    this.state.chipWindowStartIndex = toNonNegativeInteger(persistedState.chips.chipWindowStartIndex);
+    this.enabledTypes = new Map(Object.entries(persistedState.chips.enabledTypeLabels));
+
+    this.fileExplorer.setIgnoredFiles(persistedState.files.ignoredPaths);
+    this.fileExplorer.setCollapsedFiles(persistedState.files.collapsedPaths);
+    this.fileExplorer.setFilePageCollapsed(persistedState.files.fileBlockCollapsed);
+    this.fileExplorer.setDirectoryPath(persistedState.files.directoryPath);
+    this.ensurePersistedCursorVisibility(persistedState.cursor);
+
+    if (isPersistableFilePath(persistedState.cursor.filePath ?? "") && typeof persistedState.cursor.fileLine === "number") {
+      this.lastCodeCursorSnapshot = {
+        filePath: persistedState.cursor.filePath ?? "",
+        fileLine: persistedState.cursor.fileLine,
+        lineText: persistedState.cursor.lineText,
+      };
+    }
+
+    this.pruneCollapsedFiles();
+    this.pruneIgnoredFiles();
+    this.recomputeTypesState();
+    this.pendingPersistedCursorState = persistedState.cursor;
+  }
+
+  private ensurePersistedCursorVisibility(cursor: PersistedCursorState): void {
+    const filePath = cursor.filePath;
+    if (!filePath) return;
+
+    if (filePath === "." || filePath.startsWith(FileExplorer.FILE_PAGE_ANCHOR_PATH)) {
+      this.fileExplorer.setFilePageCollapsed(false);
+      return;
+    }
+
+    if (filePath.startsWith("virtual://")) {
+      return;
+    }
+
+    this.fileExplorer.expandFile(filePath);
+  }
+
+  private restorePersistedCursorState(): void {
+    const persistedCursorState = this.pendingPersistedCursorState;
+    if (!persistedCursorState) return;
+    if (this.lineModel.totalLines <= 0) return;
+    const restoreTarget = this.resolvePersistedCursorLine(persistedCursorState);
+    this.cursor.goToLine(restoreTarget.line, "auto");
+    if (!restoreTarget.shouldRetry) {
+      this.pendingPersistedCursorState = null;
+    }
+  }
+
+  private resolvePersistedCursorLine(cursor: PersistedCursorState): {
+    line: number;
+    shouldRetry: boolean;
+  } {
+    const filePath = cursor.filePath;
+    if (!filePath) {
+      return { line: 1, shouldRetry: false };
+    }
+
+    if (filePath === "." || filePath.startsWith("virtual://")) {
+      const mappedVirtualLine = this.lineModel.findFirstGlobalLineForFilePath(filePath);
+      return {
+        line: mappedVirtualLine ?? 1,
+        shouldRetry: false,
+      };
+    }
+
+    const targetEntry = this.entries.find((entry) => entry.relativePath === filePath);
+    if (!targetEntry) {
+      return { line: 1, shouldRetry: false };
+    }
+
+    const persistedText = normalizePersistedLineText(cursor.lineText);
+    if (typeof cursor.fileLine === "number") {
+      const mappedByLine = this.lineModel.findGlobalLineForFileLine(filePath, cursor.fileLine);
+      if (typeof mappedByLine === "number") {
+        if (persistedText === null) {
+          return {
+            line: mappedByLine,
+            shouldRetry: !targetEntry.isContentLoaded && cursor.fileLine > 1,
+          };
+        }
+
+        const mappedText = normalizePersistedLineText(
+          this.lineModel.getVisibleLineInfo(mappedByLine)?.text ?? null,
+        );
+        if (mappedText === persistedText) {
+          return {
+            line: mappedByLine,
+            shouldRetry: false,
+          };
+        }
+      }
+    }
+
+    if (persistedText !== null) {
+      const matchedByText = this.findClosestLineByPersistedText(filePath, persistedText, cursor.fileLine);
+      if (typeof matchedByText === "number") {
+        return {
+          line: matchedByText,
+          shouldRetry: false,
+        };
+      }
+    }
+
+    const firstLineInFile = this.lineModel.findFirstGlobalLineForFilePath(filePath);
+    if (typeof firstLineInFile === "number") {
+      return {
+        line: firstLineInFile,
+        shouldRetry: !targetEntry.isContentLoaded,
+      };
+    }
+
+    return {
+      line: 1,
+      shouldRetry: false,
+    };
+  }
+
+  private findClosestLineByPersistedText(
+    filePath: string,
+    persistedText: string,
+    preferredFileLine: number | null,
+  ): number | undefined {
+    let bestLine: number | undefined;
+    let bestDistance = Number.POSITIVE_INFINITY;
+
+    for (const block of this.lineModel.blocks) {
+      if (block.filePath !== filePath || block.blockKind !== "code") continue;
+      if (block.fileLineStart === null) continue;
+
+      for (let offset = 0; offset < block.renderedLines.length; offset += 1) {
+        const candidateText = normalizePersistedLineText(block.renderedLines[offset] ?? null);
+        if (candidateText !== persistedText) continue;
+
+        const candidateGlobalLine = block.lineStart + offset;
+        const candidateFileLine = block.fileLineStart + offset;
+        const distance = typeof preferredFileLine === "number"
+          ? Math.abs(candidateFileLine - preferredFileLine)
+          : 0;
+
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestLine = candidateGlobalLine;
+          continue;
+        }
+
+        if (distance === bestDistance && (bestLine === undefined || candidateGlobalLine < bestLine)) {
+          bestLine = candidateGlobalLine;
+        }
+      }
+    }
+
+    return bestLine;
   }
 
   private moveChipSelection(delta: number): void {
@@ -730,10 +982,11 @@ export class CodeBrowserApp {
     if (this.pendingEntryLoads.has(entry.relativePath)) return;
 
     this.pendingEntryLoads.add(entry.relativePath);
-    void hydrateCodeFileEntry(entry)
+    void hydrateCodeFileEntry(entry, this.workspaceRootDir)
       .then(() => {
         this.pendingEntryLoads.delete(entry.relativePath);
-        this.renderContent({ cursorTargetFilePath: entry.relativePath });
+        this.renderContent();
+        this.restorePersistedCursorState();
       })
       .catch((error: unknown) => {
         this.pendingEntryLoads.delete(entry.relativePath);
@@ -747,4 +1000,19 @@ export class CodeBrowserApp {
       });
   }
 
+}
+
+function toNonNegativeInteger(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.floor(value));
+}
+
+function normalizePersistedLineText(value: string | null): string | null {
+  if (typeof value !== "string") return null;
+  const withoutTrailingCarriageReturn = value.endsWith("\r") ? value.slice(0, -1) : value;
+  return withoutTrailingCarriageReturn;
+}
+
+function isPersistableFilePath(filePath: string): boolean {
+  return filePath.length > 0 && filePath !== "." && !filePath.startsWith("virtual://");
 }

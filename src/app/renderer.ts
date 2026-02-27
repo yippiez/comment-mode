@@ -176,144 +176,95 @@ export class AppRenderer {
   public renderContent(options: RenderContentOptions = {}): void {
     const entries = this.getEntries();
     const restorePoint = this.captureCursorRestorePoint();
-    clearChildren(this.scrollbox);
-    this.lineModel.reset();
-    this.visualHighlights.reset();
-    this.dividerByFilePath = new Map();
-    this.agentTimeline.resetForRender();
-    this.fileExplorer.clearRows();
+    this.documentBlocks.beginRender();
 
-    if (entries.length === 0) {
-      this.renderEmptyState("No code files found.");
-      this.cursor.configure(0);
-      return;
-    }
+    try {
+      clearChildren(this.scrollbox);
+      this.lineModel.reset();
+      this.visualHighlights.reset();
+      this.dividerByFilePath = new Map();
+      this.agentTimeline.resetForRender();
+      this.fileExplorer.clearRows();
 
-    const filteredEntries = entries.filter((entry) => this.isTypeEnabled(entry.typeLabel));
-    const virtualBlocks = this.virtualCodeBlocks.getRenderableBlocks(filteredEntries, this.isTypeEnabled);
+      if (entries.length === 0) {
+        this.renderEmptyState("No code files found.");
+        this.cursor.configure(0);
+        return;
+      }
 
-    if (filteredEntries.length === 0 && virtualBlocks.length === 0) {
-      this.renderEmptyState("No files for selected types.");
-      this.cursor.configure(0);
-      return;
-    }
+      const filteredEntries = entries.filter((entry) => this.isTypeEnabled(entry.typeLabel));
+      const virtualBlocks = this.virtualCodeBlocks.getRenderableBlocks(filteredEntries, this.isTypeEnabled);
 
-    const dividerWidth = Math.max(24, this.renderer.width);
-    let nextLineNumber = 1;
-    let nextDisplayRow = 0;
+      if (filteredEntries.length === 0 && virtualBlocks.length === 0) {
+        this.renderEmptyState("No files for selected types.");
+        this.cursor.configure(0);
+        return;
+      }
 
-    for (const virtualBlock of virtualBlocks) {
-      const dividerRow = nextDisplayRow;
-      this.lineModel.markDivider(nextDisplayRow);
-      const divider = new TextRenderable(this.renderer, {
-        width: "100%",
-        overflow: "hidden",
-        truncate: true,
-        wrapMode: "none",
-        content: makeSlashLine(virtualBlock.descriptor.title, dividerWidth),
-        fg: theme.getDividerForegroundColor(),
-        bg: theme.getDividerBackgroundColor(),
-      });
-      this.dividerByFilePath.set(virtualBlock.descriptor.anchorPath, divider);
-      this.scrollbox.add(divider);
-      nextDisplayRow += 1;
+      const dividerWidth = Math.max(24, this.renderer.width);
+      let nextLineNumber = 1;
+      let nextDisplayRow = 0;
 
-      const blockAnchorLine = nextLineNumber;
-      this.virtualCodeBlocks.setAnchorLine(virtualBlock.descriptor.id, blockAnchorLine);
+      for (const virtualBlock of virtualBlocks) {
+        const dividerRow = nextDisplayRow;
+        this.lineModel.markDivider(nextDisplayRow);
+        const divider = new TextRenderable(this.renderer, {
+          width: "100%",
+          overflow: "hidden",
+          truncate: true,
+          wrapMode: "none",
+          content: makeSlashLine(virtualBlock.descriptor.title, dividerWidth),
+          fg: theme.getDividerForegroundColor(),
+          bg: theme.getDividerBackgroundColor(),
+        });
+        this.dividerByFilePath.set(virtualBlock.descriptor.anchorPath, divider);
+        this.scrollbox.add(divider);
+        nextDisplayRow += 1;
 
-      if (virtualBlock.collapsed) {
-        const result = this.documentBlocks.addCollapsedPlaceholderBlock(
-          virtualBlock.descriptor.anchorPath,
-          undefined,
-          null,
-          dividerWidth,
-          1,
-          nextLineNumber,
-          nextDisplayRow,
-          "↑ virtual block collapsed ↓",
-        );
-        nextLineNumber = result.nextLineNumber;
-        nextDisplayRow = result.nextDisplayRow;
-      } else if (virtualBlock.rows.length === 0) {
-        const result = this.documentBlocks.addCollapsedPlaceholderBlock(
-          virtualBlock.descriptor.anchorPath,
-          undefined,
-          0,
-          dividerWidth,
-          1,
-          nextLineNumber,
-          nextDisplayRow,
-          "↑ no files available ↓",
-        );
-        nextLineNumber = result.nextLineNumber;
-        nextDisplayRow = result.nextDisplayRow;
-      } else {
-        for (const row of virtualBlock.rows) {
-          const rowResult = this.documentBlocks.addFileTreeRowBlock(
-            row,
+        const blockAnchorLine = nextLineNumber;
+        this.virtualCodeBlocks.setAnchorLine(virtualBlock.descriptor.id, blockAnchorLine);
+
+        if (virtualBlock.collapsed) {
+          const result = this.documentBlocks.addCollapsedPlaceholderBlock(
+            virtualBlock.descriptor.anchorPath,
+            undefined,
+            null,
+            dividerWidth,
+            1,
             nextLineNumber,
             nextDisplayRow,
-            this.virtualCodeBlocks.getLineModelPathForRow(row),
+            "↑ virtual block collapsed ↓",
           );
-          nextLineNumber = rowResult.nextLineNumber;
-          nextDisplayRow = rowResult.nextDisplayRow;
+          nextLineNumber = result.nextLineNumber;
+          nextDisplayRow = result.nextDisplayRow;
+        } else if (virtualBlock.rows.length === 0) {
+          const result = this.documentBlocks.addCollapsedPlaceholderBlock(
+            virtualBlock.descriptor.anchorPath,
+            undefined,
+            0,
+            dividerWidth,
+            1,
+            nextLineNumber,
+            nextDisplayRow,
+            "↑ no files available ↓",
+          );
+          nextLineNumber = result.nextLineNumber;
+          nextDisplayRow = result.nextDisplayRow;
+        } else {
+          for (const row of virtualBlock.rows) {
+            const rowResult = this.documentBlocks.addFileTreeRowBlock(
+              row,
+              nextLineNumber,
+              nextDisplayRow,
+              this.virtualCodeBlocks.getLineModelPathForRow(row),
+            );
+            nextLineNumber = rowResult.nextLineNumber;
+            nextDisplayRow = rowResult.nextDisplayRow;
+          }
         }
-      }
 
-      const updatesForVirtualBlock = this.getUpdatesForFile(virtualBlock.descriptor.promptFilePath);
-      for (const update of updatesForVirtualBlock) {
-        const agentResult = this.agentTimeline.addUpdateWithMessages(
-          update,
-          nextLineNumber,
-          nextDisplayRow,
-        );
-        nextLineNumber = agentResult.nextLineNumber;
-        nextDisplayRow = agentResult.nextDisplayRow;
-      }
-
-      if (nextLineNumber > blockAnchorLine) {
-        this.lineModel.addFileAnchor({
-          line: blockAnchorLine,
-          dividerRow,
-          filePath: virtualBlock.descriptor.anchorPath,
-        });
-      }
-    }
-
-    for (const entry of filteredEntries) {
-      const updatesForFile = this.getUpdatesForFile(entry.relativePath);
-      let nextUpdateIndex = 0;
-      const dividerRow = nextDisplayRow;
-      this.lineModel.markDivider(nextDisplayRow);
-      const divider = new TextRenderable(this.renderer, {
-        width: "100%",
-        overflow: "hidden",
-        truncate: true,
-        wrapMode: "none",
-        content: makeSlashLine(entry.relativePath, dividerWidth),
-        fg: theme.getDividerForegroundColor(),
-        bg: theme.getDividerBackgroundColor(),
-      });
-      this.dividerByFilePath.set(entry.relativePath, divider);
-      this.scrollbox.add(divider);
-      nextDisplayRow += 1;
-      const fileAnchorLine = nextLineNumber;
-
-      if (this.fileExplorer.isCollapsed(entry.relativePath)) {
-        const result = this.documentBlocks.addCollapsedPlaceholderBlock(
-          entry.relativePath,
-          entry.filetype,
-          entry.isContentLoaded ? entry.lineCount : null,
-          dividerWidth,
-          1,
-          nextLineNumber,
-          nextDisplayRow,
-        );
-        nextLineNumber = result.nextLineNumber;
-        nextDisplayRow = result.nextDisplayRow;
-        while (nextUpdateIndex < updatesForFile.length) {
-          const update = updatesForFile[nextUpdateIndex];
-          if (!update) break;
+        const updatesForVirtualBlock = this.getUpdatesForFile(virtualBlock.descriptor.promptFilePath);
+        for (const update of updatesForVirtualBlock) {
           const agentResult = this.agentTimeline.addUpdateWithMessages(
             update,
             nextLineNumber,
@@ -321,31 +272,108 @@ export class AppRenderer {
           );
           nextLineNumber = agentResult.nextLineNumber;
           nextDisplayRow = agentResult.nextDisplayRow;
-          nextUpdateIndex += 1;
         }
-      } else if (!entry.isContentLoaded) {
-        this.scheduleFileContentLoad(entry);
-        const result = this.documentBlocks.addCollapsedPlaceholderBlock(
-          entry.relativePath,
-          entry.filetype,
-          null,
-          dividerWidth,
-          1,
-          nextLineNumber,
-          nextDisplayRow,
-          "↑ loading file content... ↓",
-        );
-        nextLineNumber = result.nextLineNumber;
-        nextDisplayRow = result.nextDisplayRow;
-      } else {
-        const sourceLines = entry.content.split("\n");
-        let fileLineCursor = 1;
-        while (nextUpdateIndex < updatesForFile.length) {
-          const update = updatesForFile[nextUpdateIndex];
-          if (!update) break;
-          const anchorLine = clamp(update.selectionEndFileLine, 1, Math.max(1, entry.lineCount));
-          if (anchorLine >= fileLineCursor) {
-            const chunkLines = sourceLines.slice(fileLineCursor - 1, anchorLine);
+
+        if (nextLineNumber > blockAnchorLine) {
+          this.lineModel.addFileAnchor({
+            line: blockAnchorLine,
+            dividerRow,
+            filePath: virtualBlock.descriptor.anchorPath,
+          });
+        }
+      }
+
+      for (const entry of filteredEntries) {
+        const updatesForFile = this.getUpdatesForFile(entry.relativePath);
+        let nextUpdateIndex = 0;
+        const dividerRow = nextDisplayRow;
+        this.lineModel.markDivider(nextDisplayRow);
+        const divider = new TextRenderable(this.renderer, {
+          width: "100%",
+          overflow: "hidden",
+          truncate: true,
+          wrapMode: "none",
+          content: makeSlashLine(entry.relativePath, dividerWidth),
+          fg: theme.getDividerForegroundColor(),
+          bg: theme.getDividerBackgroundColor(),
+        });
+        this.dividerByFilePath.set(entry.relativePath, divider);
+        this.scrollbox.add(divider);
+        nextDisplayRow += 1;
+        const fileAnchorLine = nextLineNumber;
+
+        if (this.fileExplorer.isCollapsed(entry.relativePath)) {
+          const result = this.documentBlocks.addCollapsedPlaceholderBlock(
+            entry.relativePath,
+            entry.filetype,
+            entry.isContentLoaded ? entry.lineCount : null,
+            dividerWidth,
+            1,
+            nextLineNumber,
+            nextDisplayRow,
+          );
+          nextLineNumber = result.nextLineNumber;
+          nextDisplayRow = result.nextDisplayRow;
+          while (nextUpdateIndex < updatesForFile.length) {
+            const update = updatesForFile[nextUpdateIndex];
+            if (!update) break;
+            const agentResult = this.agentTimeline.addUpdateWithMessages(
+              update,
+              nextLineNumber,
+              nextDisplayRow,
+            );
+            nextLineNumber = agentResult.nextLineNumber;
+            nextDisplayRow = agentResult.nextDisplayRow;
+            nextUpdateIndex += 1;
+          }
+        } else if (!entry.isContentLoaded) {
+          this.scheduleFileContentLoad(entry);
+          const result = this.documentBlocks.addCollapsedPlaceholderBlock(
+            entry.relativePath,
+            entry.filetype,
+            null,
+            dividerWidth,
+            1,
+            nextLineNumber,
+            nextDisplayRow,
+            "↑ loading file content... ↓",
+          );
+          nextLineNumber = result.nextLineNumber;
+          nextDisplayRow = result.nextDisplayRow;
+        } else {
+          const sourceLines = entry.content.split("\n");
+          let fileLineCursor = 1;
+          while (nextUpdateIndex < updatesForFile.length) {
+            const update = updatesForFile[nextUpdateIndex];
+            if (!update) break;
+            const anchorLine = clamp(update.selectionEndFileLine, 1, Math.max(1, entry.lineCount));
+            if (anchorLine >= fileLineCursor) {
+              const chunkLines = sourceLines.slice(fileLineCursor - 1, anchorLine);
+              const result = this.documentBlocks.addCodeBlock(
+                entry,
+                chunkLines.join("\n"),
+                fileLineCursor,
+                chunkLines.length,
+                nextLineNumber,
+                nextDisplayRow,
+              );
+              nextLineNumber = result.nextLineNumber;
+              nextDisplayRow = result.nextDisplayRow;
+              fileLineCursor = anchorLine + 1;
+            }
+
+            const agentResult = this.agentTimeline.addUpdateWithMessages(
+              update,
+              nextLineNumber,
+              nextDisplayRow,
+            );
+            nextLineNumber = agentResult.nextLineNumber;
+            nextDisplayRow = agentResult.nextDisplayRow;
+            nextUpdateIndex += 1;
+          }
+
+          if (fileLineCursor <= entry.lineCount) {
+            const chunkLines = sourceLines.slice(fileLineCursor - 1);
             const result = this.documentBlocks.addCodeBlock(
               entry,
               chunkLines.join("\n"),
@@ -356,9 +384,12 @@ export class AppRenderer {
             );
             nextLineNumber = result.nextLineNumber;
             nextDisplayRow = result.nextDisplayRow;
-            fileLineCursor = anchorLine + 1;
           }
+        }
 
+        while (nextUpdateIndex < updatesForFile.length) {
+          const update = updatesForFile[nextUpdateIndex];
+          if (!update) break;
           const agentResult = this.agentTimeline.addUpdateWithMessages(
             update,
             nextLineNumber,
@@ -369,59 +400,34 @@ export class AppRenderer {
           nextUpdateIndex += 1;
         }
 
-        if (fileLineCursor <= entry.lineCount) {
-          const chunkLines = sourceLines.slice(fileLineCursor - 1);
-          const result = this.documentBlocks.addCodeBlock(
-            entry,
-            chunkLines.join("\n"),
-            fileLineCursor,
-            chunkLines.length,
-            nextLineNumber,
-            nextDisplayRow,
-          );
-          nextLineNumber = result.nextLineNumber;
-          nextDisplayRow = result.nextDisplayRow;
+        if (nextLineNumber > fileAnchorLine) {
+          this.lineModel.addFileAnchor({ line: fileAnchorLine, dividerRow, filePath: entry.relativePath });
         }
       }
 
-      while (nextUpdateIndex < updatesForFile.length) {
-        const update = updatesForFile[nextUpdateIndex];
-        if (!update) break;
-        const agentResult = this.agentTimeline.addUpdateWithMessages(
-          update,
-          nextLineNumber,
-          nextDisplayRow,
+      this.lineModel.setTotalLines(nextLineNumber - 1);
+      const pendingPath = this.fileExplorer.consumePendingCodeTargetPath();
+      const preferredAnchorPath = options.preferFirstAnchor
+        ? this.lineModel.getFileAnchor(0)?.filePath
+        : undefined;
+      const targetPath = options.cursorTargetFilePath ?? pendingPath ?? preferredAnchorPath;
+      const targetAnchor = targetPath ? this.lineModel.getFileAnchorByPath(targetPath) : undefined;
+      if (targetAnchor) {
+        this.cursor.configureWithTarget(this.lineModel.totalLines, targetAnchor.line, "keep");
+      } else {
+        const restoreTarget = this.resolveCursorRestoreTarget(restorePoint);
+        this.cursor.configureWithTarget(
+          this.lineModel.totalLines,
+          restoreTarget.cursorLine,
+          "keep",
+          restoreTarget.visualAnchorLine,
         );
-        nextLineNumber = agentResult.nextLineNumber;
-        nextDisplayRow = agentResult.nextDisplayRow;
-        nextUpdateIndex += 1;
       }
-
-      if (nextLineNumber > fileAnchorLine) {
-        this.lineModel.addFileAnchor({ line: fileAnchorLine, dividerRow, filePath: entry.relativePath });
+      if (this.isPromptVisible()) {
+        this.refreshPromptView();
       }
-    }
-
-    this.lineModel.setTotalLines(nextLineNumber - 1);
-    const pendingPath = this.fileExplorer.consumePendingCodeTargetPath();
-    const preferredAnchorPath = options.preferFirstAnchor
-      ? this.lineModel.getFileAnchor(0)?.filePath
-      : undefined;
-    const targetPath = options.cursorTargetFilePath ?? pendingPath ?? preferredAnchorPath;
-    const targetAnchor = targetPath ? this.lineModel.getFileAnchorByPath(targetPath) : undefined;
-    if (targetAnchor) {
-      this.cursor.configureWithTarget(this.lineModel.totalLines, targetAnchor.line, "keep");
-    } else {
-      const restoreTarget = this.resolveCursorRestoreTarget(restorePoint);
-      this.cursor.configureWithTarget(
-        this.lineModel.totalLines,
-        restoreTarget.cursorLine,
-        "keep",
-        restoreTarget.visualAnchorLine,
-      );
-    }
-    if (this.isPromptVisible()) {
-      this.refreshPromptView();
+    } finally {
+      this.documentBlocks.endRender();
     }
   }
 

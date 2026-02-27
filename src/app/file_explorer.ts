@@ -50,6 +50,30 @@ export class FileExplorer {
     this.filePageCollapsed = collapsed;
   }
 
+  public getDirectoryPath(): string {
+    return this.directoryPath;
+  }
+
+  public setDirectoryPath(directoryPath: string): void {
+    this.directoryPath = directoryPath;
+  }
+
+  public getCollapsedFiles(): string[] {
+    return [...this.collapsedFiles].sort((a, b) => a.localeCompare(b));
+  }
+
+  public setCollapsedFiles(filePaths: readonly string[]): void {
+    this.collapsedFiles = new Set(filePaths.filter((filePath) => filePath.length > 0));
+  }
+
+  public getIgnoredFiles(): string[] {
+    return [...this.ignoredFiles].sort((a, b) => a.localeCompare(b));
+  }
+
+  public setIgnoredFiles(filePaths: readonly string[]): void {
+    this.ignoredFiles = new Set(filePaths.filter((filePath) => filePath.length > 0));
+  }
+
   public toggleFilePageCollapsed(): boolean {
     this.filePageCollapsed = !this.filePageCollapsed;
     return this.filePageCollapsed;
@@ -135,6 +159,10 @@ export class FileExplorer {
 
   public isCollapsed(filePath: string): boolean {
     return this.collapsedFiles.has(filePath);
+  }
+
+  public expandFile(filePath: string): boolean {
+    return this.collapsedFiles.delete(filePath);
   }
 
   public toggleCollapse(currentFilePath: string | undefined): boolean {

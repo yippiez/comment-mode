@@ -149,6 +149,15 @@ export class LineModel {
     return undefined;
   }
 
+  public findFirstGlobalLineForFilePath(filePath: string): number | undefined {
+    for (const block of this.renderedLineBlocks) {
+      if (block.filePath === filePath) {
+        return block.lineStart;
+      }
+    }
+    return undefined;
+  }
+
   public getDisplayRowForLine(globalLine: number): number {
     const directHit = this.lineToDisplayRow[globalLine];
     if (directHit !== undefined) return directHit;

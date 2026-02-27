@@ -5,8 +5,7 @@ type WorkspaceWatcher = {
   close: () => void;
 };
 
-export async function watchWorkspace(): Promise<WorkspaceWatcher> {
-  const rootDir = process.cwd();
+export async function watchWorkspace(rootDir = process.cwd()): Promise<WorkspaceWatcher> {
   const ignoredDirs = await getIgnoredDirs(rootDir);
   const watcher = await watchWorkspaceFs(rootDir, ignoredDirs, () => {
     emit(SIGNALS.workspaceChanged);

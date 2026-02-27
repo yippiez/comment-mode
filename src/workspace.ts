@@ -23,7 +23,7 @@ export type WorkspaceWatcher = {
 };
 
 export async function getIgnoredDirs(root: string): Promise<Set<string>> {
-  const ignored = new Set<string>([".git"]);
+  const ignored = new Set<string>([".git", ".comment"]);
   const gitignorePath = path.join(root, ".gitignore");
 
   try {
@@ -97,6 +97,7 @@ export async function listCodeFiles(root: string, ignoredDirs: ReadonlySet<strin
   const gitVisibleFiles = listGitWorkspaceFiles(root);
   if (gitVisibleFiles) {
     return gitVisibleFiles
+      .filter((relativePath) => !isPathInsideIgnoredDir(relativePath, ignoredDirs))
       .filter((relativePath) => isCodeExtension(path.extname(relativePath).toLowerCase()))
       .sort((a, b) => a.localeCompare(b));
   }
@@ -400,7 +401,10 @@ function mergePatchChangedLines(target: Map<string, Set<number>>, patch: string)
 async function listWatchableDirs(root: string, ignoredDirs: ReadonlySet<string>): Promise<string[]> {
   const gitVisibleFiles = listGitWorkspaceFiles(root);
   if (gitVisibleFiles) {
-    return buildWatchableDirsFromFiles(root, gitVisibleFiles);
+    const filtered = gitVisibleFiles.filter(
+      (relativePath) => !isPathInsideIgnoredDir(relativePath, ignoredDirs),
+    );
+    return buildWatchableDirsFromFiles(root, filtered);
   }
 
   const dirs: string[] = [];
@@ -441,4 +445,10 @@ function buildWatchableDirsFromFiles(root: string, relativePaths: readonly strin
   }
 
   return [...dirs].sort((a, b) => a.localeCompare(b));
+}
+
+function isPathInsideIgnoredDir(relativePath: string, ignoredDirs: ReadonlySet<string>): boolean {
+  const firstSegment = relativePath.split("/")[0]?.trim();
+  if (!firstSegment) return false;
+  return ignoredDirs.has(firstSegment);
 }

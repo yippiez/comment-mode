@@ -8,8 +8,7 @@ export function isMissingCodeFileError(error: unknown): boolean {
   return (error as NodeJS.ErrnoException).code === "ENOENT";
 }
 
-export async function loadCodeFileEntries(): Promise<CodeFileEntry[]> {
-  const rootDir = process.cwd();
+export async function loadCodeFileEntries(rootDir = process.cwd()): Promise<CodeFileEntry[]> {
   const ignoredDirs = await getIgnoredDirs(rootDir);
   const entries = await loadWorkspaceCodeFileEntries(rootDir, ignoredDirs);
 
@@ -19,10 +18,13 @@ export async function loadCodeFileEntries(): Promise<CodeFileEntry[]> {
   }));
 }
 
-export async function hydrateCodeFileEntry(entry: CodeFileEntry): Promise<void> {
+export async function hydrateCodeFileEntry(
+  entry: CodeFileEntry,
+  rootDir = process.cwd(),
+): Promise<void> {
   if (entry.isContentLoaded) return;
 
-  const absolutePath = path.join(process.cwd(), entry.relativePath);
+  const absolutePath = path.join(rootDir, entry.relativePath);
   const content = await readFile(absolutePath, "utf8");
 
   entry.content = content;

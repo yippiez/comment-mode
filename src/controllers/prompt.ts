@@ -35,6 +35,7 @@ export type PromptSubmission = {
 };
 
 type PromptOptions = {
+  rootDir?: string;
   promptComposer: PromptComposerBar;
   resolveLayout: (
     target: PromptTarget | null,
@@ -46,6 +47,7 @@ export class Prompt {
   private static readonly DEFAULT_THINKING_LEVEL = "auto";
 
   private readonly promptComposer: PromptComposerBar;
+  private readonly rootDir: string;
   private readonly resolveLayout: (
     target: PromptTarget | null,
     fallbackAnchorLine: number | null,
@@ -62,6 +64,7 @@ export class Prompt {
   /** Initializes prompt controller dependencies and callbacks. */
   constructor(options: PromptOptions) {
     this.promptComposer = options.promptComposer;
+    this.rootDir = options.rootDir ?? process.cwd();
     this.resolveLayout = options.resolveLayout;
   }
 
@@ -225,7 +228,7 @@ export class Prompt {
     this.render();
 
     try {
-      const catalog = await OpenCode.listModels();
+      const catalog = await OpenCode.listModels(this.rootDir);
       if (catalog.length > 0) {
         this.availableModels = catalog.map((item) => item.model).sort((a, b) => a.localeCompare(b));
         this.modelVariantsById = new Map(
