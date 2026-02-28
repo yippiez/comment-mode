@@ -1,6 +1,7 @@
 import {
   BoxRenderable,
   ScrollBoxRenderable,
+  type KeyEvent,
   type CliRenderer,
 } from "@opentui/core";
 import { Camera } from "../controllers/camera";
@@ -55,10 +56,14 @@ import {
   type PersistedCursorState,
   type PersistedUiState,
 } from "../persistence";
+import type { PersistedUiGroup } from "../groups";
+import { GroupNameModal } from "./group_name_modal";
 
 type CodeBrowserAppOptions = {
   workspaceRootDir?: string;
   initialPersistedUiState?: PersistedUiState | null;
+  initialPersistedGroups?: PersistedUiGroup[];
+  onPersistedGroupsChanged?: (groups: PersistedUiGroup[]) => void;
   initialAgentUpdates?: AgentUpdate[];
   onAgentUpdatesChanged?: (updates: AgentUpdate[]) => void;
 };
@@ -69,7 +74,6 @@ type LastCodeCursorSnapshot = {
   lineText: string | null;
 };
 
-const ACTION_CHIPS: readonly string[] = [];
 const LAZY_CONTENT_MODE_FILE_THRESHOLD = 250;
 
 export class CodeBrowserApp {
@@ -82,6 +86,7 @@ export class CodeBrowserApp {
   private readonly chipsRow: BoxRenderable;
   private readonly scrollbox: ScrollBoxRenderable;
   private readonly promptComposer: PromptComposerBar;
+  private readonly groupNameModal: GroupNameModal;
   private readonly shortcutsModal: ShortcutsModal;
   private readonly camera: Camera;
   private readonly navigation: Navigation;
@@ -94,6 +99,9 @@ export class CodeBrowserApp {
   private hiddenTypeCounts: Map<string, number>;
   private sortedTypes: string[];
   private enabledTypes: Map<string, boolean>;
+  private groups: PersistedUiGroup[];
+  private readonly onPersistedGroupsChanged?: (groups: PersistedUiGroup[]) => void;
+  private pendingGroupNameGroupId: string | null = null;
 
   private readonly cursor: Cursor;
 
@@ -144,9 +152,11 @@ export class CodeBrowserApp {
     this.root.add(this.scrollbox);
 
     this.promptComposer = new PromptComposerBar(renderer);
+    this.groupNameModal = new GroupNameModal(renderer);
     this.shortcutsModal = new ShortcutsModal(renderer);
 
     this.root.add(this.promptComposer.renderable);
+    this.root.add(this.groupNameModal.renderable);
     this.root.add(this.shortcutsModal.renderable);
     this.renderer.root.add(this.root);
     this.chipsRow.focusable = false;
@@ -187,6 +197,9 @@ export class CodeBrowserApp {
         this.resolvePromptComposerLayout(target, fallbackAnchorLine),
     });
 
+    this.onPersistedGroupsChanged = options.onPersistedGroupsChanged;
+    this.groups = this.cloneGroups(options.initialPersistedGroups ?? []);
+
     this.appRenderer = new AppRenderer({
       renderer: this.renderer,
       root: this.root,
@@ -203,6 +216,7 @@ export class CodeBrowserApp {
       documentBlocks: this.documentBlocks,
       getEntries: () => this.getVisibleEntries(),
       getSortedTypes: () => this.sortedTypes,
+      getGroupChips: () => this.getGroupChipDescriptors(),
       getTypeCounts: (type) => this.getTypeCounts(type),
       isTypeEnabled: (type) => this.isTypeEnabled(type),
       getFocusMode: () => this.state.focusMode,
@@ -324,6 +338,10 @@ export class CodeBrowserApp {
       toggleCurrentStructureCollapse: () => this.toggleCurrentStructureCollapse(),
       ignoreCurrentFile: () => this.ignoreCurrentFile(),
       resetVisibilityState: () => this.resetVisibilityState(),
+      saveOrUpdateSelectedGroup: () => this.saveOrUpdateSelectedGroup(),
+      deleteSelectedGroup: () => this.deleteSelectedGroup(),
+      submitGroupName: () => this.submitGroupName(),
+      cancelGroupName: () => this.cancelGroupName(),
       jumpToTop: () => this.navigation.jumpToTop(),
       jumpToBottom: () => this.navigation.jumpToBottom(),
       jumpToNextFile: () => this.navigation.jumpToNextFile(),
@@ -337,6 +355,7 @@ export class CodeBrowserApp {
       cyclePromptModel: (delta) => this.prompt.cycleModel(delta),
       cyclePromptThinkingLevel: (delta) => this.prompt.cycleThinkingLevel(delta),
       refreshPromptModels: () => this.prompt.refreshModels(),
+      handleGroupNameInputKey: (key, consume) => this.handleGroupNameInputKey(key, consume),
       handlePromptInputKey: (key, consume) => this.prompt.handlePromptInputKey(key, consume),
       handleExternalScroll: (position) => this.cursor.handleExternalScroll(position),
       renderAll: () => this.renderAll(),
@@ -371,6 +390,7 @@ export class CodeBrowserApp {
 
   private getKeyboardStateSnapshot(): KeyboardStateSnapshot {
     return {
+      groupNamePromptVisible: this.groupNameModal.isVisible,
       promptVisible: this.prompt.isVisible,
       focusMode: this.state.focusMode,
       promptField: this.prompt.isVisible ? this.prompt.currentField : null,
@@ -767,7 +787,7 @@ export class CodeBrowserApp {
   }
 
   private moveChipSelection(delta: number): void {
-    const chipCount = this.sortedTypes.length + ACTION_CHIPS.length;
+    const chipCount = this.sortedTypes.length + this.groups.length;
     if (chipCount === 0) return;
     const nextIndex = this.state.selectedChipIndex + delta;
     this.state.selectedChipIndex = wrapIndex(nextIndex, chipCount);
@@ -785,6 +805,226 @@ export class CodeBrowserApp {
       this.renderContent();
       return;
     }
+
+    const selectedGroup = this.getSelectedGroupChip();
+    if (!selectedGroup) return;
+    this.applyGroupSnapshot(selectedGroup.id);
+  }
+
+  private cloneGroups(groups: readonly PersistedUiGroup[]): PersistedUiGroup[] {
+    const seenIds = new Set<string>();
+    const normalized: PersistedUiGroup[] = [];
+
+    for (let index = 0; index < groups.length; index += 1) {
+      const source = groups[index];
+      if (!source) continue;
+
+      let id = typeof source.id === "string" ? source.id.trim() : "";
+      if (id.length === 0 || seenIds.has(id)) {
+        id = crypto.randomUUID();
+      }
+      seenIds.add(id);
+
+      const rawName = typeof source.name === "string" ? source.name.trim() : "";
+      const name = rawName.length > 0 ? rawName : `group-${index + 1}`;
+      const now = new Date().toISOString();
+      const createdAt = toIsoTimestamp(source.createdAt, now);
+      const updatedAt = toIsoTimestamp(source.updatedAt, createdAt);
+
+      normalized.push({
+        id,
+        name,
+        snapshot: source.snapshot,
+        createdAt,
+        updatedAt,
+      });
+    }
+
+    return normalized;
+  }
+
+  private getGroupChipDescriptors(): Array<{ id: string; name: string }> {
+    return this.groups.map((group) => ({
+      id: group.id,
+      name: group.name,
+    }));
+  }
+
+  private getSelectedGroupChip(): PersistedUiGroup | null {
+    const groupIndex = this.state.selectedChipIndex - this.sortedTypes.length;
+    if (groupIndex < 0 || groupIndex >= this.groups.length) {
+      return null;
+    }
+    return this.groups[groupIndex] ?? null;
+  }
+
+  private getGroupChipById(groupId: string): PersistedUiGroup | null {
+    return this.groups.find((group) => group.id === groupId) ?? null;
+  }
+
+  private selectGroupChipById(groupId: string): void {
+    const groupIndex = this.groups.findIndex((group) => group.id === groupId);
+    if (groupIndex < 0) return;
+    this.state.selectedChipIndex = this.sortedTypes.length + groupIndex;
+  }
+
+  private saveOrUpdateSelectedGroup(): void {
+    const selectedGroup = this.getSelectedGroupChip();
+    if (selectedGroup) {
+      this.updateGroupSnapshot(selectedGroup.id);
+      return;
+    }
+    this.createGroupFromCurrentState();
+  }
+
+  private createGroupFromCurrentState(): void {
+    const snapshot = this.getPersistenceSnapshot();
+    const now = new Date().toISOString();
+    const group: PersistedUiGroup = {
+      id: crypto.randomUUID(),
+      name: this.generateDefaultGroupName(),
+      snapshot,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    this.groups = [...this.groups, group];
+    this.recomputeTypesState();
+    this.selectGroupChipById(group.id);
+    this.notifyGroupsChanged();
+    this.renderChips();
+
+    this.pendingGroupNameGroupId = group.id;
+    this.groupNameModal.open(group.name);
+  }
+
+  private updateGroupSnapshot(groupId: string): void {
+    const groupIndex = this.groups.findIndex((group) => group.id === groupId);
+    if (groupIndex < 0) return;
+
+    const current = this.groups[groupIndex];
+    if (!current) return;
+
+    this.groups[groupIndex] = {
+      ...current,
+      snapshot: this.getPersistenceSnapshot(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    this.selectGroupChipById(groupId);
+    this.notifyGroupsChanged();
+    this.renderChips();
+  }
+
+  private deleteSelectedGroup(): void {
+    const selectedIndex = this.state.selectedChipIndex;
+    const groupIndex = selectedIndex - this.sortedTypes.length;
+    if (groupIndex < 0 || groupIndex >= this.groups.length) return;
+
+    const removed = this.groups[groupIndex];
+    if (!removed) return;
+    this.groups.splice(groupIndex, 1);
+
+    if (this.pendingGroupNameGroupId === removed.id) {
+      this.pendingGroupNameGroupId = null;
+      this.groupNameModal.close();
+    }
+
+    this.recomputeTypesState();
+    const chipCount = this.sortedTypes.length + this.groups.length;
+    this.state.selectedChipIndex = chipCount <= 0
+      ? 0
+      : Math.min(selectedIndex, chipCount - 1);
+    this.notifyGroupsChanged();
+    this.renderChips();
+  }
+
+  private applyGroupSnapshot(groupId: string): void {
+    const group = this.getGroupChipById(groupId);
+    if (!group) return;
+
+    this.applyPersistedUiState(group.snapshot);
+    this.selectGroupChipById(group.id);
+    this.renderAll();
+    this.restorePersistedCursorState();
+  }
+
+  private submitGroupName(): void {
+    if (!this.groupNameModal.isVisible) return;
+
+    const groupId = this.pendingGroupNameGroupId;
+    this.pendingGroupNameGroupId = null;
+    const requestedName = this.groupNameModal.getName();
+    this.groupNameModal.close();
+
+    if (!groupId) return;
+
+    if (requestedName.length > 0) {
+      const groupIndex = this.groups.findIndex((group) => group.id === groupId);
+      const group = groupIndex >= 0 ? this.groups[groupIndex] : null;
+      if (group) {
+        const uniqueName = this.ensureUniqueGroupName(requestedName, groupId);
+        if (group.name !== uniqueName) {
+          this.groups[groupIndex] = {
+            ...group,
+            name: uniqueName,
+            updatedAt: new Date().toISOString(),
+          };
+          this.notifyGroupsChanged();
+        }
+      }
+    }
+
+    this.selectGroupChipById(groupId);
+    this.renderChips();
+  }
+
+  private cancelGroupName(): void {
+    if (!this.groupNameModal.isVisible) return;
+    this.pendingGroupNameGroupId = null;
+    this.groupNameModal.close();
+    this.renderChips();
+  }
+
+  private handleGroupNameInputKey(
+    key: KeyEvent,
+    consume: (event: KeyEvent) => void,
+  ): void {
+    this.groupNameModal.handleInputKey(key, consume);
+  }
+
+  private generateDefaultGroupName(): string {
+    const existing = new Set(this.groups.map((group) => group.name.toLowerCase()));
+    let index = 1;
+    while (existing.has(`group-${index}`)) {
+      index += 1;
+    }
+    return `group-${index}`;
+  }
+
+  private ensureUniqueGroupName(candidateName: string, excludedGroupId?: string): string {
+    const trimmed = candidateName.replace(/\s+/g, " ").trim();
+    const baseName = trimmed.length > 0 ? trimmed : "group";
+    const usedNames = new Set(
+      this.groups
+        .filter((group) => group.id !== excludedGroupId)
+        .map((group) => group.name.toLowerCase()),
+    );
+
+    if (!usedNames.has(baseName.toLowerCase())) {
+      return baseName;
+    }
+
+    let suffix = 2;
+    while (usedNames.has(`${baseName}-${suffix}`.toLowerCase())) {
+      suffix += 1;
+    }
+    return `${baseName}-${suffix}`;
+  }
+
+  private notifyGroupsChanged(): void {
+    if (!this.onPersistedGroupsChanged) return;
+    this.onPersistedGroupsChanged(this.cloneGroups(this.groups));
   }
 
   private toggleFilesExplorerMode(): void {
@@ -804,6 +1044,7 @@ export class CodeBrowserApp {
   /** Applies active theme colors to always-mounted UI containers and overlays. */
   private applyTheme(): void {
     this.appRenderer.applyTheme();
+    this.groupNameModal.applyTheme();
     this.shortcutsModal.applyTheme();
   }
 
@@ -921,6 +1162,9 @@ export class CodeBrowserApp {
 
   private renderAll(options: { cursorTargetFilePath?: string; preferFirstAnchor?: boolean } = {}): void {
     this.appRenderer.renderAll(options);
+    if (this.groupNameModal.isVisible) {
+      this.groupNameModal.refreshLayout();
+    }
     if (this.shortcutsModal.isVisible) {
       this.shortcutsModal.refreshLayout();
     }
@@ -974,7 +1218,7 @@ export class CodeBrowserApp {
       this.entries,
       this.enabledTypes,
       this.state.selectedChipIndex,
-      ACTION_CHIPS.length,
+      this.groups.length,
       this.virtualCodeBlocks.getSupplementalTypes(),
     );
     this.typeCounts = nextState.typeCounts;
@@ -1039,6 +1283,13 @@ export class CodeBrowserApp {
       });
   }
 
+}
+
+function toIsoTimestamp(value: unknown, fallback: string): string {
+  if (typeof value !== "string") return fallback;
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return new Date(parsed).toISOString();
 }
 
 function toNonNegativeInteger(value: number): number {

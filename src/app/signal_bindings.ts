@@ -49,6 +49,7 @@ type ProcessSignalSource = {
 };
 
 export type KeyboardStateSnapshot = {
+  groupNamePromptVisible: boolean;
   promptVisible: boolean;
   focusMode: FocusMode;
   promptField: PromptComposerField | null;
@@ -144,6 +145,20 @@ export function registerKeyboardSignalBindings(
     }
 
     emit(SIGNALS.promptInputKey, key);
+  };
+
+  const routeGroupNamePrompt = (keyName: string, key: KeyEvent): void => {
+    if (keyName === "escape") {
+      emitHandled(key, SIGNALS.groupsNameCancel);
+      return;
+    }
+
+    if (keyName === "return" || keyName === "enter") {
+      emitHandled(key, SIGNALS.groupsNameSubmit);
+      return;
+    }
+
+    emit(SIGNALS.groupsNameInputKey, key);
   };
 
   const routeCode = (keyName: string, rawKeyName: string | undefined, key: KeyEvent): void => {
@@ -262,6 +277,11 @@ export function registerKeyboardSignalBindings(
     const rawKeyName = key.name;
     const state = getState();
 
+    if (state.groupNamePromptVisible) {
+      routeGroupNamePrompt(keyName, key);
+      return;
+    }
+
     if (state.promptVisible) {
       routePrompt(keyName, key);
       return;
@@ -317,7 +337,17 @@ export function registerKeyboardSignalBindings(
       return;
     }
 
+    if (keyName === "s") {
+      emitHandled(key, SIGNALS.groupsSaveOrUpdate);
+      return;
+    }
+
     if (state.focusMode === "chips") {
+      if (keyName === "x") {
+        emitHandled(key, SIGNALS.groupsDeleteSelected);
+        return;
+      }
+
       const action = CHIPS_KEYMAP[keyName as keyof typeof CHIPS_KEYMAP];
       if (action === "move_left") {
         emitHandled(key, SIGNALS.chipsMove, -1);
@@ -415,6 +445,10 @@ type RegisterAppSignalHandlersOptions = {
   toggleCurrentStructureCollapse: () => void;
   ignoreCurrentFile: () => void;
   resetVisibilityState: () => void;
+  saveOrUpdateSelectedGroup: () => void;
+  deleteSelectedGroup: () => void;
+  submitGroupName: () => void;
+  cancelGroupName: () => void;
   jumpToTop: () => void;
   jumpToBottom: () => void;
   jumpToNextFile: () => void;
@@ -428,6 +462,7 @@ type RegisterAppSignalHandlersOptions = {
   cyclePromptModel: (delta: -1 | 1) => void;
   cyclePromptThinkingLevel: (delta: -1 | 1) => void;
   refreshPromptModels: () => void;
+  handleGroupNameInputKey: (key: KeyEvent, consume: (event: KeyEvent) => void) => void;
   handlePromptInputKey: (key: KeyEvent, consume: (event: KeyEvent) => void) => void;
   handleExternalScroll: (position: number) => void;
   renderAll: () => void;
@@ -545,6 +580,22 @@ export function registerAppSignalHandlers(options: RegisterAppSignalHandlersOpti
     options.resetVisibilityState();
   });
 
+  options.onSignal(SIGNALS.groupsSaveOrUpdate, () => {
+    options.saveOrUpdateSelectedGroup();
+  });
+
+  options.onSignal(SIGNALS.groupsDeleteSelected, () => {
+    options.deleteSelectedGroup();
+  });
+
+  options.onSignal(SIGNALS.groupsNameSubmit, () => {
+    options.submitGroupName();
+  });
+
+  options.onSignal(SIGNALS.groupsNameCancel, () => {
+    options.cancelGroupName();
+  });
+
   options.onSignal(SIGNALS.navJumpTop, () => {
     options.jumpToTop();
   });
@@ -607,6 +658,12 @@ export function registerAppSignalHandlers(options: RegisterAppSignalHandlersOpti
     const key = args[0] as KeyEvent | undefined;
     if (!key) return;
     options.handlePromptInputKey(key, consumeKeyEvent);
+  });
+
+  options.onSignal(SIGNALS.groupsNameInputKey, (...args) => {
+    const key = args[0] as KeyEvent | undefined;
+    if (!key) return;
+    options.handleGroupNameInputKey(key, consumeKeyEvent);
   });
 
   options.onSignal(SIGNALS.scrollVertical, (...args) => {

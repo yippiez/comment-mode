@@ -1,6 +1,7 @@
 import { createCliRenderer } from "@opentui/core";
 import { CodeBrowserApp } from "./app";
 import { loadCodeFileEntries } from "./files";
+import { loadPersistedGroups, savePersistedGroups, type PersistedUiGroup } from "./groups";
 import { registerTreeSitterParsers } from "./integrations/treesitter";
 import { watchWorkspace } from "./live-reload";
 import { loadPersistedUiState, PersistedUiStateWriter } from "./persistence";
@@ -12,11 +13,31 @@ registerTreeSitterParsers();
 const renderer = await createCliRenderer({ exitOnCtrlC: true });
 const rootDir = resolveWorkspaceRoot();
 const persistedUiState = await loadPersistedUiState(rootDir);
+const persistedGroups = await loadPersistedGroups(rootDir);
 const entries = await loadCodeFileEntries(rootDir);
+
+let groupsWriteQueue = Promise.resolve();
+
+const schedulePersistedGroupsWrite = (groups: PersistedUiGroup[]): void => {
+  groupsWriteQueue = groupsWriteQueue
+    .catch(() => undefined)
+    .then(async () => {
+      try {
+        await savePersistedGroups(rootDir, groups);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`[groups] failed to write groups: ${message}`);
+      }
+    });
+};
 
 const app = new CodeBrowserApp(renderer, entries, {
   workspaceRootDir: rootDir,
   initialPersistedUiState: persistedUiState,
+  initialPersistedGroups: persistedGroups,
+  onPersistedGroupsChanged: (groups) => {
+    schedulePersistedGroupsWrite(groups);
+  },
 });
 app.start();
 

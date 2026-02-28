@@ -28,6 +28,7 @@ bun install
 | `?` | Toggle this shortcuts modal |
 | `q` | Quit application |
 | `t` | Cycle theme |
+| `s` | Save current state as group or update selected group |
 | `Tab` | Switch focus between code and chips |
 
 ### Code Navigation
@@ -61,7 +62,15 @@ bun install
 | Key | Action |
 |-----|--------|
 | `Left` / `Right` | Move selected chip |
-| `Space` / `Enter` | Toggle selected chip |
+| `Space` | Toggle selected type chip |
+| `Enter` | Toggle selected type chip or apply selected group chip |
+| `x` | Delete selected group chip |
+
+### Group Naming
+| Key | Action |
+|-----|--------|
+| `Enter` | Confirm group name |
+| `Esc` | Keep generated name |
 
 ### Prompt
 | Key | Action |

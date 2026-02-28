@@ -26,6 +26,7 @@ const SHORTCUT_SECTIONS: readonly ShortcutSection[] = [
       { keys: "?", description: "Toggle this shortcuts modal" },
       { keys: "q", description: "Quit application" },
       { keys: "t", description: "Cycle theme" },
+      { keys: "s", description: "Save current state as group or update selected group" },
       { keys: "Tab", description: "Switch focus between code and chips" },
     ],
   },
@@ -62,7 +63,16 @@ const SHORTCUT_SECTIONS: readonly ShortcutSection[] = [
     title: "Type Chips Focus",
     shortcuts: [
       { keys: "Left / Right", description: "Move selected chip" },
-      { keys: "Space / Enter", description: "Toggle selected chip" },
+      { keys: "Space", description: "Toggle selected type chip" },
+      { keys: "Enter", description: "Toggle selected type chip or apply selected group" },
+      { keys: "x", description: "Delete selected group chip" },
+    ],
+  },
+  {
+    title: "Group Naming",
+    shortcuts: [
+      { keys: "Enter", description: "Confirm group name" },
+      { keys: "Esc", description: "Keep generated name" },
     ],
   },
   {

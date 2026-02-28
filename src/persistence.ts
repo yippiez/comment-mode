@@ -159,7 +159,7 @@ function serializePersistedUiState(state: PersistedUiState): string {
   return `${JSON.stringify(normalizePersistedUiState(state), null, 2)}\n`;
 }
 
-function normalizePersistedUiState(state: PersistedUiState): PersistedUiState {
+export function normalizePersistedUiState(state: PersistedUiState): PersistedUiState {
   const enabledTypeEntries = Object.entries(state.chips.enabledTypeLabels).sort(([a], [b]) =>
     a.localeCompare(b),
   );
@@ -194,7 +194,7 @@ function normalizePersistedUiState(state: PersistedUiState): PersistedUiState {
   };
 }
 
-function parsePersistedUiState(value: unknown): PersistedUiState | null {
+export function parsePersistedUiState(value: unknown): PersistedUiState | null {
   if (!isRecord(value)) return null;
   if (value.version !== PERSISTED_UI_STATE_VERSION) return null;
 

@@ -26,6 +26,7 @@ type RenderTypeChipsOptions = {
   renderer: CliRenderer;
   chipsRow: BoxRenderable;
   sortedTypes: readonly string[];
+  groupChips: readonly GroupChipDescriptor[];
   selectedChipIndex: number;
   chipWindowStartIndex: number;
   chipsFocused: boolean;
@@ -33,6 +34,11 @@ type RenderTypeChipsOptions = {
   isTypeEnabled: (type: string) => boolean;
   onChipSelected: (index: number) => void;
   onToggleSelectedChip: () => void;
+};
+
+type GroupChipDescriptor = {
+  id: string;
+  name: string;
 };
 
 type RestoreLineReference = {
@@ -79,6 +85,7 @@ type AppRendererOptions = {
   documentBlocks: DocumentBlocks;
   getEntries: () => CodeFileEntry[];
   getSortedTypes: () => readonly string[];
+  getGroupChips: () => readonly GroupChipDescriptor[];
   getTypeCounts: (type: string) => { shown: number; hidden: number };
   isTypeEnabled: (type: string) => boolean;
   getFocusMode: () => FocusMode;
@@ -120,6 +127,7 @@ export class AppRenderer {
   private readonly documentBlocks: DocumentBlocks;
   private readonly getEntries: () => CodeFileEntry[];
   private readonly getSortedTypes: () => readonly string[];
+  private readonly getGroupChips: () => readonly GroupChipDescriptor[];
   private readonly getTypeCounts: (type: string) => { shown: number; hidden: number };
   private readonly isTypeEnabled: (type: string) => boolean;
   private readonly getFocusMode: () => FocusMode;
@@ -148,6 +156,7 @@ export class AppRenderer {
     this.documentBlocks = options.documentBlocks;
     this.getEntries = options.getEntries;
     this.getSortedTypes = options.getSortedTypes;
+    this.getGroupChips = options.getGroupChips;
     this.getTypeCounts = options.getTypeCounts;
     this.isTypeEnabled = options.isTypeEnabled;
     this.getFocusMode = options.getFocusMode;
@@ -183,6 +192,7 @@ export class AppRenderer {
       renderer: this.renderer,
       chipsRow: this.chipsRow,
       sortedTypes: this.getSortedTypes(),
+      groupChips: this.getGroupChips(),
       selectedChipIndex: this.state.selectedChipIndex,
       chipWindowStartIndex: this.state.chipWindowStartIndex,
       chipsFocused: this.getFocusMode() === "chips",
@@ -767,16 +777,21 @@ function normalizeLineTextForRestore(value: string | null): string | null {
 export function renderTypeChips(options: RenderTypeChipsOptions): number {
   clearChildren(options.chipsRow);
 
-  if (options.sortedTypes.length === 0) {
+  const typeChipCount = options.sortedTypes.length;
+  const totalChipCount = typeChipCount + options.groupChips.length;
+
+  if (totalChipCount === 0) {
     return 0;
   }
 
-  const chipLabels = options.sortedTypes.map((type) => {
+  const typeChipLabels = options.sortedTypes.map((type) => {
     const counts = options.getTypeCounts(type);
     return counts.hidden > 0
       ? `${type} (${counts.shown}/${counts.hidden})`
       : `${type} (${counts.shown})`;
   });
+  const groupChipLabels = options.groupChips.map((group) => `@${group.name}`);
+  const chipLabels = [...typeChipLabels, ...groupChipLabels];
   const chipWidths = chipLabels.map((label) => Math.max(1, displayWidth(label) + 2));
   const selectedChipIndex = clampIndex(options.selectedChipIndex, 0, chipWidths.length - 1);
   const viewportWidth = resolveChipsViewportWidth(options);
@@ -798,9 +813,11 @@ export function renderTypeChips(options: RenderTypeChipsOptions): number {
   options.chipsRow.add(chipsViewport);
 
   for (let index = startIndex; index < endIndex; index += 1) {
-    const type = options.sortedTypes[index];
-    if (!type) continue;
-    const enabled = options.isTypeEnabled(type);
+    const isTypeChip = index < typeChipCount;
+    const type = isTypeChip ? options.sortedTypes[index] : null;
+    if (isTypeChip && !type) continue;
+
+    const enabled = isTypeChip && type ? options.isTypeEnabled(type) : true;
     const selected = index === selectedChipIndex;
 
     const chip = new BoxRenderable(options.renderer, {
@@ -821,9 +838,9 @@ export function renderTypeChips(options: RenderTypeChipsOptions): number {
         fg: theme.getChipTextColor(selected, enabled),
         attributes: selected
           ? TextAttributes.BOLD | TextAttributes.UNDERLINE
-          : enabled
-            ? TextAttributes.BOLD
-            : TextAttributes.DIM,
+          : isTypeChip && !enabled
+            ? TextAttributes.DIM
+            : TextAttributes.BOLD,
       }),
     );
 
