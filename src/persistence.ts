@@ -3,12 +3,18 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 export const PERSISTED_UI_STATE_VERSION = 1;
+const DEFAULT_PERSISTED_THINKING_LEVEL = "auto";
 
 export type PersistedCursorState = {
   globalLine: number;
   filePath: string | null;
   fileLine: number | null;
   lineText: string | null;
+};
+
+export type PersistedPromptState = {
+  model: string;
+  thinkingLevel: string;
 };
 
 export type PersistedUiState = {
@@ -25,6 +31,7 @@ export type PersistedUiState = {
     directoryPath: string;
   };
   cursor: PersistedCursorState;
+  prompt: PersistedPromptState;
 };
 
 const PERSISTENCE_DIRNAME = ".comment";
@@ -191,6 +198,13 @@ export function normalizePersistedUiState(state: PersistedUiState): PersistedUiS
         : null,
       lineText: typeof state.cursor.lineText === "string" ? state.cursor.lineText : null,
     },
+    prompt: {
+      model: toTrimmedString(state.prompt.model),
+      thinkingLevel: toTrimmedString(
+        state.prompt.thinkingLevel,
+        DEFAULT_PERSISTED_THINKING_LEVEL,
+      ),
+    },
   };
 }
 
@@ -201,6 +215,7 @@ export function parsePersistedUiState(value: unknown): PersistedUiState | null {
   const chipsValue = isRecord(value.chips) ? value.chips : {};
   const filesValue = isRecord(value.files) ? value.files : {};
   const cursorValue = isRecord(value.cursor) ? value.cursor : {};
+  const promptValue = isRecord(value.prompt) ? value.prompt : {};
 
   const enabledTypeLabels: Record<string, boolean> = {};
   const enabledSource = isRecord(chipsValue.enabledTypeLabels) ? chipsValue.enabledTypeLabels : {};
@@ -232,6 +247,13 @@ export function parsePersistedUiState(value: unknown): PersistedUiState | null {
         : null,
       lineText: typeof cursorValue.lineText === "string" ? cursorValue.lineText : null,
     },
+    prompt: {
+      model: toTrimmedString(promptValue.model),
+      thinkingLevel: toTrimmedString(
+        promptValue.thinkingLevel,
+        DEFAULT_PERSISTED_THINKING_LEVEL,
+      ),
+    },
   });
 }
 
@@ -251,6 +273,12 @@ function toNonNegativeInteger(value: unknown): number {
     return 0;
   }
   return Math.max(0, Math.floor(value));
+}
+
+function toTrimmedString(value: unknown, fallback = ""): string {
+  if (typeof value !== "string") return fallback;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : fallback;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

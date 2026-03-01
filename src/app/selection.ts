@@ -63,7 +63,7 @@ export function createPromptTargetFromSelection(
       anchorLine: last.globalLine,
       selectedText,
       prompt: "",
-      model: "opencode/big-pickle",
+      model: "",
     };
   }
 
@@ -96,7 +96,7 @@ export function createPromptTargetFromSelection(
     anchorLine: last.globalLine,
     selectedText,
     prompt: "",
-    model: "opencode/big-pickle",
+    model: "",
   };
 }
 

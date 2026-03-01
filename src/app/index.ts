@@ -297,6 +297,7 @@ export class CodeBrowserApp {
         directoryPath: this.fileExplorer.getDirectoryPath(),
       },
       cursor: persistedCursor,
+      prompt: this.prompt.getPersistedModelConfig(),
     };
   }
 
@@ -592,6 +593,7 @@ export class CodeBrowserApp {
   }
 
   private applyPersistedUiState(persistedState: PersistedUiState): void {
+    this.prompt.applyPersistedModelConfig(persistedState.prompt);
     this.state.selectedChipIndex = toNonNegativeInteger(persistedState.chips.selectedChipIndex);
     this.state.chipWindowStartIndex = toNonNegativeInteger(persistedState.chips.chipWindowStartIndex);
     this.enabledTypes = new Map(Object.entries(persistedState.chips.enabledTypeLabels));

@@ -35,6 +35,11 @@ export type PromptSubmission = {
   thinkingLevel?: string;
 };
 
+export type PromptModelConfig = {
+  model: string;
+  thinkingLevel: string;
+};
+
 type PromptOptions = {
   rootDir?: string;
   promptComposer: PromptComposerBar;
@@ -61,6 +66,10 @@ export class Prompt {
   private availableModels: string[] = ["opencode/big-pickle"];
   private modelVariantsById = new Map<string, string[]>();
   private modelListLoading = false;
+  private lastModelConfig: PromptModelConfig = {
+    model: "",
+    thinkingLevel: Prompt.DEFAULT_THINKING_LEVEL,
+  };
 
   /** Initializes prompt controller dependencies and callbacks. */
   constructor(options: PromptOptions) {
@@ -83,6 +92,20 @@ export class Prompt {
     return this.field;
   }
 
+  public getPersistedModelConfig(): PromptModelConfig {
+    return {
+      model: this.lastModelConfig.model,
+      thinkingLevel: this.lastModelConfig.thinkingLevel,
+    };
+  }
+
+  public applyPersistedModelConfig(config: PromptModelConfig): void {
+    this.lastModelConfig = {
+      model: this.normalizeModel(config.model),
+      thinkingLevel: this.normalizeThinkingLevel(config.thinkingLevel),
+    };
+  }
+
   /** Boots model metadata loading in the background. */
   public start(): void {
     void this.refreshAvailableModels();
@@ -90,10 +113,12 @@ export class Prompt {
 
   /** Opens the inline prompt composer for a code selection target. */
   public open(target: PromptTarget): void {
+    const nextModel = this.resolveModelForOpen(target);
+    const nextThinkingLevel = this.resolveThinkingLevelForOpen(target);
     this.target = {
       ...target,
-      model: target.model || this.getDefaultModel(),
-      thinkingLevel: target.thinkingLevel ?? Prompt.DEFAULT_THINKING_LEVEL,
+      model: nextModel,
+      thinkingLevel: nextThinkingLevel,
     };
     this.anchorLine = target.anchorLine;
     this.field = "prompt";
@@ -171,6 +196,7 @@ export class Prompt {
     if (!promptText) return;
 
     this.target.prompt = promptText;
+    this.rememberCurrentModelConfig();
     const submission: PromptSubmission = {
       updateId: this.target.updateId,
       viewMode: this.target.viewMode,
@@ -209,6 +235,7 @@ export class Prompt {
     const nextIndex = wrapIndex(baseIndex + delta, modelPool.length);
     this.target.model = modelPool[nextIndex] ?? this.target.model;
     this.syncThinkingLevelFromModel();
+    this.rememberCurrentModelConfig();
     this.render();
   }
 
@@ -221,11 +248,14 @@ export class Prompt {
     const baseIndex = currentIndex >= 0 ? currentIndex : 0;
     const nextIndex = wrapIndex(baseIndex + delta, levels.length);
     this.target.thinkingLevel = levels[nextIndex] ?? Prompt.DEFAULT_THINKING_LEVEL;
+    this.rememberCurrentModelConfig();
     this.render();
   }
 
   private getModelOptions(): string[] {
-    return this.availableModels;
+    if (!this.target) return this.availableModels;
+    if (this.availableModels.includes(this.target.model)) return this.availableModels;
+    return [this.target.model, ...this.availableModels];
   }
 
   /** Picks default model with preference for opencode/big-pickle. */
@@ -248,6 +278,7 @@ export class Prompt {
         this.modelVariantsById = new Map(
           catalog.map((item) => [item.model, item.variants.slice().sort((a, b) => a.localeCompare(b))]),
         );
+        this.syncPersistedModelConfig();
       }
       if (this.target && !this.availableModels.includes(this.target.model)) {
         this.target.model = this.getDefaultModel();
@@ -280,6 +311,52 @@ export class Prompt {
     this.target.thinkingLevel = levels.includes(current)
       ? current
       : levels[0] ?? Prompt.DEFAULT_THINKING_LEVEL;
+  }
+
+  private resolveModelForOpen(target: PromptTarget): string {
+    const targetModel = this.normalizeModel(target.model);
+    if (targetModel.length > 0) return targetModel;
+    const preferredModel = this.lastModelConfig.model;
+    if (preferredModel.length > 0) return preferredModel;
+    return this.getDefaultModel();
+  }
+
+  private resolveThinkingLevelForOpen(target: PromptTarget): string {
+    if (target.thinkingLevel) {
+      return this.normalizeThinkingLevel(target.thinkingLevel);
+    }
+    if (target.updateId) {
+      return Prompt.DEFAULT_THINKING_LEVEL;
+    }
+    return this.lastModelConfig.thinkingLevel;
+  }
+
+  private rememberCurrentModelConfig(): void {
+    if (!this.target) return;
+    this.lastModelConfig = {
+      model: this.normalizeModel(this.target.model),
+      thinkingLevel: this.normalizeThinkingLevel(this.target.thinkingLevel),
+    };
+  }
+
+  private syncPersistedModelConfig(): void {
+    if (this.lastModelConfig.model.length === 0) return;
+    if (!this.availableModels.includes(this.lastModelConfig.model)) {
+      this.lastModelConfig.model = this.getDefaultModel();
+    }
+    const levels = this.getThinkingLevelsForModel(this.lastModelConfig.model);
+    if (!levels.includes(this.lastModelConfig.thinkingLevel)) {
+      this.lastModelConfig.thinkingLevel = levels[0] ?? Prompt.DEFAULT_THINKING_LEVEL;
+    }
+  }
+
+  private normalizeModel(value: string): string {
+    return value.trim();
+  }
+
+  private normalizeThinkingLevel(value: string | undefined): string {
+    const normalized = value?.trim() ?? "";
+    return normalized.length > 0 ? normalized : Prompt.DEFAULT_THINKING_LEVEL;
   }
 
   private isComposerDestroyed(): boolean {
