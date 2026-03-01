@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, watch, type FSWatcher } from "node:fs";
+import { existsSync, lstatSync, watch, type FSWatcher } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { isCodeExtension, resolveFileType, resolveTypeLabel, resolveTypePriority } from "./file-types";
@@ -29,11 +29,9 @@ export async function getIgnoredDirs(root: string): Promise<Set<string>> {
   try {
     const content = await readFile(gitignorePath, "utf8");
     for (const line of content.split("\n")) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      const first = trimmed.split("/")[0]?.trim();
-      if (!first || first.includes("*")) continue;
-      ignored.add(first);
+      const ignoredDir = parseIgnoredTopLevelDir(line);
+      if (!ignoredDir) continue;
+      ignored.add(ignoredDir);
     }
   } catch {
     // Ignore missing .gitignore.
@@ -139,6 +137,7 @@ export async function watchWorkspace(
   let isClosed = false;
   let changeTimer: ReturnType<typeof setTimeout> | undefined;
   let rebuildTimer: ReturnType<typeof setTimeout> | undefined;
+  let refreshAfterRebuild = false;
 
   const emitChange = () => {
     if (isClosed) return;
@@ -154,8 +153,11 @@ export async function watchWorkspace(
     }, changeDebounceMs);
   };
 
-  const scheduleRebuild = () => {
+  const scheduleRebuild = (withRefresh = false) => {
     if (isClosed) return;
+    if (withRefresh) {
+      refreshAfterRebuild = true;
+    }
     if (rebuildTimer) clearTimeout(rebuildTimer);
     rebuildTimer = setTimeout(() => {
       rebuildTimer = undefined;
@@ -163,30 +165,56 @@ export async function watchWorkspace(
     }, rebuildDebounceMs);
   };
 
+  const watchNewDirectoryFromRename = (dir: string, fileName: string | Buffer | null | undefined) => {
+    if (!fileName) return;
+
+    const fileNameText = typeof fileName === "string" ? fileName : fileName.toString("utf8");
+    if (fileNameText.length === 0) return;
+
+    const candidatePath = path.resolve(dir, fileNameText);
+    if (!isPathWithinRoot(root, candidatePath)) return;
+
+    const relativeCandidatePath = path.relative(root, candidatePath).split(path.sep).join("/");
+    if (relativeCandidatePath.length > 0 && isPathInsideIgnoredDir(relativeCandidatePath, ignoredDirs)) {
+      return;
+    }
+
+    try {
+      const stats = lstatSync(candidatePath);
+      if (!stats.isDirectory() || stats.isSymbolicLink()) return;
+      createWatcher(candidatePath);
+    } catch {
+      // Ignore transient rename races.
+    }
+  };
+
   const createWatcher = (dir: string) => {
     if (watchers.has(dir) || isClosed) return;
 
     try {
-      const watcher = watch(dir, (eventType) => {
+      const watcher = watch(dir, (eventType, fileName) => {
         scheduleChange();
-        if (eventType === "rename") {
-          scheduleRebuild();
-        }
+        if (eventType !== "rename") return;
+        watchNewDirectoryFromRename(dir, fileName);
+        scheduleRebuild(true);
       });
 
       watcher.on("error", () => {
-        scheduleRebuild();
+        scheduleRebuild(true);
         scheduleChange();
       });
 
       watchers.set(dir, watcher);
     } catch {
-      scheduleRebuild();
+      scheduleRebuild(true);
     }
   };
 
   const rebuildWatchers = async () => {
     if (isClosed) return;
+
+    const shouldRefreshAfterRebuild = refreshAfterRebuild;
+    refreshAfterRebuild = false;
 
     const watchedDirs = await listWatchableDirs(root, ignoredDirs);
     if (isClosed) return;
@@ -201,6 +229,10 @@ export async function watchWorkspace(
 
     for (const dir of watchedDirs) {
       createWatcher(dir);
+    }
+
+    if (shouldRefreshAfterRebuild) {
+      scheduleChange();
     }
   };
 
@@ -222,6 +254,26 @@ export async function watchWorkspace(
 function countLogicalLines(content: string): number {
   if (content.length === 0) return 1;
   return content.split("\n").length;
+}
+
+function parseIgnoredTopLevelDir(rawLine: string): string | null {
+  const trimmed = rawLine.trim();
+  if (trimmed.length === 0) return null;
+  if (trimmed.startsWith("#") || trimmed.startsWith("!")) return null;
+
+  let normalized = trimmed;
+  if (normalized.startsWith("/")) {
+    normalized = normalized.slice(1);
+  }
+  if (normalized.endsWith("/")) {
+    normalized = normalized.slice(0, -1);
+  }
+
+  if (normalized.length === 0) return null;
+  if (normalized.includes("/")) return null;
+  if (/[*?\[\\]/.test(normalized)) return null;
+  if (normalized === "." || normalized === "..") return null;
+  return normalized;
 }
 
 function listGitWorkspaceFiles(root: string): string[] | null {
@@ -435,7 +487,7 @@ function buildWatchableDirsFromFiles(root: string, relativePaths: readonly strin
 
   for (const relativePath of relativePaths) {
     let currentDir = path.dirname(path.join(root, relativePath));
-    while (currentDir.startsWith(root)) {
+    while (isPathWithinRoot(root, currentDir)) {
       dirs.add(currentDir);
       if (currentDir === root) break;
       const parentDir = path.dirname(currentDir);
@@ -448,7 +500,14 @@ function buildWatchableDirsFromFiles(root: string, relativePaths: readonly strin
 }
 
 function isPathInsideIgnoredDir(relativePath: string, ignoredDirs: ReadonlySet<string>): boolean {
-  const firstSegment = relativePath.split("/")[0]?.trim();
+  const normalized = relativePath.split(path.sep).join("/");
+  const firstSegment = normalized.split("/")[0]?.trim();
   if (!firstSegment) return false;
   return ignoredDirs.has(firstSegment);
+}
+
+function isPathWithinRoot(root: string, absolutePath: string): boolean {
+  const relative = path.relative(root, absolutePath);
+  if (relative.length === 0) return true;
+  return !relative.startsWith("..") && !path.isAbsolute(relative);
 }

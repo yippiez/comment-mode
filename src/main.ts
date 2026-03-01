@@ -50,6 +50,24 @@ const persistenceInterval = setInterval(() => {
 
 let refreshRunning = false;
 let refreshPending = false;
+let refreshRetryTimer: ReturnType<typeof setTimeout> | undefined;
+let refreshRetryArmed = true;
+
+const clearRefreshRetryTimer = () => {
+  if (!refreshRetryTimer) return;
+  clearTimeout(refreshRetryTimer);
+  refreshRetryTimer = undefined;
+};
+
+const scheduleRefreshRetry = () => {
+  if (!refreshRetryArmed || refreshRetryTimer) return;
+
+  refreshRetryArmed = false;
+  refreshRetryTimer = setTimeout(() => {
+    refreshRetryTimer = undefined;
+    void refreshEntries();
+  }, 180);
+};
 
 const refreshEntries = async () => {
   if (refreshRunning) {
@@ -63,8 +81,10 @@ const refreshEntries = async () => {
     try {
       const nextEntries = await loadCodeFileEntries(rootDir);
       app.refreshEntries(nextEntries);
+      refreshRetryArmed = true;
+      clearRefreshRetryTimer();
     } catch {
-      // File updates may race with writes; next watch event will re-trigger refresh.
+      scheduleRefreshRetry();
     }
   } while (refreshPending);
   refreshRunning = false;
@@ -82,6 +102,7 @@ const watcher = await watchWorkspace(rootDir);
 
 renderer.on("destroy", () => {
   clearInterval(persistenceInterval);
+  clearRefreshRetryTimer();
   persistedStateWriter.flushNowSync(app.getPersistenceSnapshot());
   persistedStateWriter.dispose();
   app.shutdown();
