@@ -7,6 +7,7 @@ import {
   type KeyEvent,
 } from "@opentui/core";
 import { theme } from "../theme";
+import { readFromClipboard } from "../utils/clipboard";
 
 type RuntimeTextareaStyleApi = {
   backgroundColor?: string;
@@ -139,11 +140,24 @@ export class GroupNameModal {
   }
 
   public handleInputKey(key: KeyEvent, consume: (event: KeyEvent) => void): void {
-    if (!this.overlay.visible) return;
+    if (!this.overlay.visible || this.isInputDestroyed()) return;
+
+    if (this.isClipboardPasteKey(key)) {
+      consume(key);
+      void this.pasteClipboardIntoInput();
+      return;
+    }
+
     const handled = this.input.handleKeyPress(key);
     if (!handled) return;
     consume(key);
     this.overlay.requestRender();
+  }
+
+  public handlePasteText(text: string): void {
+    if (!this.overlay.visible || this.isInputDestroyed()) return;
+    if (!text) return;
+    this.insertTextIntoInput(text);
   }
 
   public refreshLayout(): void {
@@ -171,5 +185,36 @@ export class GroupNameModal {
     runtimeTextarea.focusedTextColor = theme.getPromptFocusedTextColor();
     runtimeTextarea.selectionBg = theme.getPromptSelectionBackgroundColor();
     runtimeTextarea.selectionFg = theme.getPromptSelectionForegroundColor();
+  }
+
+  private isInputDestroyed(): boolean {
+    return this.overlay.isDestroyed || this.input.isDestroyed;
+  }
+
+  private isClipboardPasteKey(key: KeyEvent): boolean {
+    if (key.repeated) return false;
+    return key.ctrl && (key.name ?? "").toLowerCase() === "v";
+  }
+
+  private async pasteClipboardIntoInput(): Promise<void> {
+    const clipboardText = await readFromClipboard();
+    if (clipboardText === null || clipboardText.length === 0) return;
+    if (!this.overlay.visible || this.isInputDestroyed()) return;
+    this.insertTextIntoInput(clipboardText);
+  }
+
+  private insertTextIntoInput(text: string): void {
+    try {
+      this.input.insertText(text);
+    } catch (error) {
+      if (this.isDestroyedError(error)) return;
+      throw error;
+    }
+
+    this.overlay.requestRender();
+  }
+
+  private isDestroyedError(error: unknown): boolean {
+    return error instanceof Error && error.message.toLowerCase().includes("destroyed");
   }
 }

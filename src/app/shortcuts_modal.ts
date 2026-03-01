@@ -73,6 +73,7 @@ const SHORTCUT_SECTIONS: readonly ShortcutSection[] = [
     shortcuts: [
       { keys: "Enter", description: "Confirm group name" },
       { keys: "Esc", description: "Keep generated name" },
+      { keys: "Ctrl+V / Ctrl+Shift+V", description: "Paste clipboard into group name" },
     ],
   },
   {
@@ -81,6 +82,7 @@ const SHORTCUT_SECTIONS: readonly ShortcutSection[] = [
       { keys: "Esc", description: "Close prompt" },
       { keys: "Tab", description: "Cycle prompt field" },
       { keys: "Enter", description: "Submit prompt or move between fields" },
+      { keys: "Ctrl+V / Ctrl+Shift+V", description: "Paste clipboard into prompt input" },
       { keys: "Model: Left/Up", description: "Previous model" },
       { keys: "Model: Right/Down", description: "Next model" },
       { keys: "Model: r", description: "Refresh model list" },

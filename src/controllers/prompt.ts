@@ -2,6 +2,7 @@ import { KeyEvent } from "@opentui/core";
 import { OpenCode } from "../integrations/opencode";
 import { emit, SIGNALS } from "../signals";
 import type { ViewMode } from "../types";
+import { readFromClipboard } from "../utils/clipboard";
 import { wrapIndex } from "../utils/math";
 import {
   PromptComposerBar,
@@ -138,10 +139,23 @@ export class Prompt {
 
   public handlePromptInputKey(key: KeyEvent, consumeKey: (event: KeyEvent) => void): void {
     if (this.isComposerDestroyed()) return;
+
+    if (this.isClipboardPasteKey(key)) {
+      consumeKey(key);
+      void this.pasteClipboardIntoPrompt();
+      return;
+    }
+
     const handled = this.promptComposer.promptInput.handleKeyPress(key);
     if (!handled) return;
     consumeKey(key);
     this.render();
+  }
+
+  public handlePromptPasteText(text: string): void {
+    if (!this.visible || this.isComposerDestroyed()) return;
+    if (text.length === 0) return;
+    this.insertTextIntoPrompt(text);
   }
 
   /** Re-renders prompt UI using latest layout constraints. */
@@ -270,6 +284,30 @@ export class Prompt {
 
   private isComposerDestroyed(): boolean {
     return this.promptComposer.renderable.isDestroyed || this.promptComposer.promptInput.isDestroyed;
+  }
+
+  private isClipboardPasteKey(key: KeyEvent): boolean {
+    if (key.repeated) return false;
+    return key.ctrl && (key.name ?? "").toLowerCase() === "v";
+  }
+
+  private async pasteClipboardIntoPrompt(): Promise<void> {
+    const clipboardText = await readFromClipboard();
+    if (clipboardText === null || clipboardText.length === 0) return;
+    if (!this.visible || this.isComposerDestroyed()) return;
+
+    this.insertTextIntoPrompt(clipboardText);
+  }
+
+  private insertTextIntoPrompt(text: string): void {
+    try {
+      this.promptComposer.promptInput.insertText(text);
+    } catch (error) {
+      if (this.isDestroyedError(error)) return;
+      throw error;
+    }
+
+    this.render();
   }
 
   private isDestroyedError(error: unknown): boolean {

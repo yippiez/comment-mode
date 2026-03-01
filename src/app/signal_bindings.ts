@@ -1,4 +1,4 @@
-import type { KeyEvent } from "@opentui/core";
+import type { KeyEvent, PasteEvent } from "@opentui/core";
 import type { PromptComposerField } from "./prompt-composer-bar";
 import type { PromptSubmission } from "../controllers/prompt";
 import { SIGNALS, emit, type SignalGroup } from "../signals";
@@ -36,6 +36,7 @@ type EventSource<EventName extends string, Handler extends (...args: any[]) => v
 };
 
 type KeypressSource = EventSource<"keypress", (key: KeyEvent) => void>;
+type PasteSource = EventSource<"paste", (event: PasteEvent) => void>;
 
 type ScrollBarChangePayload = { position?: number } | undefined;
 type VerticalScrollBarSource = EventSource<"change", (event: ScrollBarChangePayload) => void>;
@@ -61,8 +62,15 @@ const consumeKeyEvent = (key: KeyEvent): void => {
   key.stopPropagation?.();
 };
 
+const consumePasteEvent = (event: PasteEvent): void => {
+  event.preventDefault?.();
+  event.stopPropagation?.();
+};
+
 const isShortcutsToggleKey = (keyName: string, rawKeyName: string | undefined, key: KeyEvent): boolean =>
   keyName === "?" || rawKeyName === "?" || (keyName === "/" && Boolean(key.shift));
+
+const isPromptPasteKey = (keyName: string, key: KeyEvent): boolean => keyName === "v" && key.ctrl;
 
 function subscribeToSource<EventName extends string, Handler extends (...args: any[]) => void>(
   source: EventSource<EventName, Handler>,
@@ -101,6 +109,11 @@ export function registerKeyboardSignalBindings(
 
     if (keyName === "tab") {
       emitHandled(key, SIGNALS.promptFieldCycle, 1);
+      return;
+    }
+
+    if (isPromptPasteKey(keyName, key)) {
+      emit(SIGNALS.promptInputKey, key);
       return;
     }
 
@@ -366,7 +379,31 @@ export function registerKeyboardSignalBindings(
     routeCode(keyName, rawKeyName, key);
   };
 
-  return subscribeToSource(source, "keypress", onKeypress);
+  const onPaste = (event: PasteEvent): void => {
+    const pastedText = event.text;
+    if (!pastedText) return;
+
+    const state = getState();
+    if (state.groupNamePromptVisible) {
+      consumePasteEvent(event);
+      emit(SIGNALS.groupsNameInputPaste, pastedText);
+      return;
+    }
+
+    if (!state.promptVisible) return;
+
+    consumePasteEvent(event);
+    emit(SIGNALS.promptInputPaste, pastedText);
+  };
+
+  const cleanupFns: Array<() => void> = [subscribeToSource(source, "keypress", onKeypress)];
+  cleanupFns.push(subscribeToSource(source as unknown as PasteSource, "paste", onPaste));
+
+  return () => {
+    for (const cleanup of cleanupFns.splice(0)) {
+      cleanup();
+    }
+  };
 }
 
 export function registerScrollSignalBindings(source: VerticalScrollBarSource): () => void {
@@ -463,7 +500,9 @@ type RegisterAppSignalHandlersOptions = {
   cyclePromptThinkingLevel: (delta: -1 | 1) => void;
   refreshPromptModels: () => void;
   handleGroupNameInputKey: (key: KeyEvent, consume: (event: KeyEvent) => void) => void;
+  handleGroupNamePasteText: (text: string) => void;
   handlePromptInputKey: (key: KeyEvent, consume: (event: KeyEvent) => void) => void;
+  handlePromptPasteText: (text: string) => void;
   handleExternalScroll: (position: number) => void;
   renderAll: () => void;
   renderChips: () => void;
@@ -660,10 +699,22 @@ export function registerAppSignalHandlers(options: RegisterAppSignalHandlersOpti
     options.handlePromptInputKey(key, consumeKeyEvent);
   });
 
+  options.onSignal(SIGNALS.promptInputPaste, (...args) => {
+    const text = args[0];
+    if (typeof text !== "string" || text.length === 0) return;
+    options.handlePromptPasteText(text);
+  });
+
   options.onSignal(SIGNALS.groupsNameInputKey, (...args) => {
     const key = args[0] as KeyEvent | undefined;
     if (!key) return;
     options.handleGroupNameInputKey(key, consumeKeyEvent);
+  });
+
+  options.onSignal(SIGNALS.groupsNameInputPaste, (...args) => {
+    const text = args[0];
+    if (typeof text !== "string" || text.length === 0) return;
+    options.handleGroupNamePasteText(text);
   });
 
   options.onSignal(SIGNALS.scrollVertical, (...args) => {
