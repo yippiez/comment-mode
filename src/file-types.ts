@@ -13,6 +13,7 @@ export type FileType =
   | "rust"
   | "shell"
   | "svelte"
+  | "tcss"
   | "toml"
   | "typescript"
   | "yaml";
@@ -52,6 +53,7 @@ const ALL_EXTENSIONS = new Set([
   "json",
   "properties",
   "toml",
+  "tcss",
   "xml",
   "yaml",
   "yml",
@@ -63,6 +65,7 @@ const ALL_EXTENSIONS = new Set([
   ".cpp",
   ".cs",
   ".css",
+  ".tcss",
   ".go",
   ".h",
   ".hpp",
@@ -80,6 +83,7 @@ const ALL_EXTENSIONS = new Set([
 
 const FILE_TYPE_BY_EXTENSION: Record<string, FileType> = {
   ".css": "css",
+  ".tcss": "tcss",
   ".go": "go",
   ".html": "html",
   ".java": "java",
@@ -129,6 +133,7 @@ const PRIORITY_EXTENSIONS: Record<string, FileTypePriority> = {
   json: FileTypePriority.MEDIUM,
   properties: FileTypePriority.MEDIUM,
   toml: FileTypePriority.MEDIUM,
+  tcss: FileTypePriority.MEDIUM,
   xml: FileTypePriority.MEDIUM,
   yaml: FileTypePriority.MEDIUM,
   yml: FileTypePriority.MEDIUM,

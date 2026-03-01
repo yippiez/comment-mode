@@ -17,6 +17,13 @@ const CUSTOM_TREE_SITTER_PARSERS: FiletypeParserOptions[] = [
     },
   },
   {
+    filetype: "tcss",
+    wasm: "https://unpkg.com/tree-sitter-wasms@0.1.13/out/tree-sitter-css.wasm",
+    queries: {
+      highlights: ["https://raw.githubusercontent.com/tree-sitter/tree-sitter-css/master/queries/highlights.scm"],
+    },
+  },
+  {
     filetype: "json",
     wasm: "https://unpkg.com/tree-sitter-wasms@0.1.13/out/tree-sitter-json.wasm",
     queries: {
