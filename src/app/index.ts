@@ -253,7 +253,7 @@ export class CodeBrowserApp {
     this.registerBindings();
     this.state.focusMode = "code";
     this.renderAll({ preferFirstAnchor: this.lazyContentModeEnabled });
-    this.restorePersistedCursorState();
+    void this.restorePersistedCursorStateAfterRender();
     this.prompt.start();
   }
 
@@ -602,6 +602,16 @@ export class CodeBrowserApp {
     }
 
     this.fileExplorer.expandFile(filePath);
+  }
+
+  private async restorePersistedCursorStateAfterRender(): Promise<void> {
+    try {
+      await this.renderer.idle();
+    } catch {
+      return;
+    }
+    if (this.renderer.isDestroyed) return;
+    this.restorePersistedCursorState();
   }
 
   private restorePersistedCursorState(): void {
