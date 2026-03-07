@@ -330,11 +330,6 @@ export function registerKeyboardSignalBindings(
       return;
     }
 
-    if (keyName === "q") {
-      emitHandled(key, SIGNALS.appQuit);
-      return;
-    }
-
     if (keyName === "t") {
       emitHandled(key, SIGNALS.themeToggle);
       return;

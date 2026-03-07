@@ -24,7 +24,6 @@ const SHORTCUT_SECTIONS: readonly ShortcutSection[] = [
     title: "Global",
     shortcuts: [
       { keys: "?", description: "Toggle this shortcuts modal" },
-      { keys: "q", description: "Quit application" },
       { keys: "t", description: "Cycle theme" },
       { keys: "s", description: "Save current state as group or update selected group" },
       { keys: "Tab", description: "Switch focus between code and chips" },
