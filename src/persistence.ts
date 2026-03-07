@@ -25,7 +25,6 @@ export type PersistedUiState = {
     enabledTypeLabels: Record<string, boolean>;
   };
   files: {
-    ignoredPaths: string[];
     collapsedPaths: string[];
     fileBlockCollapsed: boolean;
     directoryPath: string;
@@ -183,7 +182,6 @@ export function normalizePersistedUiState(state: PersistedUiState): PersistedUiS
       enabledTypeLabels,
     },
     files: {
-      ignoredPaths: normalizePathList(state.files.ignoredPaths),
       collapsedPaths: normalizePathList(state.files.collapsedPaths),
       fileBlockCollapsed: Boolean(state.files.fileBlockCollapsed),
       directoryPath: typeof state.files.directoryPath === "string" ? state.files.directoryPath : "",
@@ -216,6 +214,10 @@ export function parsePersistedUiState(value: unknown): PersistedUiState | null {
   const filesValue = isRecord(value.files) ? value.files : {};
   const cursorValue = isRecord(value.cursor) ? value.cursor : {};
   const promptValue = isRecord(value.prompt) ? value.prompt : {};
+  const collapsedPaths = mergePathLists(
+    toStringArray(filesValue.collapsedPaths),
+    toStringArray(filesValue.ignoredPaths),
+  );
 
   const enabledTypeLabels: Record<string, boolean> = {};
   const enabledSource = isRecord(chipsValue.enabledTypeLabels) ? chipsValue.enabledTypeLabels : {};
@@ -232,8 +234,7 @@ export function parsePersistedUiState(value: unknown): PersistedUiState | null {
       enabledTypeLabels,
     },
     files: {
-      ignoredPaths: toStringArray(filesValue.ignoredPaths),
-      collapsedPaths: toStringArray(filesValue.collapsedPaths),
+      collapsedPaths,
       fileBlockCollapsed: Boolean(filesValue.fileBlockCollapsed),
       directoryPath: typeof filesValue.directoryPath === "string" ? filesValue.directoryPath : "",
     },
@@ -261,6 +262,10 @@ function normalizePathList(value: readonly string[]): string[] {
   return [...new Set(value.filter((entry) => typeof entry === "string" && entry.length > 0))].sort((a, b) =>
     a.localeCompare(b),
   );
+}
+
+function mergePathLists(primary: readonly string[], secondary: readonly string[]): string[] {
+  return [...primary, ...secondary];
 }
 
 function toStringArray(value: unknown): string[] {

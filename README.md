@@ -46,8 +46,7 @@ bun install
 | `Enter` | Open file/directory or open prompt |
 | `Backspace` | Go to parent directory |
 | `c` | Collapse/expand current structure |
-| `i` | Ignore current file from view |
-| `r` | Reset chips, collapse, and ignore |
+| `r` | Reset chips and collapse |
 | `Shift+R` | Refresh entries |
 | `e` | Open current location in $EDITOR |
 | `x` | Delete agent update at cursor |

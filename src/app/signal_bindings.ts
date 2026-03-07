@@ -14,7 +14,6 @@ const CODE_KEYMAP = {
   pagedown: "page_down",
   v: "toggle_visual",
   c: "collapse_file",
-  i: "ignore_file",
   enter: "open_prompt",
   return: "open_prompt",
   escape: "escape_visual",
@@ -272,11 +271,6 @@ export function registerKeyboardSignalBindings(
       return;
     }
 
-    if (mappedAction === "ignore_file") {
-      emitHandled(key, SIGNALS.filesIgnoreCurrent);
-      return;
-    }
-
   };
 
   const onKeypress = (key: KeyEvent): void => {
@@ -473,7 +467,6 @@ type RegisterAppSignalHandlersOptions = {
   enterCurrentDirectory: () => void;
   goToParentDirectory: () => void;
   toggleCurrentStructureCollapse: () => void;
-  ignoreCurrentFile: () => void;
   resetVisibilityState: () => void;
   saveOrUpdateSelectedGroup: () => void;
   deleteSelectedGroup: () => void;
@@ -598,10 +591,6 @@ export function registerAppSignalHandlers(options: RegisterAppSignalHandlersOpti
 
   options.onSignal(SIGNALS.filesCollapseCurrent, () => {
     options.toggleCurrentStructureCollapse();
-  });
-
-  options.onSignal(SIGNALS.filesIgnoreCurrent, () => {
-    options.ignoreCurrentFile();
   });
 
   options.onSignal(SIGNALS.filesResetVisibility, () => {

@@ -117,7 +117,6 @@ export const SIGNALS = {
   filesEnterDirectory: SignalGroup.fromStr("files:enter_directory"),
   filesParentDir: SignalGroup.fromStr("files:parent_dir"),
   filesCollapseCurrent: SignalGroup.fromStr("files:collapse_current"),
-  filesIgnoreCurrent: SignalGroup.fromStr("files:ignore_current"),
   filesResetVisibility: SignalGroup.fromStr("files:reset_visibility"),
   groupsSaveOrUpdate: SignalGroup.fromStr("groups:save_or_update"),
   groupsDeleteSelected: SignalGroup.fromStr("groups:delete_selected"),

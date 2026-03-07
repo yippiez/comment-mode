@@ -10,7 +10,8 @@ export class FileExplorer {
   public static readonly FILE_PAGE_ANCHOR_PATH = "virtual://FILE";
 
   private collapsedFiles = new Set<string>();
-  private ignoredFiles = new Set<string>();
+  private collapsedGroupPathsByLine = new Map<number, readonly string[]>();
+  private expandedCollapsedGroupKeys = new Set<string>();
   private directoryPath = "";
   private fileTreeRowsByLine = new Map<number, FileTreeRow>();
   private filePageCollapsed = false;
@@ -19,6 +20,7 @@ export class FileExplorer {
 
   public clearRows(): void {
     this.fileTreeRowsByLine = new Map();
+    this.collapsedGroupPathsByLine = new Map();
     this.filePageAnchorLine = null;
   }
 
@@ -64,14 +66,33 @@ export class FileExplorer {
 
   public setCollapsedFiles(filePaths: readonly string[]): void {
     this.collapsedFiles = new Set(filePaths.filter((filePath) => filePath.length > 0));
+    this.expandedCollapsedGroupKeys = new Set();
   }
 
-  public getIgnoredFiles(): string[] {
-    return [...this.ignoredFiles].sort((a, b) => a.localeCompare(b));
+  public setCollapsedGroupAtLine(line: number, filePaths: readonly string[]): void {
+    if (filePaths.length <= 1) return;
+    this.collapsedGroupPathsByLine.set(line, [...filePaths]);
   }
 
-  public setIgnoredFiles(filePaths: readonly string[]): void {
-    this.ignoredFiles = new Set(filePaths.filter((filePath) => filePath.length > 0));
+  public getCollapsedGroupAtLine(line: number): readonly string[] | undefined {
+    return this.collapsedGroupPathsByLine.get(line);
+  }
+
+  public isCollapsedGroupExpanded(filePaths: readonly string[]): boolean {
+    if (filePaths.length <= 1) return false;
+    return this.expandedCollapsedGroupKeys.has(this.buildCollapsedGroupKey(filePaths));
+  }
+
+  public toggleCollapsedGroupExpanded(filePaths: readonly string[]): boolean {
+    if (filePaths.length <= 1) return false;
+    const key = this.buildCollapsedGroupKey(filePaths);
+    if (this.expandedCollapsedGroupKeys.has(key)) {
+      this.expandedCollapsedGroupKeys.delete(key);
+      return false;
+    }
+
+    this.expandedCollapsedGroupKeys.add(key);
+    return true;
   }
 
   public toggleFilePageCollapsed(): boolean {
@@ -81,47 +102,29 @@ export class FileExplorer {
 
   public pruneCollapsedFiles(entries: readonly CodeFileEntry[]): void {
     const existing = new Set(entries.map((entry) => entry.relativePath));
+    let removed = false;
     for (const filePath of this.collapsedFiles) {
       if (existing.has(filePath)) continue;
       this.collapsedFiles.delete(filePath);
+      removed = true;
     }
-  }
-
-  public pruneIgnoredFiles(entries: readonly CodeFileEntry[]): void {
-    const existing = new Set(entries.map((entry) => entry.relativePath));
-    for (const filePath of this.ignoredFiles) {
-      if (existing.has(filePath)) continue;
-      this.ignoredFiles.delete(filePath);
+    if (removed) {
+      this.expandedCollapsedGroupKeys = new Set();
     }
   }
 
   public collapseAll(entries: readonly CodeFileEntry[]): void {
     this.collapsedFiles = new Set(entries.map((entry) => entry.relativePath));
+    this.expandedCollapsedGroupKeys = new Set();
   }
 
   public expandAll(): boolean {
     const hadCollapsedFiles = this.collapsedFiles.size > 0;
     const wasFilePageCollapsed = this.filePageCollapsed;
     this.collapsedFiles = new Set();
+    this.expandedCollapsedGroupKeys = new Set();
     this.filePageCollapsed = false;
     return hadCollapsedFiles || wasFilePageCollapsed;
-  }
-
-  public ignoreFile(filePath: string | undefined): boolean {
-    if (!filePath) return false;
-    if (this.ignoredFiles.has(filePath)) return false;
-    this.ignoredFiles.add(filePath);
-    return true;
-  }
-
-  public isIgnored(filePath: string): boolean {
-    return this.ignoredFiles.has(filePath);
-  }
-
-  public unignoreAll(): boolean {
-    if (this.ignoredFiles.size === 0) return false;
-    this.ignoredFiles = new Set();
-    return true;
   }
 
   public ensureDirectoryVisible(entries: readonly CodeFileEntry[]): void {
@@ -148,6 +151,7 @@ export class FileExplorer {
 
   public openFile(filePath: string): void {
     this.collapsedFiles.delete(filePath);
+    this.expandedCollapsedGroupKeys = new Set();
     this.pendingCodeTargetFilePath = filePath;
   }
 
@@ -162,7 +166,11 @@ export class FileExplorer {
   }
 
   public expandFile(filePath: string): boolean {
-    return this.collapsedFiles.delete(filePath);
+    const changed = this.collapsedFiles.delete(filePath);
+    if (changed) {
+      this.expandedCollapsedGroupKeys = new Set();
+    }
+    return changed;
   }
 
   public toggleCollapse(currentFilePath: string | undefined): boolean {
@@ -172,6 +180,11 @@ export class FileExplorer {
     } else {
       this.collapsedFiles.add(currentFilePath);
     }
+    this.expandedCollapsedGroupKeys = new Set();
     return true;
+  }
+
+  private buildCollapsedGroupKey(filePaths: readonly string[]): string {
+    return filePaths.join("\n");
   }
 }

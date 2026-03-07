@@ -261,7 +261,6 @@ export class CodeBrowserApp {
     this.entries = entries;
     this.enableLazyContentModeIfNeeded();
     this.pruneCollapsedFiles();
-    this.pruneIgnoredFiles();
     this.pruneAgentUpdates();
     this.recomputeTypesState();
     this.renderAll({ preferFirstAnchor: this.lazyContentModeEnabled });
@@ -287,7 +286,6 @@ export class CodeBrowserApp {
         enabledTypeLabels,
       },
       files: {
-        ignoredPaths: this.fileExplorer.getIgnoredFiles(),
         collapsedPaths: this.fileExplorer.getCollapsedFiles(),
         fileBlockCollapsed: this.fileExplorer.isFilePageCollapsed(),
         directoryPath: this.fileExplorer.getDirectoryPath(),
@@ -332,7 +330,6 @@ export class CodeBrowserApp {
       enterCurrentDirectory: () => this.enterCurrentDirectory(),
       goToParentDirectory: () => this.goToParentDirectory(),
       toggleCurrentStructureCollapse: () => this.toggleCurrentStructureCollapse(),
-      ignoreCurrentFile: () => this.ignoreCurrentFile(),
       resetVisibilityState: () => this.resetVisibilityState(),
       saveOrUpdateSelectedGroup: () => this.saveOrUpdateSelectedGroup(),
       deleteSelectedGroup: () => this.deleteSelectedGroup(),
@@ -573,7 +570,6 @@ export class CodeBrowserApp {
     this.state.chipWindowStartIndex = toNonNegativeInteger(persistedState.chips.chipWindowStartIndex);
     this.enabledTypes = new Map(Object.entries(persistedState.chips.enabledTypeLabels));
 
-    this.fileExplorer.setIgnoredFiles(persistedState.files.ignoredPaths);
     this.fileExplorer.setCollapsedFiles(persistedState.files.collapsedPaths);
     this.fileExplorer.setFilePageCollapsed(persistedState.files.fileBlockCollapsed);
     this.fileExplorer.setDirectoryPath(persistedState.files.directoryPath);
@@ -588,7 +584,6 @@ export class CodeBrowserApp {
     }
 
     this.pruneCollapsedFiles();
-    this.pruneIgnoredFiles();
     this.recomputeTypesState();
     this.pendingPersistedCursorState = persistedState.cursor;
   }
@@ -1040,6 +1035,14 @@ export class CodeBrowserApp {
   }
 
   private toggleCurrentStructureCollapse(): void {
+    const collapsedGroup = this.fileExplorer.getCollapsedGroupAtLine(this.cursor.cursorLine);
+    if (collapsedGroup && collapsedGroup.length > 1) {
+      this.fileExplorer.toggleCollapsedGroupExpanded(collapsedGroup);
+      this.renderContent({ cursorTargetFilePath: collapsedGroup[0] });
+      this.cursor.goToLineAtMinVisibleHeight(this.cursor.cursorLine);
+      return;
+    }
+
     const currentFilePath = this.lineModel.getCurrentFilePath(this.cursor.cursorLine);
     if (this.virtualCodeBlocks.toggleFileBlockCollapseAtLine(this.cursor.cursorLine) || currentFilePath === ".") {
       this.renderContent({ cursorTargetFilePath: this.virtualCodeBlocks.getDefaultAnchorPath() });
@@ -1092,31 +1095,7 @@ export class CodeBrowserApp {
     }
   }
 
-  private ignoreCurrentFile(): void {
-    const filePath = this.resolveIgnorableFilePathAtCursor();
-    if (!filePath) return;
-    const changed = this.fileExplorer.ignoreFile(filePath);
-    if (!changed) return;
-
-    this.recomputeTypesState();
-    this.renderAll();
-  }
-
-  private resolveIgnorableFilePathAtCursor(): string | null {
-    const row = this.virtualCodeBlocks.getRowAtLine(this.cursor.cursorLine);
-    if (row?.kind === "file") {
-      return this.entries.some((entry) => entry.relativePath === row.filePath) ? row.filePath : null;
-    }
-
-    const currentFilePath = this.lineModel.getCurrentFilePath(this.cursor.cursorLine);
-    if (!currentFilePath || currentFilePath === "." || currentFilePath.startsWith("virtual://")) {
-      return null;
-    }
-    return this.entries.some((entry) => entry.relativePath === currentFilePath) ? currentFilePath : null;
-  }
-
   private resetVisibilityState(): void {
-    this.fileExplorer.unignoreAll();
     this.fileExplorer.expandAll();
     this.recomputeTypesState();
 
@@ -1180,7 +1159,7 @@ export class CodeBrowserApp {
   }
 
   private getVisibleEntries(): CodeFileEntry[] {
-    return this.entries.filter((entry) => !this.fileExplorer.isIgnored(entry.relativePath));
+    return this.entries;
   }
 
   private getTypeCounts(type: string): { shown: number; hidden: number } {
@@ -1208,12 +1187,7 @@ export class CodeBrowserApp {
   }
 
   private computeHiddenTypeCounts(): Map<string, number> {
-    const hiddenTypeCounts = new Map<string, number>();
-    for (const entry of this.entries) {
-      if (!this.fileExplorer.isIgnored(entry.relativePath)) continue;
-      hiddenTypeCounts.set(entry.typeLabel, (hiddenTypeCounts.get(entry.typeLabel) ?? 0) + 1);
-    }
-    return hiddenTypeCounts;
+    return new Map();
   }
 
   private pruneAgentUpdates(): void {
@@ -1224,10 +1198,6 @@ export class CodeBrowserApp {
 
   private pruneCollapsedFiles(): void {
     this.fileExplorer.pruneCollapsedFiles(this.entries);
-  }
-
-  private pruneIgnoredFiles(): void {
-    this.fileExplorer.pruneIgnoredFiles(this.entries);
   }
 
   private enableLazyContentModeIfNeeded(): void {

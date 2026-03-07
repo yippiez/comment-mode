@@ -313,7 +313,28 @@ export class AppRenderer {
         }
       }
 
-      for (const entry of filteredEntries) {
+      let entryIndex = 0;
+      while (entryIndex < filteredEntries.length) {
+        const entry = filteredEntries[entryIndex];
+        if (!entry) {
+          entryIndex += 1;
+          continue;
+        }
+
+        const collapsedGroup = this.collectConsecutiveCollapsedEntries(filteredEntries, entryIndex);
+        if (collapsedGroup.length > 1) {
+          const groupedResult = this.renderCollapsedEntriesGroup(
+            collapsedGroup,
+            dividerWidth,
+            nextLineNumber,
+            nextDisplayRow,
+          );
+          nextLineNumber = groupedResult.nextLineNumber;
+          nextDisplayRow = groupedResult.nextDisplayRow;
+          entryIndex += collapsedGroup.length;
+          continue;
+        }
+
         const updatesForFile = this.getUpdatesForFile(entry.relativePath);
         let nextUpdateIndex = 0;
         const dividerRow = nextDisplayRow;
@@ -433,6 +454,8 @@ export class AppRenderer {
         if (nextLineNumber > fileAnchorLine) {
           this.lineModel.addFileAnchor({ line: fileAnchorLine, dividerRow, filePath: entry.relativePath });
         }
+
+        entryIndex += 1;
       }
 
       this.lineModel.setTotalLines(nextLineNumber - 1);
@@ -459,6 +482,126 @@ export class AppRenderer {
     } finally {
       this.documentBlocks.endRender();
     }
+  }
+
+  private collectConsecutiveCollapsedEntries(
+    entries: readonly CodeFileEntry[],
+    startIndex: number,
+  ): CodeFileEntry[] {
+    const groupedEntries: CodeFileEntry[] = [];
+    for (let index = startIndex; index < entries.length; index += 1) {
+      const entry = entries[index];
+      if (!entry) break;
+      if (!this.fileExplorer.isCollapsed(entry.relativePath)) break;
+      groupedEntries.push(entry);
+    }
+
+    return groupedEntries;
+  }
+
+  private renderCollapsedEntriesGroup(
+    groupedEntries: readonly CodeFileEntry[],
+    dividerWidth: number,
+    nextLineNumber: number,
+    nextDisplayRow: number,
+  ): { nextLineNumber: number; nextDisplayRow: number } {
+    const firstEntry = groupedEntries[0];
+    if (!firstEntry) {
+      return {
+        nextLineNumber,
+        nextDisplayRow,
+      };
+    }
+
+    const groupedPaths = groupedEntries.map((entry) => entry.relativePath);
+    const groupExpanded = this.fileExplorer.isCollapsedGroupExpanded(groupedPaths);
+
+    const dividerRow = nextDisplayRow;
+    this.lineModel.markDivider(nextDisplayRow);
+    const divider = new TextRenderable(this.renderer, {
+      width: "100%",
+      overflow: "hidden",
+      truncate: true,
+      wrapMode: "none",
+      content: makeSlashLine(
+        `${groupExpanded ? "^" : "v"} ${groupedEntries.length} collapsed files`,
+        dividerWidth,
+      ),
+      fg: theme.getDividerForegroundColor(),
+      bg: theme.getDividerBackgroundColor(),
+    });
+    this.dividerByFilePath.set(firstEntry.relativePath, divider);
+    this.scrollbox.add(divider);
+    nextDisplayRow += 1;
+    const fileAnchorLine = nextLineNumber;
+
+    const result = this.documentBlocks.addCollapsedPlaceholderBlock(
+      firstEntry.relativePath,
+      undefined,
+      null,
+      dividerWidth,
+      1,
+      nextLineNumber,
+      nextDisplayRow,
+      groupExpanded
+        ? `^ ${groupedEntries.length} collapsed files (select one and press c)`
+        : `v ${groupedEntries.length} collapsed files (press c to list)`,
+    );
+    this.fileExplorer.setCollapsedGroupAtLine(result.blockStartLine, groupedPaths);
+    nextLineNumber = result.nextLineNumber;
+    nextDisplayRow = result.nextDisplayRow;
+
+    if (groupExpanded) {
+      for (const entry of groupedEntries) {
+        const collapsedItemResult = this.documentBlocks.addCollapsedPlaceholderBlock(
+          entry.relativePath,
+          entry.filetype,
+          entry.isContentLoaded ? entry.lineCount : null,
+          dividerWidth,
+          1,
+          nextLineNumber,
+          nextDisplayRow,
+          `- ${entry.relativePath}`,
+        );
+        nextLineNumber = collapsedItemResult.nextLineNumber;
+        nextDisplayRow = collapsedItemResult.nextDisplayRow;
+
+        const updatesForFile = this.getUpdatesForFile(entry.relativePath);
+        for (const update of updatesForFile) {
+          const agentResult = this.agentTimeline.addUpdateWithMessages(
+            update,
+            nextLineNumber,
+            nextDisplayRow,
+          );
+          nextLineNumber = agentResult.nextLineNumber;
+          nextDisplayRow = agentResult.nextDisplayRow;
+        }
+      }
+    }
+
+    if (!groupExpanded) {
+      for (const entry of groupedEntries) {
+        const updatesForFile = this.getUpdatesForFile(entry.relativePath);
+        for (const update of updatesForFile) {
+          const agentResult = this.agentTimeline.addUpdateWithMessages(
+            update,
+            nextLineNumber,
+            nextDisplayRow,
+          );
+          nextLineNumber = agentResult.nextLineNumber;
+          nextDisplayRow = agentResult.nextDisplayRow;
+        }
+      }
+    }
+
+    if (nextLineNumber > fileAnchorLine) {
+      this.lineModel.addFileAnchor({ line: fileAnchorLine, dividerRow, filePath: firstEntry.relativePath });
+    }
+
+    return {
+      nextLineNumber,
+      nextDisplayRow,
+    };
   }
 
   public getViewportHeight(): number {
