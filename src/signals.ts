@@ -111,7 +111,6 @@ export const SIGNALS = {
   cursorChanged: SignalGroup.fromStr("cursor:changed"),
   visualToggle: SignalGroup.fromStr("visual:toggle"),
   visualExit: SignalGroup.fromStr("visual:exit"),
-  selectionYank: SignalGroup.fromStr("selection:yank"),
   filesToggleExplorer: SignalGroup.fromStr("files:toggle_explorer"),
   filesEnterOrOpen: SignalGroup.fromStr("files:enter_or_open"),
   filesOpenInEditor: SignalGroup.fromStr("files:open_in_editor"),

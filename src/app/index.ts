@@ -17,7 +17,6 @@ import {
 import { PromptComposerBar, type PromptComposerLayout } from "./prompt-composer-bar";
 import { ShortcutsModal } from "./shortcuts_modal";
 import { SIGNALS, deregister, register, type SignalGroup } from "../signals";
-import { copyToClipboard } from "../utils/clipboard";
 import { openFileInEditor } from "../utils/editor";
 import { Cursor } from "../controllers/cursor";
 import { LineModel } from "../line-model";
@@ -41,10 +40,7 @@ import {
   registerSystemSignalBindings,
 } from "./signal_bindings";
 import {
-  buildClipboardSelectionText,
-  collectSelectionLineInfos,
   createPromptTargetFromSelection,
-  type SelectionLineInfo,
 } from "./selection";
 import { FileExplorer } from "./file_explorer";
 import { AgentTimeline } from "./agent_timeline";
@@ -330,7 +326,6 @@ export class CodeBrowserApp {
       goCursorToMaxVisibleHeight: () => this.cursor.goToMaxVisibleHeight(),
       toggleVisualMode: () => this.cursor.toggleVisualMode(),
       disableVisualMode: () => this.cursor.disableVisualMode(),
-      copySelectionToClipboard: () => this.copySelectionToClipboard(),
       toggleFilesExplorerMode: () => this.toggleFilesExplorerMode(),
       openFromCurrentSelection: () => this.openFromCurrentSelection(),
       openCurrentSelectionInEditor: () => this.openCurrentSelectionInEditor(),
@@ -493,26 +488,6 @@ export class CodeBrowserApp {
       this.lineModel,
       this.virtualCodeBlocks.getRowsByLine(),
       this.virtualCodeBlocks.getDefaultPromptFilePath(),
-    );
-  }
-
-  private getSelectionLineInfos(): SelectionLineInfo[] {
-    return collectSelectionLineInfos(this.cursor, this.lineModel);
-  }
-
-  private async copySelectionToClipboard(): Promise<void> {
-    const selection = this.getSelectionLineInfos();
-    if (selection.length === 0) return;
-
-    const clipboardText = this.buildClipboardSelectionText(selection);
-    if (!clipboardText) return;
-    await copyToClipboard(clipboardText);
-  }
-
-  private buildClipboardSelectionText(selection: readonly SelectionLineInfo[]): string {
-    return buildClipboardSelectionText(
-      selection,
-      this.virtualCodeBlocks.getRowsByLine(),
     );
   }
 

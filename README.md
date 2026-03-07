@@ -48,6 +48,7 @@ bun install
 | `c` | Collapse/expand current structure |
 | `i` | Ignore current file from view |
 | `r` | Reset chips, collapse, and ignore |
+| `Shift+R` | Refresh entries |
 | `e` | Open current location in $EDITOR |
 | `x` | Delete agent update at cursor |
 
@@ -56,7 +57,6 @@ bun install
 |-----|--------|
 | `v` | Toggle visual selection mode |
 | `Esc` | Exit visual selection mode |
-| `y` | Copy selected text to clipboard |
 
 ### Type Chips Focus
 | Key | Action |

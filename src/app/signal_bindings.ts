@@ -15,7 +15,6 @@ const CODE_KEYMAP = {
   v: "toggle_visual",
   c: "collapse_file",
   i: "ignore_file",
-  y: "yank_selection",
   enter: "open_prompt",
   return: "open_prompt",
   escape: "escape_visual",
@@ -263,11 +262,6 @@ export function registerKeyboardSignalBindings(
       return;
     }
 
-    if (mappedAction === "yank_selection") {
-      emitHandled(key, SIGNALS.selectionYank);
-      return;
-    }
-
     if (keyName === "backspace") {
       emitHandled(key, SIGNALS.filesParentDir);
       return;
@@ -337,6 +331,11 @@ export function registerKeyboardSignalBindings(
 
     if (keyName === "tab") {
       emitHandled(key, SIGNALS.focusToggleCodeChips);
+      return;
+    }
+
+    if (keyName === "r" && key.shift) {
+      emitHandled(key, SIGNALS.workspaceChanged);
       return;
     }
 
@@ -468,7 +467,6 @@ type RegisterAppSignalHandlersOptions = {
   goCursorToMaxVisibleHeight: () => void;
   toggleVisualMode: () => void;
   disableVisualMode: () => void;
-  copySelectionToClipboard: () => Promise<void>;
   toggleFilesExplorerMode: () => void;
   openFromCurrentSelection: () => void;
   openCurrentSelectionInEditor: () => void;
@@ -576,10 +574,6 @@ export function registerAppSignalHandlers(options: RegisterAppSignalHandlersOpti
 
   options.onSignal(SIGNALS.visualExit, () => {
     options.disableVisualMode();
-  });
-
-  options.onSignal(SIGNALS.selectionYank, () => {
-    void options.copySelectionToClipboard();
   });
 
   options.onSignal(SIGNALS.filesToggleExplorer, () => {

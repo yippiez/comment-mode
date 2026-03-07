@@ -46,6 +46,7 @@ const SHORTCUT_SECTIONS: readonly ShortcutSection[] = [
       { keys: "c", description: "Collapse/expand current structure" },
       { keys: "i", description: "Ignore current file from view" },
       { keys: "r", description: "Reset chips, collapse, and ignore" },
+      { keys: "Shift+R", description: "Refresh entries" },
       { keys: "e", description: "Open current location in $EDITOR" },
       { keys: "x", description: "Delete agent update at cursor" },
     ],
@@ -55,7 +56,6 @@ const SHORTCUT_SECTIONS: readonly ShortcutSection[] = [
     shortcuts: [
       { keys: "v", description: "Toggle visual selection mode" },
       { keys: "Esc", description: "Exit visual selection mode" },
-      { keys: "y", description: "Copy selected text to clipboard" },
     ],
   },
   {
