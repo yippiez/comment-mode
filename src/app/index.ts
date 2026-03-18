@@ -1,14 +1,13 @@
 import {
   BoxRenderable,
   ScrollBoxRenderable,
-  type KeyEvent,
   type CliRenderer,
 } from "@opentui/core";
 import { Camera } from "../controllers/camera";
 import { OpenCode, type OpenCodeSubmission } from "../integrations/opencode";
 import { Layout } from "../controllers/layout";
 import { hydrateCodeFileEntry, isMissingCodeFileError } from "../files";
-import { Navigation } from "../controllers/navigation";
+import { NavigationController } from "../controllers/navigation";
 import {
   Prompt,
   type PromptTarget,
@@ -30,7 +29,6 @@ import type {
   CodeFileEntry,
   FocusMode,
 } from "../types";
-import { wrapIndex } from "../utils/math";
 import { Highlight } from "../controllers/highlight";
 import {
   type KeyboardStateSnapshot,
@@ -49,11 +47,13 @@ import { AppRenderer } from "./renderer";
 import { VirtualCodeBlocks } from "./virtual_code_blocks";
 import {
   PERSISTED_UI_STATE_VERSION,
-  type PersistedCursorState,
   type PersistedUiState,
 } from "../persistence";
 import type { PersistedUiGroup } from "../groups";
 import { GroupNameModal } from "./group_name_modal";
+import { ChipSelectionController } from "./chip_selection_controller";
+import { GroupManagementController } from "./group_management_controller";
+import { PersistedCursorController } from "./persisted_cursor_controller";
 
 type CodeBrowserAppOptions = {
   workspaceRootDir?: string;
@@ -62,12 +62,6 @@ type CodeBrowserAppOptions = {
   onPersistedGroupsChanged?: (groups: PersistedUiGroup[]) => void;
   initialAgentUpdates?: AgentUpdate[];
   onAgentUpdatesChanged?: (updates: AgentUpdate[]) => void;
-};
-
-type LastCodeCursorSnapshot = {
-  filePath: string;
-  fileLine: number;
-  lineText: string | null;
 };
 
 const LAZY_CONTENT_MODE_FILE_THRESHOLD = 250;
@@ -85,7 +79,10 @@ export class CodeBrowserApp {
   private readonly groupNameModal: GroupNameModal;
   private readonly shortcutsModal: ShortcutsModal;
   private readonly camera: Camera;
-  private readonly navigation: Navigation;
+  private readonly navigation: NavigationController;
+  private readonly chipSelection: ChipSelectionController;
+  private readonly groupManagement: GroupManagementController;
+  private readonly persistedCursor: PersistedCursorController;
   private readonly agent: OpenCode;
   private readonly prompt: Prompt;
   private readonly appRenderer: AppRenderer;
@@ -95,9 +92,6 @@ export class CodeBrowserApp {
   private hiddenTypeCounts: Map<string, number>;
   private sortedTypes: string[];
   private enabledTypes: Map<string, boolean>;
-  private groups: PersistedUiGroup[];
-  private readonly onPersistedGroupsChanged?: (groups: PersistedUiGroup[]) => void;
-  private pendingGroupNameGroupId: string | null = null;
 
   private readonly cursor: Cursor;
 
@@ -108,10 +102,7 @@ export class CodeBrowserApp {
   private readonly agentTimeline: AgentTimeline;
   private readonly pendingEntryLoads = new Set<string>();
   private lazyContentModeEnabled = false;
-  private pendingPersistedCursorState: PersistedCursorState | null = null;
-  private lastCodeCursorSnapshot: LastCodeCursorSnapshot | null = null;
-  private readonly sourceCleanupFns: Array<() => void> = [];
-  private readonly signalRegistrationIds: string[] = [];
+  private readonly bindingCleanupFns: Array<() => void> = [];
 
   constructor(renderer: CliRenderer, entries: CodeFileEntry[], options: CodeBrowserAppOptions = {}) {
     this.renderer = renderer;
@@ -172,6 +163,12 @@ export class CodeBrowserApp {
     this.cursor = new Cursor({
       camera: this.camera,
     });
+    this.persistedCursor = new PersistedCursorController({
+      cursor: this.cursor,
+      lineModel: this.lineModel,
+      fileExplorer: this.fileExplorer,
+      getEntries: () => this.entries,
+    });
     this.agentTimeline = new AgentTimeline(this.renderer, this.scrollbox, this.lineModel);
     this.documentBlocks = new DocumentBlocks(
       this.renderer,
@@ -193,8 +190,50 @@ export class CodeBrowserApp {
         this.resolvePromptComposerLayout(target, fallbackAnchorLine),
     });
 
-    this.onPersistedGroupsChanged = options.onPersistedGroupsChanged;
-    this.groups = this.cloneGroups(options.initialPersistedGroups ?? []);
+    this.typeCounts = new Map();
+    this.hiddenTypeCounts = new Map();
+    this.sortedTypes = [];
+    this.enabledTypes = new Map();
+    this.groupManagement = new GroupManagementController({
+      initialGroups: options.initialPersistedGroups ?? [],
+      groupNameModal: this.groupNameModal,
+      onPersistedGroupsChanged: options.onPersistedGroupsChanged,
+      getTypeChipCount: () => this.sortedTypes.length,
+      getSelectedChipIndex: () => this.state.selectedChipIndex,
+      setSelectedChipIndex: (index) => {
+        this.state.selectedChipIndex = index;
+      },
+      getPersistenceSnapshot: () => this.getPersistenceSnapshot(),
+      applyPersistedUiState: (state) => this.applyPersistedUiState(state),
+      recomputeTypesState: () => this.recomputeTypesState(),
+      renderChips: () => this.renderChips(),
+      renderAll: () => this.renderAll(),
+      restorePersistedCursorState: () => this.persistedCursor.restore(),
+    });
+    this.chipSelection = new ChipSelectionController({
+      getChipCount: () => this.sortedTypes.length + this.groupManagement.getGroups().length,
+      getSelectedChipIndex: () => this.state.selectedChipIndex,
+      setSelectedChipIndex: (index) => {
+        this.state.selectedChipIndex = index;
+      },
+      resolveSelectedTarget: () => {
+        const selectedChipIndex = this.state.selectedChipIndex;
+        if (selectedChipIndex < this.sortedTypes.length) {
+          const selectedType = this.sortedTypes[selectedChipIndex];
+          return selectedType ? { kind: "type", type: selectedType } : null;
+        }
+
+        const selectedGroup = this.groupManagement.getSelectedGroup();
+        return selectedGroup ? { kind: "group", groupId: selectedGroup.id } : null;
+      },
+      isTypeEnabled: (type) => this.isTypeEnabled(type),
+      setTypeEnabled: (type, enabled) => {
+        this.enabledTypes.set(type, enabled);
+      },
+      applyGroupSnapshot: (groupId) => this.groupManagement.applyGroupSnapshot(groupId),
+      renderChips: () => this.renderChips(),
+      renderContent: () => this.renderContent(),
+    });
 
     this.appRenderer = new AppRenderer({
       renderer: this.renderer,
@@ -212,7 +251,7 @@ export class CodeBrowserApp {
       documentBlocks: this.documentBlocks,
       getEntries: () => this.getVisibleEntries(),
       getSortedTypes: () => this.sortedTypes,
-      getGroupChips: () => this.getGroupChipDescriptors(),
+      getGroupChips: () => this.groupManagement.getGroupChipDescriptors(),
       getTypeCounts: (type) => this.getTypeCounts(type),
       isTypeEnabled: (type) => this.isTypeEnabled(type),
       getFocusMode: () => this.state.focusMode,
@@ -220,14 +259,14 @@ export class CodeBrowserApp {
         this.state.selectedChipIndex = index;
         this.setFocusMode("chips");
       },
-      onToggleSelectedChip: () => this.toggleSelectedChip(),
+      onToggleSelectedChip: () => this.chipSelection.toggleSelected(),
       getUpdatesForFile: (filePath) => this.getUpdatesForFile(filePath),
       scheduleFileContentLoad: (entry) => this.scheduleFileContentLoad(entry),
       isPromptVisible: () => this.prompt.isVisible,
       refreshPromptView: () => this.prompt.refreshView(),
     });
 
-    this.navigation = new Navigation({
+    this.navigation = new NavigationController({
       cursor: this.cursor,
       camera: this.camera,
       lineModel: this.lineModel,
@@ -235,10 +274,6 @@ export class CodeBrowserApp {
       getAnchorDividerDisplayRow: (anchor) => this.getAnchorDividerDisplayRow(anchor),
     });
 
-    this.typeCounts = new Map();
-    this.hiddenTypeCounts = new Map();
-    this.sortedTypes = [];
-    this.enabledTypes = new Map();
     this.enableLazyContentModeIfNeeded();
     if (options.initialPersistedUiState) {
       this.applyPersistedUiState(options.initialPersistedUiState);
@@ -253,7 +288,7 @@ export class CodeBrowserApp {
     this.registerBindings();
     this.state.focusMode = "code";
     this.renderAll({ preferFirstAnchor: this.lazyContentModeEnabled });
-    void this.restorePersistedCursorStateAfterRender();
+    void this.persistedCursor.restoreAfterRender(this.renderer);
     this.prompt.start();
   }
 
@@ -271,7 +306,7 @@ export class CodeBrowserApp {
   }
 
   public getPersistenceSnapshot(): PersistedUiState {
-    const persistedCursor = this.resolveCursorForPersistence();
+    const persistedCursor = this.persistedCursor.resolveCursorForPersistence();
     const enabledTypeLabels: Record<string, boolean> = {};
     const sortedEntries = [...this.enabledTypes.entries()].sort(([a], [b]) => a.localeCompare(b));
     for (const [typeLabel, enabled] of sortedEntries) {
@@ -304,7 +339,7 @@ export class CodeBrowserApp {
   }
 
   private registerBindings(): void {
-    if (this.sourceCleanupFns.length > 0 || this.signalRegistrationIds.length > 0) return;
+    if (this.bindingCleanupFns.length > 0) return;
 
     registerAppSignalHandlers({
       onSignal: (signalGroup, handler) => this.onSignal(signalGroup, handler),
@@ -315,8 +350,8 @@ export class CodeBrowserApp {
       getFocusMode: () => this.state.focusMode,
       setFocusMode: (mode) => this.setFocusMode(mode),
       destroyRenderer: () => this.renderer.destroy(),
-      moveChipSelection: (delta) => this.moveChipSelection(delta),
-      toggleSelectedChip: () => this.toggleSelectedChip(),
+      moveChipSelection: (delta) => this.chipSelection.moveSelection(delta),
+      toggleSelectedChip: () => this.chipSelection.toggleSelected(),
       shouldThrottleRepeatedMove: (repeated) => this.navigation.shouldThrottleRepeatedMove(repeated),
       moveCursorBy: (delta) => this.cursor.moveBy(delta),
       getCursorPageStep: () => this.cursor.pageStep(),
@@ -331,10 +366,10 @@ export class CodeBrowserApp {
       goToParentDirectory: () => this.goToParentDirectory(),
       toggleCurrentStructureCollapse: () => this.toggleCurrentStructureCollapse(),
       resetVisibilityState: () => this.resetVisibilityState(),
-      saveOrUpdateSelectedGroup: () => this.saveOrUpdateSelectedGroup(),
-      deleteSelectedGroup: () => this.deleteSelectedGroup(),
-      submitGroupName: () => this.submitGroupName(),
-      cancelGroupName: () => this.cancelGroupName(),
+      saveOrUpdateSelectedGroup: () => this.groupManagement.saveOrUpdateSelectedGroup(),
+      deleteSelectedGroup: () => this.groupManagement.deleteSelectedGroup(),
+      submitGroupName: () => this.groupManagement.submitName(),
+      cancelGroupName: () => this.groupManagement.cancelName(),
       jumpToTop: () => this.navigation.jumpToTop(),
       jumpToBottom: () => this.navigation.jumpToBottom(),
       jumpToNextFile: () => this.navigation.jumpToNextFile(),
@@ -348,10 +383,6 @@ export class CodeBrowserApp {
       cyclePromptModel: (delta) => this.prompt.cycleModel(delta),
       cyclePromptThinkingLevel: (delta) => this.prompt.cycleThinkingLevel(delta),
       refreshPromptModels: () => this.prompt.refreshModels(),
-      handleGroupNameInputKey: (key, consume) => this.handleGroupNameInputKey(key, consume),
-      handleGroupNamePasteText: (text) => this.groupNameModal.handlePasteText(text),
-      handlePromptInputKey: (key, consume) => this.prompt.handlePromptInputKey(key, consume),
-      handlePromptPasteText: (text) => this.prompt.handlePromptPasteText(text),
       handleExternalScroll: (position) => this.cursor.handleExternalScroll(position),
       renderAll: () => this.renderAll(),
       renderChips: () => this.renderChips(),
@@ -361,26 +392,35 @@ export class CodeBrowserApp {
       submitPromptToAgent: (submission) => this.submitPromptToAgent(submission),
     });
 
-    this.onSignal(SIGNALS.cursorChanged, () => this.updateLastCodeCursorSnapshot());
+    this.onSignal(SIGNALS.cursorChanged, () => this.persistedCursor.updateLastCodeCursorSnapshot());
 
-    this.sourceCleanupFns.push(
-      registerKeyboardSignalBindings(this.renderer.keyInput, () => this.getKeyboardStateSnapshot()),
+    this.bindingCleanupFns.push(
+      registerKeyboardSignalBindings(this.renderer.keyInput, {
+        getState: () => this.getKeyboardStateSnapshot(),
+        handleGroupNameInputKey: (key) => this.groupManagement.handleGroupNameInputKey(key),
+        handleGroupNamePasteText: (text) => this.groupNameModal.handlePasteText(text),
+        handlePromptInputKey: (key) => this.prompt.handlePromptInputKey(key),
+        handlePromptPasteText: (text) => this.prompt.handlePromptPasteText(text),
+      }),
     );
-    this.sourceCleanupFns.push(registerScrollSignalBindings(this.scrollbox.verticalScrollBar));
-    this.sourceCleanupFns.push(registerSystemSignalBindings(process.stdout, this.renderer));
+    this.bindingCleanupFns.push(registerScrollSignalBindings(this.scrollbox.verticalScrollBar));
+    this.bindingCleanupFns.push(registerSystemSignalBindings(process.stdout, this.renderer));
   }
 
   private unregisterBindings(): void {
-    for (const cleanup of this.sourceCleanupFns.splice(0)) {
+    for (const cleanup of this.bindingCleanupFns.splice(0)) {
       cleanup();
-    }
-    for (const registrationId of this.signalRegistrationIds.splice(0)) {
-      deregister(registrationId);
     }
   }
 
-  private onSignal(signalGroup: SignalGroup, handler: (...args: unknown[]) => void): void {
-    this.signalRegistrationIds.push(register(signalGroup, handler));
+  private onSignal<Args extends unknown[]>(
+    signalGroup: SignalGroup<Args>,
+    handler: (...args: Args) => void,
+  ): void {
+    const registrationId = register(signalGroup, handler);
+    this.bindingCleanupFns.push(() => {
+      deregister(registrationId);
+    });
   }
 
   private getKeyboardStateSnapshot(): KeyboardStateSnapshot {
@@ -522,48 +562,6 @@ export class CodeBrowserApp {
     this.renderChips();
   }
 
-  private updateLastCodeCursorSnapshot(): void {
-    const lineInfo = this.lineModel.getVisibleLineInfo(this.cursor.cursorLine);
-    if (!lineInfo || lineInfo.blockKind !== "code") return;
-    if (!isPersistableFilePath(lineInfo.filePath)) return;
-    if (typeof lineInfo.fileLine !== "number") return;
-
-    this.lastCodeCursorSnapshot = {
-      filePath: lineInfo.filePath,
-      fileLine: lineInfo.fileLine,
-      lineText: lineInfo.text,
-    };
-  }
-
-  private resolveCursorForPersistence(): PersistedCursorState {
-    this.updateLastCodeCursorSnapshot();
-
-    const currentLineInfo = this.lineModel.getVisibleLineInfo(this.cursor.cursorLine);
-    if (
-      currentLineInfo?.blockKind === "collapsed" &&
-      this.lastCodeCursorSnapshot &&
-      this.entries.some((entry) => entry.relativePath === this.lastCodeCursorSnapshot?.filePath)
-    ) {
-      const mappedGlobalLine = this.lineModel.findGlobalLineForFileLine(
-        this.lastCodeCursorSnapshot.filePath,
-        this.lastCodeCursorSnapshot.fileLine,
-      );
-      return {
-        globalLine: mappedGlobalLine ?? this.cursor.cursorLine,
-        filePath: this.lastCodeCursorSnapshot.filePath,
-        fileLine: this.lastCodeCursorSnapshot.fileLine,
-        lineText: this.lastCodeCursorSnapshot.lineText,
-      };
-    }
-
-    return {
-      globalLine: this.cursor.cursorLine,
-      filePath: currentLineInfo?.filePath ?? null,
-      fileLine: currentLineInfo?.fileLine ?? null,
-      lineText: currentLineInfo?.text ?? null,
-    };
-  }
-
   private applyPersistedUiState(persistedState: PersistedUiState): void {
     this.prompt.applyPersistedModelConfig(persistedState.prompt);
     this.state.selectedChipIndex = toNonNegativeInteger(persistedState.chips.selectedChipIndex);
@@ -573,442 +571,9 @@ export class CodeBrowserApp {
     this.fileExplorer.setCollapsedFiles(persistedState.files.collapsedPaths);
     this.fileExplorer.setFilePageCollapsed(persistedState.files.fileBlockCollapsed);
     this.fileExplorer.setDirectoryPath(persistedState.files.directoryPath);
-    this.ensurePersistedCursorVisibility(persistedState.cursor);
-
-    if (isPersistableFilePath(persistedState.cursor.filePath ?? "") && typeof persistedState.cursor.fileLine === "number") {
-      this.lastCodeCursorSnapshot = {
-        filePath: persistedState.cursor.filePath ?? "",
-        fileLine: persistedState.cursor.fileLine,
-        lineText: persistedState.cursor.lineText,
-      };
-    }
-
+    this.persistedCursor.applyPersistedState(persistedState.cursor);
     this.pruneCollapsedFiles();
     this.recomputeTypesState();
-    this.pendingPersistedCursorState = persistedState.cursor;
-  }
-
-  private ensurePersistedCursorVisibility(cursor: PersistedCursorState): void {
-    const filePath = cursor.filePath;
-    if (!filePath) return;
-
-    if (filePath === "." || filePath.startsWith(FileExplorer.FILE_PAGE_ANCHOR_PATH)) {
-      this.fileExplorer.setFilePageCollapsed(false);
-      return;
-    }
-
-    if (filePath.startsWith("virtual://")) {
-      return;
-    }
-
-    this.fileExplorer.expandFile(filePath);
-  }
-
-  private async restorePersistedCursorStateAfterRender(): Promise<void> {
-    try {
-      await this.renderer.idle();
-    } catch {
-      return;
-    }
-    if (this.renderer.isDestroyed) return;
-    this.restorePersistedCursorState();
-  }
-
-  private restorePersistedCursorState(): void {
-    const persistedCursorState = this.pendingPersistedCursorState;
-    if (!persistedCursorState) return;
-    if (this.lineModel.totalLines <= 0) return;
-    const restoreTarget = this.resolvePersistedCursorLine(persistedCursorState);
-    this.cursor.goToLine(restoreTarget.line, "auto");
-    if (!restoreTarget.shouldRetry) {
-      this.pendingPersistedCursorState = null;
-    }
-  }
-
-  private resolvePersistedCursorLine(cursor: PersistedCursorState): {
-    line: number;
-    shouldRetry: boolean;
-  } {
-    const filePath = cursor.filePath;
-    if (!filePath) {
-      return { line: 1, shouldRetry: false };
-    }
-
-    if (filePath === "." || filePath.startsWith("virtual://")) {
-      const mappedVirtualLine = this.lineModel.findFirstGlobalLineForFilePath(filePath);
-      return {
-        line: mappedVirtualLine ?? 1,
-        shouldRetry: false,
-      };
-    }
-
-    const targetEntry = this.entries.find((entry) => entry.relativePath === filePath);
-    if (!targetEntry) {
-      return { line: 1, shouldRetry: false };
-    }
-
-    const persistedText = normalizePersistedLineText(cursor.lineText);
-    if (typeof cursor.fileLine === "number") {
-      const mappedByLine = this.lineModel.findGlobalLineForFileLine(filePath, cursor.fileLine);
-      if (typeof mappedByLine === "number") {
-        if (persistedText === null) {
-          return {
-            line: mappedByLine,
-            shouldRetry: !targetEntry.isContentLoaded && cursor.fileLine > 1,
-          };
-        }
-
-        const mappedText = normalizePersistedLineText(
-          this.lineModel.getVisibleLineInfo(mappedByLine)?.text ?? null,
-        );
-        if (mappedText === persistedText) {
-          return {
-            line: mappedByLine,
-            shouldRetry: false,
-          };
-        }
-      }
-    }
-
-    if (persistedText !== null) {
-      const matchedByText = this.findClosestLineByPersistedText(filePath, persistedText, cursor.fileLine);
-      if (typeof matchedByText === "number") {
-        return {
-          line: matchedByText,
-          shouldRetry: false,
-        };
-      }
-    }
-
-    if (typeof cursor.fileLine === "number") {
-      const closestByLine = this.findClosestLineByPersistedFileLine(filePath, cursor.fileLine);
-      if (typeof closestByLine === "number") {
-        return {
-          line: closestByLine,
-          shouldRetry: false,
-        };
-      }
-    }
-
-    const firstLineInFile = this.lineModel.findFirstGlobalLineForFilePath(filePath);
-    if (typeof firstLineInFile === "number") {
-      return {
-        line: firstLineInFile,
-        shouldRetry: !targetEntry.isContentLoaded,
-      };
-    }
-
-    return {
-      line: 1,
-      shouldRetry: false,
-    };
-  }
-
-  private findClosestLineByPersistedText(
-    filePath: string,
-    persistedText: string,
-    preferredFileLine: number | null,
-  ): number | undefined {
-    let bestLine: number | undefined;
-    let bestDistance = Number.POSITIVE_INFINITY;
-
-    for (const block of this.lineModel.blocks) {
-      if (block.filePath !== filePath || block.blockKind !== "code") continue;
-      if (block.fileLineStart === null) continue;
-
-      for (let offset = 0; offset < block.renderedLines.length; offset += 1) {
-        const candidateText = normalizePersistedLineText(block.renderedLines[offset] ?? null);
-        if (candidateText !== persistedText) continue;
-
-        const candidateGlobalLine = block.lineStart + offset;
-        const candidateFileLine = block.fileLineStart + offset;
-        const distance = typeof preferredFileLine === "number"
-          ? Math.abs(candidateFileLine - preferredFileLine)
-          : 0;
-
-        if (distance < bestDistance) {
-          bestDistance = distance;
-          bestLine = candidateGlobalLine;
-          continue;
-        }
-
-        if (distance === bestDistance && (bestLine === undefined || candidateGlobalLine < bestLine)) {
-          bestLine = candidateGlobalLine;
-        }
-      }
-    }
-
-    return bestLine;
-  }
-
-  private findClosestLineByPersistedFileLine(filePath: string, preferredFileLine: number): number | undefined {
-    let bestLine: number | undefined;
-    let bestDistance = Number.POSITIVE_INFINITY;
-
-    for (const block of this.lineModel.blocks) {
-      if (block.filePath !== filePath || block.blockKind !== "code") continue;
-      if (block.fileLineStart === null) continue;
-
-      const blockLength = Math.max(1, block.lineEnd - block.lineStart + 1);
-      for (let offset = 0; offset < blockLength; offset += 1) {
-        const candidateGlobalLine = block.lineStart + offset;
-        const candidateFileLine = block.fileLineStart + offset;
-        const distance = Math.abs(candidateFileLine - preferredFileLine);
-
-        if (distance < bestDistance) {
-          bestDistance = distance;
-          bestLine = candidateGlobalLine;
-          continue;
-        }
-
-        if (distance === bestDistance && (bestLine === undefined || candidateGlobalLine < bestLine)) {
-          bestLine = candidateGlobalLine;
-        }
-      }
-    }
-
-    return bestLine;
-  }
-
-  private moveChipSelection(delta: number): void {
-    const chipCount = this.sortedTypes.length + this.groups.length;
-    if (chipCount === 0) return;
-    const nextIndex = this.state.selectedChipIndex + delta;
-    this.state.selectedChipIndex = wrapIndex(nextIndex, chipCount);
-    this.renderChips();
-  }
-
-  private toggleSelectedChip(): void {
-    const selectedChipIndex = this.state.selectedChipIndex;
-
-    if (selectedChipIndex < this.sortedTypes.length) {
-      const selectedType = this.sortedTypes[selectedChipIndex];
-      if (!selectedType) return;
-      this.enabledTypes.set(selectedType, !this.isTypeEnabled(selectedType));
-      this.renderChips();
-      this.renderContent();
-      return;
-    }
-
-    const selectedGroup = this.getSelectedGroupChip();
-    if (!selectedGroup) return;
-    this.applyGroupSnapshot(selectedGroup.id);
-  }
-
-  private cloneGroups(groups: readonly PersistedUiGroup[]): PersistedUiGroup[] {
-    const seenIds = new Set<string>();
-    const normalized: PersistedUiGroup[] = [];
-
-    for (let index = 0; index < groups.length; index += 1) {
-      const source = groups[index];
-      if (!source) continue;
-
-      let id = typeof source.id === "string" ? source.id.trim() : "";
-      if (id.length === 0 || seenIds.has(id)) {
-        id = crypto.randomUUID();
-      }
-      seenIds.add(id);
-
-      const rawName = typeof source.name === "string" ? source.name.trim() : "";
-      const name = rawName.length > 0 ? rawName : `group-${index + 1}`;
-      const now = new Date().toISOString();
-      const createdAt = toIsoTimestamp(source.createdAt, now);
-      const updatedAt = toIsoTimestamp(source.updatedAt, createdAt);
-
-      normalized.push({
-        id,
-        name,
-        snapshot: source.snapshot,
-        createdAt,
-        updatedAt,
-      });
-    }
-
-    return normalized;
-  }
-
-  private getGroupChipDescriptors(): Array<{ id: string; name: string }> {
-    return this.groups.map((group) => ({
-      id: group.id,
-      name: group.name,
-    }));
-  }
-
-  private getSelectedGroupChip(): PersistedUiGroup | null {
-    const groupIndex = this.state.selectedChipIndex - this.sortedTypes.length;
-    if (groupIndex < 0 || groupIndex >= this.groups.length) {
-      return null;
-    }
-    return this.groups[groupIndex] ?? null;
-  }
-
-  private getGroupChipById(groupId: string): PersistedUiGroup | null {
-    return this.groups.find((group) => group.id === groupId) ?? null;
-  }
-
-  private selectGroupChipById(groupId: string): void {
-    const groupIndex = this.groups.findIndex((group) => group.id === groupId);
-    if (groupIndex < 0) return;
-    this.state.selectedChipIndex = this.sortedTypes.length + groupIndex;
-  }
-
-  private saveOrUpdateSelectedGroup(): void {
-    const selectedGroup = this.getSelectedGroupChip();
-    if (selectedGroup) {
-      this.updateGroupSnapshot(selectedGroup.id);
-      return;
-    }
-    this.createGroupFromCurrentState();
-  }
-
-  private createGroupFromCurrentState(): void {
-    const snapshot = this.getPersistenceSnapshot();
-    const now = new Date().toISOString();
-    const group: PersistedUiGroup = {
-      id: crypto.randomUUID(),
-      name: this.generateDefaultGroupName(),
-      snapshot,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    this.groups = [...this.groups, group];
-    this.recomputeTypesState();
-    this.selectGroupChipById(group.id);
-    this.notifyGroupsChanged();
-    this.renderChips();
-
-    this.pendingGroupNameGroupId = group.id;
-    this.groupNameModal.open(group.name);
-  }
-
-  private updateGroupSnapshot(groupId: string): void {
-    const groupIndex = this.groups.findIndex((group) => group.id === groupId);
-    if (groupIndex < 0) return;
-
-    const current = this.groups[groupIndex];
-    if (!current) return;
-
-    this.groups[groupIndex] = {
-      ...current,
-      snapshot: this.getPersistenceSnapshot(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    this.selectGroupChipById(groupId);
-    this.notifyGroupsChanged();
-    this.renderChips();
-  }
-
-  private deleteSelectedGroup(): void {
-    const selectedIndex = this.state.selectedChipIndex;
-    const groupIndex = selectedIndex - this.sortedTypes.length;
-    if (groupIndex < 0 || groupIndex >= this.groups.length) return;
-
-    const removed = this.groups[groupIndex];
-    if (!removed) return;
-    this.groups.splice(groupIndex, 1);
-
-    if (this.pendingGroupNameGroupId === removed.id) {
-      this.pendingGroupNameGroupId = null;
-      this.groupNameModal.close();
-    }
-
-    this.recomputeTypesState();
-    const chipCount = this.sortedTypes.length + this.groups.length;
-    this.state.selectedChipIndex = chipCount <= 0
-      ? 0
-      : Math.min(selectedIndex, chipCount - 1);
-    this.notifyGroupsChanged();
-    this.renderChips();
-  }
-
-  private applyGroupSnapshot(groupId: string): void {
-    const group = this.getGroupChipById(groupId);
-    if (!group) return;
-
-    this.applyPersistedUiState(group.snapshot);
-    this.selectGroupChipById(group.id);
-    this.renderAll();
-    this.restorePersistedCursorState();
-  }
-
-  private submitGroupName(): void {
-    if (!this.groupNameModal.isVisible) return;
-
-    const groupId = this.pendingGroupNameGroupId;
-    this.pendingGroupNameGroupId = null;
-    const requestedName = this.groupNameModal.getName();
-    this.groupNameModal.close();
-
-    if (!groupId) return;
-
-    if (requestedName.length > 0) {
-      const groupIndex = this.groups.findIndex((group) => group.id === groupId);
-      const group = groupIndex >= 0 ? this.groups[groupIndex] : null;
-      if (group) {
-        const uniqueName = this.ensureUniqueGroupName(requestedName, groupId);
-        if (group.name !== uniqueName) {
-          this.groups[groupIndex] = {
-            ...group,
-            name: uniqueName,
-            updatedAt: new Date().toISOString(),
-          };
-          this.notifyGroupsChanged();
-        }
-      }
-    }
-
-    this.selectGroupChipById(groupId);
-    this.renderChips();
-  }
-
-  private cancelGroupName(): void {
-    if (!this.groupNameModal.isVisible) return;
-    this.pendingGroupNameGroupId = null;
-    this.groupNameModal.close();
-    this.renderChips();
-  }
-
-  private handleGroupNameInputKey(
-    key: KeyEvent,
-    consume: (event: KeyEvent) => void,
-  ): void {
-    this.groupNameModal.handleInputKey(key, consume);
-  }
-
-  private generateDefaultGroupName(): string {
-    const existing = new Set(this.groups.map((group) => group.name.toLowerCase()));
-    let index = 1;
-    while (existing.has(`group-${index}`)) {
-      index += 1;
-    }
-    return `group-${index}`;
-  }
-
-  private ensureUniqueGroupName(candidateName: string, excludedGroupId?: string): string {
-    const trimmed = candidateName.replace(/\s+/g, " ").trim();
-    const baseName = trimmed.length > 0 ? trimmed : "group";
-    const usedNames = new Set(
-      this.groups
-        .filter((group) => group.id !== excludedGroupId)
-        .map((group) => group.name.toLowerCase()),
-    );
-
-    if (!usedNames.has(baseName.toLowerCase())) {
-      return baseName;
-    }
-
-    let suffix = 2;
-    while (usedNames.has(`${baseName}-${suffix}`.toLowerCase())) {
-      suffix += 1;
-    }
-    return `${baseName}-${suffix}`;
-  }
-
-  private notifyGroupsChanged(): void {
-    if (!this.onPersistedGroupsChanged) return;
-    this.onPersistedGroupsChanged(this.cloneGroups(this.groups));
   }
 
   private toggleFilesExplorerMode(): void {
@@ -1186,7 +751,7 @@ export class CodeBrowserApp {
       this.entries,
       this.enabledTypes,
       this.state.selectedChipIndex,
-      this.groups.length,
+      this.groupManagement.getGroups().length,
       this.virtualCodeBlocks.getSupplementalTypes(),
     );
     this.typeCounts = nextState.typeCounts;
@@ -1228,7 +793,7 @@ export class CodeBrowserApp {
       .then(() => {
         this.pendingEntryLoads.delete(entry.relativePath);
         this.renderContent();
-        this.restorePersistedCursorState();
+        this.persistedCursor.restore();
       })
       .catch((error: unknown) => {
         this.pendingEntryLoads.delete(entry.relativePath);
@@ -1244,24 +809,7 @@ export class CodeBrowserApp {
 
 }
 
-function toIsoTimestamp(value: unknown, fallback: string): string {
-  if (typeof value !== "string") return fallback;
-  const parsed = Date.parse(value);
-  if (!Number.isFinite(parsed)) return fallback;
-  return new Date(parsed).toISOString();
-}
-
 function toNonNegativeInteger(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.floor(value));
-}
-
-function normalizePersistedLineText(value: string | null): string | null {
-  if (typeof value !== "string") return null;
-  const withoutTrailingCarriageReturn = value.endsWith("\r") ? value.slice(0, -1) : value;
-  return withoutTrailingCarriageReturn;
-}
-
-function isPersistableFilePath(filePath: string): boolean {
-  return filePath.length > 0 && filePath !== "." && !filePath.startsWith("virtual://");
 }

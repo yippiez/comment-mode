@@ -1,7 +1,7 @@
 import { KeyEvent } from "@opentui/core";
 import { OpenCode } from "../integrations/opencode";
 import { emit, SIGNALS } from "../signals";
-import type { ViewMode } from "../types";
+import type { AppKeyInput, ViewMode } from "../types";
 import { readFromClipboard } from "../utils/clipboard";
 import { wrapIndex } from "../utils/math";
 import {
@@ -162,19 +162,18 @@ export class Prompt {
     this.submit();
   }
 
-  public handlePromptInputKey(key: KeyEvent, consumeKey: (event: KeyEvent) => void): void {
-    if (this.isComposerDestroyed()) return;
+  public handlePromptInputKey(key: AppKeyInput): boolean {
+    if (!this.visible || this.isComposerDestroyed()) return false;
 
     if (this.isClipboardPasteKey(key)) {
-      consumeKey(key);
       void this.pasteClipboardIntoPrompt();
-      return;
+      return true;
     }
 
-    const handled = this.promptComposer.promptInput.handleKeyPress(key);
-    if (!handled) return;
-    consumeKey(key);
+    const handled = this.promptComposer.promptInput.handleKeyPress(new KeyEvent(key));
+    if (!handled) return false;
     this.render();
+    return true;
   }
 
   public handlePromptPasteText(text: string): void {
@@ -363,7 +362,7 @@ export class Prompt {
     return this.promptComposer.renderable.isDestroyed || this.promptComposer.promptInput.isDestroyed;
   }
 
-  private isClipboardPasteKey(key: KeyEvent): boolean {
+  private isClipboardPasteKey(key: AppKeyInput): boolean {
     if (key.repeated) return false;
     return key.ctrl && (key.name ?? "").toLowerCase() === "v";
   }

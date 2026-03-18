@@ -1,6 +1,7 @@
 import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { isRecord } from "./utils/guards";
 
 export const PERSISTED_UI_STATE_VERSION = 1;
 const DEFAULT_PERSISTED_THINKING_LEVEL = "auto";
@@ -284,8 +285,4 @@ function toTrimmedString(value: unknown, fallback = ""): string {
   if (typeof value !== "string") return fallback;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : fallback;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }

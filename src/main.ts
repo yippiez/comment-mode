@@ -3,10 +3,10 @@ import { CodeBrowserApp } from "./app";
 import { loadCodeFileEntries } from "./files";
 import { loadPersistedGroups, savePersistedGroups, type PersistedUiGroup } from "./groups";
 import { registerTreeSitterParsers } from "./integrations/treesitter";
-import { watchWorkspace } from "./live-reload";
 import { loadPersistedUiState, PersistedUiStateWriter } from "./persistence";
 import { resolveWorkspaceRoot } from "./project-root";
-import { deregister, register, SIGNALS } from "./signals";
+import { emit, register, deregister, SIGNALS } from "./signals";
+import { getIgnoredDirs, watchWorkspace } from "./workspace";
 
 registerTreeSitterParsers();
 
@@ -98,7 +98,10 @@ const focusRegistrationId = register(SIGNALS.onFocus, () => {
   void refreshEntries();
 });
 
-const watcher = await watchWorkspace(rootDir);
+const ignoredDirs = await getIgnoredDirs(rootDir);
+const watcher = await watchWorkspace(rootDir, ignoredDirs, () => {
+  emit(SIGNALS.workspaceChanged);
+});
 
 renderer.on("destroy", () => {
   clearInterval(persistenceInterval);

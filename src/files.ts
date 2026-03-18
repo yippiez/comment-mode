@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { getIgnoredDirs, loadCodeFileEntries as loadWorkspaceCodeFileEntries } from "./workspace";
 import type { CodeFileEntry } from "./types";
+import { countLogicalLines } from "./utils/text";
 
 export function isMissingCodeFileError(error: unknown): boolean {
   if (typeof error !== "object" || error === null) return false;
@@ -30,9 +31,4 @@ export async function hydrateCodeFileEntry(
   entry.content = content;
   entry.lineCount = countLogicalLines(content);
   entry.isContentLoaded = true;
-}
-
-function countLogicalLines(content: string): number {
-  if (content.length === 0) return 1;
-  return content.split("\n").length;
 }

@@ -1,4 +1,9 @@
-import type { CodeRenderable, LineNumberRenderable, RGBA } from "@opentui/core";
+import type {
+  CodeRenderable,
+  KeyEvent as OpenTuiKeyEvent,
+  LineNumberRenderable,
+  RGBA,
+} from "@opentui/core";
 
 /**
  * App-level focus target for keyboard routing.
@@ -8,6 +13,33 @@ import type { CodeRenderable, LineNumberRenderable, RGBA } from "@opentui/core";
  * - `prompt`: inline prompt composer
  */
 export type FocusMode = "chips" | "code" | "prompt";
+
+/**
+ * Normalized keyboard input payload passed through app boundaries.
+ *
+ * This keeps the data needed to reconstruct an OpenTUI `KeyEvent` locally
+ * without leaking the mutable event instance through the global signal layer.
+ */
+export type AppKeyInput = Pick<
+  OpenTuiKeyEvent,
+  | "name"
+  | "ctrl"
+  | "meta"
+  | "shift"
+  | "option"
+  | "sequence"
+  | "number"
+  | "raw"
+  | "eventType"
+  | "source"
+  | "code"
+  | "super"
+  | "hyper"
+  | "capsLock"
+  | "numLock"
+  | "baseCode"
+  | "repeated"
+>;
 
 /**
  * Context mode label captured for prompt submissions.

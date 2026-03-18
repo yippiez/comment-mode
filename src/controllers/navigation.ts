@@ -10,7 +10,7 @@ type NavigationBindings = {
   getAnchorDividerDisplayRow: (anchor: { filePath: string; dividerRow: number }) => number;
 };
 
-export class Navigation {
+export class NavigationController {
   private static readonly REPEATED_MOVE_THROTTLE_MS = 14;
 
   private readonly bindings: NavigationBindings;
@@ -25,7 +25,7 @@ export class Navigation {
   public shouldThrottleRepeatedMove(repeated: boolean): boolean {
     if (!repeated) return false;
     const now = Date.now();
-    if (now - this.lastRepeatedMoveAt < Navigation.REPEATED_MOVE_THROTTLE_MS) {
+    if (now - this.lastRepeatedMoveAt < NavigationController.REPEATED_MOVE_THROTTLE_MS) {
       return true;
     }
     this.lastRepeatedMoveAt = now;
@@ -101,3 +101,5 @@ export class Navigation {
     this.bindings.cursor.goToLine(next, "auto");
   }
 }
+
+export { NavigationController as Navigation };

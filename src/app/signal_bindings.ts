@@ -2,8 +2,7 @@ import type { KeyEvent, PasteEvent } from "@opentui/core";
 import type { PromptComposerField } from "./prompt-composer-bar";
 import type { PromptSubmission } from "../controllers/prompt";
 import { SIGNALS, emit, type SignalGroup } from "../signals";
-import type { FocusMode } from "../types";
-import { toPromptFieldDelta, toSignedUnit } from "../utils/guards";
+import type { AppKeyInput, FocusMode } from "../types";
 
 const CODE_KEYMAP = {
   up: "move_up",
@@ -68,7 +67,25 @@ const consumePasteEvent = (event: PasteEvent): void => {
 const isShortcutsToggleKey = (keyName: string, rawKeyName: string | undefined, key: KeyEvent): boolean =>
   keyName === "?" || rawKeyName === "?" || (keyName === "/" && Boolean(key.shift));
 
-const isPromptPasteKey = (keyName: string, key: KeyEvent): boolean => keyName === "v" && key.ctrl;
+const toAppKeyInput = (key: KeyEvent): AppKeyInput => ({
+  name: key.name,
+  ctrl: key.ctrl,
+  meta: key.meta,
+  shift: key.shift,
+  option: key.option,
+  sequence: key.sequence,
+  number: key.number,
+  raw: key.raw,
+  eventType: key.eventType,
+  source: key.source,
+  code: key.code,
+  super: key.super,
+  hyper: key.hyper,
+  capsLock: key.capsLock,
+  numLock: key.numLock,
+  baseCode: key.baseCode,
+  repeated: key.repeated,
+});
 
 function subscribeToSource<EventName extends string, Handler extends (...args: any[]) => void>(
   source: EventSource<EventName, Handler>,
@@ -87,14 +104,26 @@ function subscribeToSource<EventName extends string, Handler extends (...args: a
   };
 }
 
+type KeyboardSignalBindingsOptions = {
+  getState: () => KeyboardStateSnapshot;
+  handleGroupNameInputKey: (key: AppKeyInput) => boolean;
+  handleGroupNamePasteText: (text: string) => void;
+  handlePromptInputKey: (key: AppKeyInput) => boolean;
+  handlePromptPasteText: (text: string) => void;
+};
+
 export function registerKeyboardSignalBindings(
   source: KeypressSource,
-  getState: () => KeyboardStateSnapshot,
+  options: KeyboardSignalBindingsOptions,
 ): () => void {
   let pendingGChordAt: number | null = null;
   const gChordTimeoutMs = 500;
 
-  const emitHandled = (key: KeyEvent, signalGroup: SignalGroup, ...args: unknown[]): void => {
+  const emitHandled = <Args extends unknown[]>(
+    key: KeyEvent,
+    signalGroup: SignalGroup<Args>,
+    ...args: Args
+  ): void => {
     consumeKeyEvent(key);
     emit(signalGroup, ...args);
   };
@@ -110,12 +139,7 @@ export function registerKeyboardSignalBindings(
       return;
     }
 
-    if (isPromptPasteKey(keyName, key)) {
-      emit(SIGNALS.promptInputKey, key);
-      return;
-    }
-
-    const { promptField } = getState();
+    const { promptField } = options.getState();
     if (promptField === "model") {
       if (keyName === "left" || keyName === "up") {
         emitHandled(key, SIGNALS.promptModelCycle, -1);
@@ -155,7 +179,10 @@ export function registerKeyboardSignalBindings(
       return;
     }
 
-    emit(SIGNALS.promptInputKey, key);
+    const handled = options.handlePromptInputKey(toAppKeyInput(key));
+    if (handled) {
+      consumeKeyEvent(key);
+    }
   };
 
   const routeGroupNamePrompt = (keyName: string, key: KeyEvent): void => {
@@ -169,7 +196,10 @@ export function registerKeyboardSignalBindings(
       return;
     }
 
-    emit(SIGNALS.groupsNameInputKey, key);
+    const handled = options.handleGroupNameInputKey(toAppKeyInput(key));
+    if (handled) {
+      consumeKeyEvent(key);
+    }
   };
 
   const routeCode = (keyName: string, rawKeyName: string | undefined, key: KeyEvent): void => {
@@ -276,7 +306,7 @@ export function registerKeyboardSignalBindings(
   const onKeypress = (key: KeyEvent): void => {
     const keyName = (key.name ?? "").toLowerCase();
     const rawKeyName = key.name;
-    const state = getState();
+    const state = options.getState();
 
     if (state.groupNamePromptVisible) {
       routeGroupNamePrompt(keyName, key);
@@ -371,17 +401,17 @@ export function registerKeyboardSignalBindings(
     const pastedText = event.text;
     if (!pastedText) return;
 
-    const state = getState();
+    const state = options.getState();
     if (state.groupNamePromptVisible) {
       consumePasteEvent(event);
-      emit(SIGNALS.groupsNameInputPaste, pastedText);
+      options.handleGroupNamePasteText(pastedText);
       return;
     }
 
     if (!state.promptVisible) return;
 
     consumePasteEvent(event);
-    emit(SIGNALS.promptInputPaste, pastedText);
+    options.handlePromptPasteText(pastedText);
   };
 
   const cleanupFns: Array<() => void> = [subscribeToSource(source, "keypress", onKeypress)];
@@ -444,7 +474,10 @@ export function registerSystemSignalBindings(source: StdoutSource, focusSource?:
 }
 
 type RegisterAppSignalHandlersOptions = {
-  onSignal: (signalGroup: SignalGroup, handler: (...args: unknown[]) => void) => void;
+  onSignal: <Args extends unknown[]>(
+    signalGroup: SignalGroup<Args>,
+    handler: (...args: Args) => void,
+  ) => void;
   toggleShortcutsModal: () => void;
   scrollShortcutsModalByLines: (delta: number) => void;
   scrollShortcutsModalByPages: (delta: number) => void;
@@ -485,10 +518,6 @@ type RegisterAppSignalHandlersOptions = {
   cyclePromptModel: (delta: -1 | 1) => void;
   cyclePromptThinkingLevel: (delta: -1 | 1) => void;
   refreshPromptModels: () => void;
-  handleGroupNameInputKey: (key: KeyEvent, consume: (event: KeyEvent) => void) => void;
-  handleGroupNamePasteText: (text: string) => void;
-  handlePromptInputKey: (key: KeyEvent, consume: (event: KeyEvent) => void) => void;
-  handlePromptPasteText: (text: string) => void;
   handleExternalScroll: (position: number) => void;
   renderAll: () => void;
   renderChips: () => void;
@@ -499,25 +528,41 @@ type RegisterAppSignalHandlersOptions = {
 };
 
 export function registerAppSignalHandlers(options: RegisterAppSignalHandlersOptions): void {
-  let pendingResizeRerender: ReturnType<typeof setTimeout> | undefined;
-  let pendingResizeSettleRerender: ReturnType<typeof setTimeout> | undefined;
+  const resizeState: ResizeRerenderState = {};
 
+  registerShortcutSignalHandlers(options);
+  registerChromeSignalHandlers(options);
+  registerChipSignalHandlers(options);
+  registerCursorSignalHandlers(options);
+  registerFileAndVisualSignalHandlers(options);
+  registerGroupSignalHandlers(options);
+  registerNavigationSignalHandlers(options);
+  registerPromptSignalHandlers(options);
+  registerScrollSignalHandlers(options);
+  registerViewportSignalHandlers(options, resizeState);
+  registerRenderSignalHandlers(options);
+}
+
+type ResizeRerenderState = {
+  pendingResizeRerender?: ReturnType<typeof setTimeout>;
+  pendingResizeSettleRerender?: ReturnType<typeof setTimeout>;
+};
+
+function registerShortcutSignalHandlers(options: RegisterAppSignalHandlersOptions): void {
   options.onSignal(SIGNALS.shortcutsToggle, () => {
     options.toggleShortcutsModal();
   });
 
-  options.onSignal(SIGNALS.shortcutsScrollLines, (...args) => {
-    const delta = toSignedUnit(args[0]);
-    if (delta === null) return;
+  options.onSignal(SIGNALS.shortcutsScrollLines, (delta) => {
     options.scrollShortcutsModalByLines(delta);
   });
 
-  options.onSignal(SIGNALS.shortcutsScrollPages, (...args) => {
-    const delta = toSignedUnit(args[0]);
-    if (delta === null) return;
+  options.onSignal(SIGNALS.shortcutsScrollPages, (delta) => {
     options.scrollShortcutsModalByPages(delta);
   });
+}
 
+function registerChromeSignalHandlers(options: RegisterAppSignalHandlersOptions): void {
   options.onSignal(SIGNALS.themeToggle, () => {
     options.toggleTheme();
   });
@@ -529,30 +574,27 @@ export function registerAppSignalHandlers(options: RegisterAppSignalHandlersOpti
   options.onSignal(SIGNALS.appQuit, () => {
     options.destroyRenderer();
   });
+}
 
-  options.onSignal(SIGNALS.chipsMove, (...args) => {
-    const delta = toSignedUnit(args[0]);
-    if (delta === null) return;
+function registerChipSignalHandlers(options: RegisterAppSignalHandlersOptions): void {
+  options.onSignal(SIGNALS.chipsMove, (delta) => {
     options.moveChipSelection(delta);
   });
 
   options.onSignal(SIGNALS.chipsToggleSelected, () => {
     options.toggleSelectedChip();
   });
+}
 
-  options.onSignal(SIGNALS.cursorMove, (...args) => {
-    const delta = toSignedUnit(args[0]);
-    if (delta === null) return;
-    const repeated = args[1] === true;
+function registerCursorSignalHandlers(options: RegisterAppSignalHandlersOptions): void {
+  options.onSignal(SIGNALS.cursorMove, (delta, repeated) => {
     if (options.shouldThrottleRepeatedMove(repeated)) {
       return;
     }
     options.moveCursorBy(delta);
   });
 
-  options.onSignal(SIGNALS.cursorPage, (...args) => {
-    const delta = toSignedUnit(args[0]);
-    if (delta === null) return;
+  options.onSignal(SIGNALS.cursorPage, (delta) => {
     options.moveCursorBy(options.getCursorPageStep() * delta);
     if (delta < 0) {
       options.goCursorToMinVisibleHeight();
@@ -560,7 +602,9 @@ export function registerAppSignalHandlers(options: RegisterAppSignalHandlersOpti
     }
     options.goCursorToMaxVisibleHeight();
   });
+}
 
+function registerFileAndVisualSignalHandlers(options: RegisterAppSignalHandlersOptions): void {
   options.onSignal(SIGNALS.visualToggle, () => {
     options.toggleVisualMode();
   });
@@ -596,7 +640,9 @@ export function registerAppSignalHandlers(options: RegisterAppSignalHandlersOpti
   options.onSignal(SIGNALS.filesResetVisibility, () => {
     options.resetVisibilityState();
   });
+}
 
+function registerGroupSignalHandlers(options: RegisterAppSignalHandlersOptions): void {
   options.onSignal(SIGNALS.groupsSaveOrUpdate, () => {
     options.saveOrUpdateSelectedGroup();
   });
@@ -612,7 +658,9 @@ export function registerAppSignalHandlers(options: RegisterAppSignalHandlersOpti
   options.onSignal(SIGNALS.groupsNameCancel, () => {
     options.cancelGroupName();
   });
+}
 
+function registerNavigationSignalHandlers(options: RegisterAppSignalHandlersOptions): void {
   options.onSignal(SIGNALS.navJumpTop, () => {
     options.jumpToTop();
   });
@@ -636,7 +684,9 @@ export function registerAppSignalHandlers(options: RegisterAppSignalHandlersOpti
   options.onSignal(SIGNALS.agentDeleteAtCursor, () => {
     options.deleteCurrentAgentPrompt();
   });
+}
 
+function registerPromptSignalHandlers(options: RegisterAppSignalHandlersOptions): void {
   options.onSignal(SIGNALS.promptClose, () => {
     options.closePrompt();
   });
@@ -649,21 +699,15 @@ export function registerAppSignalHandlers(options: RegisterAppSignalHandlersOpti
     options.openFromCurrentSelection();
   });
 
-  options.onSignal(SIGNALS.promptFieldCycle, (...args) => {
-    const delta = toPromptFieldDelta(args[0]);
-    if (delta === null) return;
+  options.onSignal(SIGNALS.promptFieldCycle, (delta) => {
     options.cyclePromptField(delta);
   });
 
-  options.onSignal(SIGNALS.promptModelCycle, (...args) => {
-    const delta = toSignedUnit(args[0]);
-    if (delta === null) return;
+  options.onSignal(SIGNALS.promptModelCycle, (delta) => {
     options.cyclePromptModel(delta);
   });
 
-  options.onSignal(SIGNALS.promptThinkingCycle, (...args) => {
-    const delta = toSignedUnit(args[0]);
-    if (delta === null) return;
+  options.onSignal(SIGNALS.promptThinkingCycle, (delta) => {
     options.cyclePromptThinkingLevel(delta);
   });
 
@@ -671,76 +715,55 @@ export function registerAppSignalHandlers(options: RegisterAppSignalHandlersOpti
     options.refreshPromptModels();
   });
 
-  options.onSignal(SIGNALS.promptInputKey, (...args) => {
-    const key = args[0] as KeyEvent | undefined;
-    if (!key) return;
-    options.handlePromptInputKey(key, consumeKeyEvent);
+  options.onSignal(SIGNALS.promptFocusModeChange, (focusMode) => {
+    options.setFocusMode(focusMode);
   });
 
-  options.onSignal(SIGNALS.promptInputPaste, (...args) => {
-    const text = args[0];
-    if (typeof text !== "string" || text.length === 0) return;
-    options.handlePromptPasteText(text);
+  options.onSignal(SIGNALS.promptSubmission, (submission) => {
+    void options.submitPromptToAgent(submission).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[app] prompt submission failed: ${message}`);
+    });
   });
+}
 
-  options.onSignal(SIGNALS.groupsNameInputKey, (...args) => {
-    const key = args[0] as KeyEvent | undefined;
-    if (!key) return;
-    options.handleGroupNameInputKey(key, consumeKeyEvent);
-  });
-
-  options.onSignal(SIGNALS.groupsNameInputPaste, (...args) => {
-    const text = args[0];
-    if (typeof text !== "string" || text.length === 0) return;
-    options.handleGroupNamePasteText(text);
-  });
-
-  options.onSignal(SIGNALS.scrollVertical, (...args) => {
-    const position = args[0];
-    if (typeof position !== "number") return;
+function registerScrollSignalHandlers(options: RegisterAppSignalHandlersOptions): void {
+  options.onSignal(SIGNALS.scrollVertical, (position) => {
     options.handleExternalScroll(position);
   });
+}
 
+function registerViewportSignalHandlers(
+  options: RegisterAppSignalHandlersOptions,
+  resizeState: ResizeRerenderState,
+): void {
   options.onSignal(SIGNALS.systemStdoutResize, () => {
-    if (pendingResizeRerender) {
-      clearTimeout(pendingResizeRerender);
+    if (resizeState.pendingResizeRerender) {
+      clearTimeout(resizeState.pendingResizeRerender);
     }
-    if (pendingResizeSettleRerender) {
-      clearTimeout(pendingResizeSettleRerender);
-      pendingResizeSettleRerender = undefined;
+    if (resizeState.pendingResizeSettleRerender) {
+      clearTimeout(resizeState.pendingResizeSettleRerender);
+      resizeState.pendingResizeSettleRerender = undefined;
     }
 
-    pendingResizeRerender = setTimeout(() => {
-      pendingResizeRerender = undefined;
+    resizeState.pendingResizeRerender = setTimeout(() => {
+      resizeState.pendingResizeRerender = undefined;
       options.renderAll();
 
-      pendingResizeSettleRerender = setTimeout(() => {
-        pendingResizeSettleRerender = undefined;
+      resizeState.pendingResizeSettleRerender = setTimeout(() => {
+        resizeState.pendingResizeSettleRerender = undefined;
         options.renderAll();
       }, 90);
     }, 40);
   });
+}
 
+function registerRenderSignalHandlers(options: RegisterAppSignalHandlersOptions): void {
   options.onSignal(SIGNALS.cursorChanged, () => {
     options.applyLineHighlights();
     if (options.isPromptVisible()) {
       options.refreshPromptView();
     }
-  });
-
-  options.onSignal(SIGNALS.promptFocusModeChange, (...args) => {
-    const focusMode = args[0];
-    if (focusMode !== "code" && focusMode !== "prompt") return;
-    options.setFocusMode(focusMode);
-  });
-
-  options.onSignal(SIGNALS.promptSubmission, (...args) => {
-    const submission = args[0] as PromptSubmission | undefined;
-    if (!submission) return;
-    void options.submitPromptToAgent(submission).catch((error: unknown) => {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(`[app] prompt submission failed: ${message}`);
-    });
   });
 
   options.onSignal(SIGNALS.agentRenderRequested, () => {

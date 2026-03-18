@@ -68,3 +68,13 @@ export function estimateWrappedLines(text: string, width: number): number {
   }
   return Math.max(1, total);
 }
+
+export function countLogicalLines(content: string): number {
+  if (content.length === 0) return 1;
+  return content.split("\n").length;
+}
+
+export function normalizePersistedLineText(value: string | null): string | null {
+  if (typeof value !== "string") return null;
+  return value.endsWith("\r") ? value.slice(0, -1) : value;
+}

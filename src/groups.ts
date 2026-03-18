@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parsePersistedUiState, type PersistedUiState } from "./persistence";
+import { isRecord } from "./utils/guards";
 
 export const PERSISTED_GROUPS_VERSION = 1;
 
@@ -123,8 +124,4 @@ function normalizeIsoTimestamp(value: unknown, fallback: string): string {
   const timestamp = Date.parse(value);
   if (!Number.isFinite(timestamp)) return fallback;
   return new Date(timestamp).toISOString();
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }

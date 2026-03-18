@@ -3,6 +3,7 @@ import { existsSync, lstatSync, watch, type FSWatcher } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { isCodeExtension, resolveFileType, resolveTypeLabel, resolveTypePriority } from "./file-types";
+import { countLogicalLines } from "./utils/text";
 
 export type WorkspaceCodeFileEntry = {
   relativePath: string;
@@ -245,11 +246,6 @@ export async function watchWorkspace(
       watchers.clear();
     },
   };
-}
-
-function countLogicalLines(content: string): number {
-  if (content.length === 0) return 1;
-  return content.split("\n").length;
 }
 
 function parseIgnoredTopLevelDir(rawLine: string): string | null {

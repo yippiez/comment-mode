@@ -1,8 +1,62 @@
-export type SignalHandler = (...args: unknown[]) => void;
+import type { PromptSubmission } from "./controllers/prompt";
+import type { FocusMode } from "./types";
+
+type SignalArgs = unknown[];
+type PromptFocusMode = Extract<FocusMode, "code" | "prompt">;
+
+export type AppSignalMap = {
+  appQuit: [];
+  shortcutsToggle: [];
+  shortcutsScrollLines: [delta: -1 | 1];
+  shortcutsScrollPages: [delta: -1 | 1];
+  themeToggle: [];
+  focusToggleCodeChips: [];
+  chipsMove: [delta: -1 | 1];
+  chipsToggleSelected: [];
+  cursorMove: [delta: -1 | 1, repeated: boolean];
+  cursorPage: [delta: -1 | 1];
+  cursorChanged: [];
+  visualToggle: [];
+  visualExit: [];
+  filesToggleExplorer: [];
+  filesEnterOrOpen: [];
+  filesOpenInEditor: [];
+  filesEnterDirectory: [];
+  filesParentDir: [];
+  filesCollapseCurrent: [];
+  filesResetVisibility: [];
+  groupsSaveOrUpdate: [];
+  groupsDeleteSelected: [];
+  groupsNameSubmit: [];
+  groupsNameCancel: [];
+  navJumpTop: [];
+  navJumpBottom: [];
+  navJumpNextFile: [];
+  navJumpPrevFile: [];
+  navJumpNextAgent: [];
+  agentDeleteAtCursor: [];
+  promptClose: [];
+  promptSubmit: [];
+  promptFieldCycle: [delta: -2 | -1 | 1];
+  promptModelCycle: [delta: -1 | 1];
+  promptThinkingCycle: [delta: -1 | 1];
+  promptModelsRefresh: [];
+  promptSubmission: [submission: PromptSubmission];
+  promptFocusModeChange: [focusMode: PromptFocusMode];
+  agentRenderRequested: [];
+  scrollVertical: [position: number];
+  systemStdoutResize: [];
+  onFocus: [];
+  workspaceChanged: [];
+};
+
+export type SignalHandler<Args extends SignalArgs = []> = (...args: Args) => void;
 
 type SignalRegistration = {
   signalKey: string;
 };
+
+type RegisteredSignalHandler = SignalHandler<SignalArgs>;
 
 const TOKEN_PATTERN = /^[a-z][a-z0-9_-]*$/;
 
@@ -17,7 +71,7 @@ function assertValidSignalToken(value: string, tokenName: "group" | "subgroup"):
   }
 }
 
-export class SignalGroup {
+export class SignalGroup<Args extends SignalArgs = []> {
   public readonly group: string;
   public readonly subgroup: string;
 
@@ -32,7 +86,7 @@ export class SignalGroup {
     return `${this.group}:${this.subgroup}`;
   }
 
-  public static fromStr(raw: string): SignalGroup {
+  public static fromStr<Args extends SignalArgs = []>(raw: string): SignalGroup<Args> {
     const trimmed = raw.trim();
     const parts = trimmed.split(":");
     if (parts.length !== 2) {
@@ -43,14 +97,21 @@ export class SignalGroup {
     const subgroup = parts[1] ?? "";
     assertValidSignalToken(group, "group");
     assertValidSignalToken(subgroup, "subgroup");
-    return new SignalGroup(group, subgroup);
+    return new SignalGroup<Args>(group, subgroup);
   }
 }
 
-const registrationsBySignal = new Map<string, Map<string, SignalHandler>>();
+function createSignal<Args extends SignalArgs = []>(raw: string): SignalGroup<Args> {
+  return SignalGroup.fromStr<Args>(raw);
+}
+
+const registrationsBySignal = new Map<string, Map<string, RegisteredSignalHandler>>();
 const registrationById = new Map<string, SignalRegistration>();
 
-export function register(signalGroup: SignalGroup, handler: SignalHandler): string {
+export function register<Args extends SignalArgs>(
+  signalGroup: SignalGroup<Args>,
+  handler: SignalHandler<Args>,
+): string {
   const signalKey = signalGroup.toStr();
   const registrationId = crypto.randomUUID();
   let listeners = registrationsBySignal.get(signalKey);
@@ -58,19 +119,19 @@ export function register(signalGroup: SignalGroup, handler: SignalHandler): stri
     listeners = new Map();
     registrationsBySignal.set(signalKey, listeners);
   }
-  listeners.set(registrationId, handler);
+  listeners.set(registrationId, handler as RegisteredSignalHandler);
   registrationById.set(registrationId, {
     signalKey,
   });
   return registrationId;
 }
 
-export function emit(signalGroup: SignalGroup, ...args: unknown[]): void {
+export function emit<Args extends SignalArgs>(signalGroup: SignalGroup<Args>, ...args: Args): void {
   const signalKey = signalGroup.toStr();
   const listeners = registrationsBySignal.get(signalKey);
   if (!listeners || listeners.size === 0) return;
 
-  const activeHandlers = [...listeners.values()];
+  const activeHandlers = [...listeners.values()] as SignalHandler<Args>[];
   for (const handler of activeHandlers) {
     try {
       handler(...args);
@@ -97,52 +158,48 @@ export function deregister(registrationId: string): boolean {
   return true;
 }
 
-export const SIGNALS = {
-  appQuit: SignalGroup.fromStr("app:quit"),
-  shortcutsToggle: SignalGroup.fromStr("shortcuts:toggle"),
-  shortcutsScrollLines: SignalGroup.fromStr("shortcuts:scroll_lines"),
-  shortcutsScrollPages: SignalGroup.fromStr("shortcuts:scroll_pages"),
-  themeToggle: SignalGroup.fromStr("theme:toggle"),
-  focusToggleCodeChips: SignalGroup.fromStr("focus:toggle_code_chips"),
-  chipsMove: SignalGroup.fromStr("chips:move"),
-  chipsToggleSelected: SignalGroup.fromStr("chips:toggle_selected"),
-  cursorMove: SignalGroup.fromStr("cursor:move"),
-  cursorPage: SignalGroup.fromStr("cursor:page"),
-  cursorChanged: SignalGroup.fromStr("cursor:changed"),
-  visualToggle: SignalGroup.fromStr("visual:toggle"),
-  visualExit: SignalGroup.fromStr("visual:exit"),
-  filesToggleExplorer: SignalGroup.fromStr("files:toggle_explorer"),
-  filesEnterOrOpen: SignalGroup.fromStr("files:enter_or_open"),
-  filesOpenInEditor: SignalGroup.fromStr("files:open_in_editor"),
-  filesEnterDirectory: SignalGroup.fromStr("files:enter_directory"),
-  filesParentDir: SignalGroup.fromStr("files:parent_dir"),
-  filesCollapseCurrent: SignalGroup.fromStr("files:collapse_current"),
-  filesResetVisibility: SignalGroup.fromStr("files:reset_visibility"),
-  groupsSaveOrUpdate: SignalGroup.fromStr("groups:save_or_update"),
-  groupsDeleteSelected: SignalGroup.fromStr("groups:delete_selected"),
-  groupsNameSubmit: SignalGroup.fromStr("groups:name_submit"),
-  groupsNameCancel: SignalGroup.fromStr("groups:name_cancel"),
-  groupsNameInputKey: SignalGroup.fromStr("groups:name_input_key"),
-  groupsNameInputPaste: SignalGroup.fromStr("groups:name_input_paste"),
-  navJumpTop: SignalGroup.fromStr("nav:jump_top"),
-  navJumpBottom: SignalGroup.fromStr("nav:jump_bottom"),
-  navJumpNextFile: SignalGroup.fromStr("nav:jump_next_file"),
-  navJumpPrevFile: SignalGroup.fromStr("nav:jump_prev_file"),
-  navJumpNextAgent: SignalGroup.fromStr("nav:jump_next_agent"),
-  agentDeleteAtCursor: SignalGroup.fromStr("agent:delete_at_cursor"),
-  promptClose: SignalGroup.fromStr("prompt:close"),
-  promptSubmit: SignalGroup.fromStr("prompt:submit"),
-  promptFieldCycle: SignalGroup.fromStr("prompt:field_cycle"),
-  promptModelCycle: SignalGroup.fromStr("prompt:model_cycle"),
-  promptThinkingCycle: SignalGroup.fromStr("prompt:thinking_cycle"),
-  promptModelsRefresh: SignalGroup.fromStr("prompt:models_refresh"),
-  promptInputKey: SignalGroup.fromStr("prompt:input_key"),
-  promptInputPaste: SignalGroup.fromStr("prompt:input_paste"),
-  promptSubmission: SignalGroup.fromStr("prompt:submission"),
-  promptFocusModeChange: SignalGroup.fromStr("prompt:focus_mode_change"),
-  agentRenderRequested: SignalGroup.fromStr("agent:render_requested"),
-  scrollVertical: SignalGroup.fromStr("scroll:vertical"),
-  systemStdoutResize: SignalGroup.fromStr("system:stdout_resize"),
-  onFocus: SignalGroup.fromStr("on:focus"),
-  workspaceChanged: SignalGroup.fromStr("workspace:changed"),
+export const SIGNALS: { [K in keyof AppSignalMap]: SignalGroup<AppSignalMap[K]> } = {
+  appQuit: createSignal("app:quit"),
+  shortcutsToggle: createSignal("shortcuts:toggle"),
+  shortcutsScrollLines: createSignal("shortcuts:scroll_lines"),
+  shortcutsScrollPages: createSignal("shortcuts:scroll_pages"),
+  themeToggle: createSignal("theme:toggle"),
+  focusToggleCodeChips: createSignal("focus:toggle_code_chips"),
+  chipsMove: createSignal("chips:move"),
+  chipsToggleSelected: createSignal("chips:toggle_selected"),
+  cursorMove: createSignal("cursor:move"),
+  cursorPage: createSignal("cursor:page"),
+  cursorChanged: createSignal("cursor:changed"),
+  visualToggle: createSignal("visual:toggle"),
+  visualExit: createSignal("visual:exit"),
+  filesToggleExplorer: createSignal("files:toggle_explorer"),
+  filesEnterOrOpen: createSignal("files:enter_or_open"),
+  filesOpenInEditor: createSignal("files:open_in_editor"),
+  filesEnterDirectory: createSignal("files:enter_directory"),
+  filesParentDir: createSignal("files:parent_dir"),
+  filesCollapseCurrent: createSignal("files:collapse_current"),
+  filesResetVisibility: createSignal("files:reset_visibility"),
+  groupsSaveOrUpdate: createSignal("groups:save_or_update"),
+  groupsDeleteSelected: createSignal("groups:delete_selected"),
+  groupsNameSubmit: createSignal("groups:name_submit"),
+  groupsNameCancel: createSignal("groups:name_cancel"),
+  navJumpTop: createSignal("nav:jump_top"),
+  navJumpBottom: createSignal("nav:jump_bottom"),
+  navJumpNextFile: createSignal("nav:jump_next_file"),
+  navJumpPrevFile: createSignal("nav:jump_prev_file"),
+  navJumpNextAgent: createSignal("nav:jump_next_agent"),
+  agentDeleteAtCursor: createSignal("agent:delete_at_cursor"),
+  promptClose: createSignal("prompt:close"),
+  promptSubmit: createSignal("prompt:submit"),
+  promptFieldCycle: createSignal("prompt:field_cycle"),
+  promptModelCycle: createSignal("prompt:model_cycle"),
+  promptThinkingCycle: createSignal("prompt:thinking_cycle"),
+  promptModelsRefresh: createSignal("prompt:models_refresh"),
+  promptSubmission: createSignal("prompt:submission"),
+  promptFocusModeChange: createSignal("prompt:focus_mode_change"),
+  agentRenderRequested: createSignal("agent:render_requested"),
+  scrollVertical: createSignal("scroll:vertical"),
+  systemStdoutResize: createSignal("system:stdout_resize"),
+  onFocus: createSignal("on:focus"),
+  workspaceChanged: createSignal("workspace:changed"),
 } as const;

@@ -1,13 +1,14 @@
 import {
   BoxRenderable,
+  KeyEvent,
   TextareaRenderable,
   TextAttributes,
   TextRenderable,
   type CliRenderer,
-  type KeyEvent,
 } from "@opentui/core";
 import { theme } from "../theme";
 import { readFromClipboard } from "../utils/clipboard";
+import type { AppKeyInput } from "../types";
 
 type RuntimeTextareaStyleApi = {
   backgroundColor?: string;
@@ -139,19 +140,18 @@ export class GroupNameModal {
     return this.input.plainText.trim();
   }
 
-  public handleInputKey(key: KeyEvent, consume: (event: KeyEvent) => void): void {
-    if (!this.overlay.visible || this.isInputDestroyed()) return;
+  public handleInputKey(key: AppKeyInput): boolean {
+    if (!this.overlay.visible || this.isInputDestroyed()) return false;
 
     if (this.isClipboardPasteKey(key)) {
-      consume(key);
       void this.pasteClipboardIntoInput();
-      return;
+      return true;
     }
 
-    const handled = this.input.handleKeyPress(key);
-    if (!handled) return;
-    consume(key);
+    const handled = this.input.handleKeyPress(new KeyEvent(key));
+    if (!handled) return false;
     this.overlay.requestRender();
+    return true;
   }
 
   public handlePasteText(text: string): void {
@@ -191,7 +191,7 @@ export class GroupNameModal {
     return this.overlay.isDestroyed || this.input.isDestroyed;
   }
 
-  private isClipboardPasteKey(key: KeyEvent): boolean {
+  private isClipboardPasteKey(key: AppKeyInput): boolean {
     if (key.repeated) return false;
     return key.ctrl && (key.name ?? "").toLowerCase() === "v";
   }
