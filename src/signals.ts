@@ -1,45 +1,82 @@
 
-export interface SignalListener<T> {
-    (payload: T): void;
+export interface SignalListener<Args extends unknown[]> {
+    (...args: Args): void;
 }
 
-export interface SignalDispatcher<T> {
-    (payload: T): void;
+export interface SignalDispatcher<Args extends unknown[]> {
+    (...args: Args): void;
 }
 
-export interface SignalSubscriber<T> {
-    (listener: SignalListener<T>): SignalUnsubscriber;
+export interface SignalSubscriber<Args extends unknown[]> {
+    (listener: SignalListener<Args>): SignalUnsubscriber;
 }
 
 export interface SignalUnsubscriber {
     (): void;
 }
 
-export type Signal<T> = SignalSubscriber<T> & SignalDispatcher<T>;
-export type SignalReturn = SignalUnsubscriber & void;
+export type Signal<Args extends unknown[]> = SignalSubscriber<Args> & SignalDispatcher<Args>;
+export type SignalReturn = SignalUnsubscriber | void;
 
-export function signalCreate<T=void>(): Signal<T> {
-    let subscribers: SignalListener<T>[] = [];
+export function signalCreate<Args extends unknown[] = []>(): Signal<Args> {
+    let subscribers: SignalListener<Args>[] = [];
 
-    // Signal function with subscribers scoped
-    return (signalArgOrListener: any): any => {
-        if (typeof signalArgOrListener === "function") {
-            // Cast as SignalListener<T> and add to subscribers
-            const listener = signalArgOrListener as SignalListener<T>;
+    return ((...signalArgs: [SignalListener<Args>] | Args): SignalReturn => {
+        if (signalArgs.length === 1 && typeof signalArgs[0] === "function") {
+            const listener = signalArgs[0] as SignalListener<Args>;
             subscribers.push(listener);
 
-            // Return an unsubscriber function
             return () => {
                 subscribers = subscribers.filter((l) => l !== listener);
             };
-        } else {
-            // If it's a value run it through all subscribers
-            const payload = signalArgOrListener as T;
-            subscribers.forEach((listener) => listener(payload));
         }
-    }
+
+        subscribers.forEach((listener) => listener(...(signalArgs as Args)));
+    }) as Signal<Args>;
 }
 
-export const SIGNALS: Record<string, Signal<any>> = {
-
+export const SIGNALS = {
+  shortcutsToggle: signalCreate(),
+  shortcutsScrollLines: signalCreate<[number]>(),
+  shortcutsScrollPages: signalCreate<[number]>(),
+  themeToggle: signalCreate(),
+  focusToggleCodeChips: signalCreate(),
+  appQuit: signalCreate(),
+  chipsMove: signalCreate<[number]>(),
+  chipsToggleSelected: signalCreate(),
+  cursorMove: signalCreate<[number, boolean]>(),
+  cursorPage: signalCreate<[number]>(),
+  cursorChanged: signalCreate(),
+  visualToggle: signalCreate(),
+  visualExit: signalCreate(),
+  filesToggleExplorer: signalCreate(),
+  filesEnterOrOpen: signalCreate(),
+  filesOpenInEditor: signalCreate(),
+  filesEnterDirectory: signalCreate(),
+  filesParentDir: signalCreate(),
+  filesCollapseCurrent: signalCreate(),
+  filesResetVisibility: signalCreate(),
+  groupsSaveOrUpdate: signalCreate(),
+  groupsDeleteSelected: signalCreate(),
+  groupsNameSubmit: signalCreate(),
+  groupsNameCancel: signalCreate(),
+  navJumpTop: signalCreate(),
+  navJumpBottom: signalCreate(),
+  navJumpNextFile: signalCreate(),
+  navJumpPrevFile: signalCreate(),
+  navJumpNextAgent: signalCreate(),
+  agentDeleteAtCursor: signalCreate(),
+  promptClose: signalCreate(),
+  promptSubmit: signalCreate(),
+  promptFieldCycle: signalCreate<[number]>(),
+  promptModelCycle: signalCreate<[number]>(),
+  promptThinkingCycle: signalCreate<[number]>(),
+  promptModelsRefresh: signalCreate(),
+  promptFocusModeChange: signalCreate<[string]>(),
+  promptSubmission: signalCreate<[any]>(),
+  scrollVertical: signalCreate<[number]>(),
+  systemStdoutResize: signalCreate(),
+  onFocus: signalCreate(),
+  workspaceChanged: signalCreate(),
+  agentRenderRequested: signalCreate(),
 } as const;

@@ -2,6 +2,8 @@ import {
   BoxRenderable,
   ScrollBoxRenderable,
   type CliRenderer,
+  type KeyEvent,
+  type PasteEvent,
 } from "@opentui/core";
 import { Camera } from "../controllers/camera";
 import { OpenCode, type OpenCodeSubmission } from "../integrations/opencode";
@@ -15,7 +17,7 @@ import {
 } from "../controllers/prompt";
 import { PromptComposerBar, type PromptComposerLayout } from "./prompt-composer-bar";
 import { ShortcutsModal } from "./shortcuts_modal";
-import { SIGNALS, deregister, register, type SignalGroup } from "../signals";
+import { SIGNALS, type Signal } from "../signals";
 import { openFileInEditor } from "../utils/editor";
 import { Cursor } from "../controllers/cursor";
 import { LineModel } from "../line-model";
@@ -30,13 +32,8 @@ import type {
   FocusMode,
 } from "../types";
 import { Highlight } from "../controllers/highlight";
-import {
-  type KeyboardStateSnapshot,
-  registerAppSignalHandlers,
-  registerKeyboardSignalBindings,
-  registerScrollSignalBindings,
-  registerSystemSignalBindings,
-} from "./signal_bindings";
+import type { PromptComposerField } from "./prompt-composer-bar";
+import type { AppKeyInput } from "../types";
 import {
   createPromptTargetFromSelection,
 } from "./selection";
@@ -341,70 +338,210 @@ export class CodeBrowserApp {
   private registerBindings(): void {
     if (this.bindingCleanupFns.length > 0) return;
 
-    registerAppSignalHandlers({
-      onSignal: (signalGroup, handler) => this.onSignal(signalGroup, handler),
-      toggleShortcutsModal: () => this.toggleShortcutsModal(),
-      scrollShortcutsModalByLines: (delta) => this.scrollShortcutsModalByLines(delta),
-      scrollShortcutsModalByPages: (delta) => this.scrollShortcutsModalByPages(delta),
-      toggleTheme: () => this.toggleTheme(),
-      getFocusMode: () => this.state.focusMode,
-      setFocusMode: (mode) => this.setFocusMode(mode),
-      destroyRenderer: () => this.renderer.destroy(),
-      moveChipSelection: (delta) => this.chipSelection.moveSelection(delta),
-      toggleSelectedChip: () => this.chipSelection.toggleSelected(),
-      shouldThrottleRepeatedMove: (repeated) => this.navigation.shouldThrottleRepeatedMove(repeated),
-      moveCursorBy: (delta) => this.cursor.moveBy(delta),
-      getCursorPageStep: () => this.cursor.pageStep(),
-      goCursorToMinVisibleHeight: () => this.cursor.goToMinVisibleHeight(),
-      goCursorToMaxVisibleHeight: () => this.cursor.goToMaxVisibleHeight(),
-      toggleVisualMode: () => this.cursor.toggleVisualMode(),
-      disableVisualMode: () => this.cursor.disableVisualMode(),
-      toggleFilesExplorerMode: () => this.toggleFilesExplorerMode(),
-      openFromCurrentSelection: () => this.openFromCurrentSelection(),
-      openCurrentSelectionInEditor: () => this.openCurrentSelectionInEditor(),
-      enterCurrentDirectory: () => this.enterCurrentDirectory(),
-      goToParentDirectory: () => this.goToParentDirectory(),
-      toggleCurrentStructureCollapse: () => this.toggleCurrentStructureCollapse(),
-      resetVisibilityState: () => this.resetVisibilityState(),
-      saveOrUpdateSelectedGroup: () => this.groupManagement.saveOrUpdateSelectedGroup(),
-      deleteSelectedGroup: () => this.groupManagement.deleteSelectedGroup(),
-      submitGroupName: () => this.groupManagement.submitName(),
-      cancelGroupName: () => this.groupManagement.cancelName(),
-      jumpToTop: () => this.navigation.jumpToTop(),
-      jumpToBottom: () => this.navigation.jumpToBottom(),
-      jumpToNextFile: () => this.navigation.jumpToNextFile(),
-      jumpToPreviousFile: () => this.navigation.jumpToPreviousFile(),
-      jumpToNextAgent: () => this.navigation.jumpToNextAgent(),
-      deleteCurrentAgentPrompt: () => this.deleteCurrentAgentPrompt(),
-      closePrompt: () => this.prompt.close(),
-      isPromptVisible: () => this.prompt.isVisible,
-      submitPromptFromKeyboard: () => this.prompt.submitFromKeyboard(),
-      cyclePromptField: (delta) => this.prompt.cycleField(delta),
-      cyclePromptModel: (delta) => this.prompt.cycleModel(delta),
-      cyclePromptThinkingLevel: (delta) => this.prompt.cycleThinkingLevel(delta),
-      refreshPromptModels: () => this.prompt.refreshModels(),
-      handleExternalScroll: (position) => this.cursor.handleExternalScroll(position),
-      renderAll: () => this.renderAll(),
-      renderChips: () => this.renderChips(),
-      renderContent: () => this.renderContent(),
-      applyLineHighlights: () => this.applyLineHighlights(),
-      refreshPromptView: () => this.prompt.refreshView(),
-      submitPromptToAgent: (submission) => this.submitPromptToAgent(submission),
+    const resizeState: {
+      pendingResizeRerender?: ReturnType<typeof setTimeout>;
+      pendingResizeSettleRerender?: ReturnType<typeof setTimeout>;
+    } = {};
+
+    this.onSignal(SIGNALS.shortcutsToggle, () => {
+      this.toggleShortcutsModal();
     });
 
-    this.onSignal(SIGNALS.cursorChanged, () => this.persistedCursor.updateLastCodeCursorSnapshot());
+    this.onSignal(SIGNALS.shortcutsScrollLines, (delta) => {
+      this.scrollShortcutsModalByLines(delta);
+    });
 
-    this.bindingCleanupFns.push(
-      registerKeyboardSignalBindings(this.renderer.keyInput, {
-        getState: () => this.getKeyboardStateSnapshot(),
-        handleGroupNameInputKey: (key) => this.groupManagement.handleGroupNameInputKey(key),
-        handleGroupNamePasteText: (text) => this.groupNameModal.handlePasteText(text),
-        handlePromptInputKey: (key) => this.prompt.handlePromptInputKey(key),
-        handlePromptPasteText: (text) => this.prompt.handlePromptPasteText(text),
-      }),
-    );
-    this.bindingCleanupFns.push(registerScrollSignalBindings(this.scrollbox.verticalScrollBar));
-    this.bindingCleanupFns.push(registerSystemSignalBindings(process.stdout, this.renderer));
+    this.onSignal(SIGNALS.shortcutsScrollPages, (delta) => {
+      this.scrollShortcutsModalByPages(delta);
+    });
+
+    this.onSignal(SIGNALS.themeToggle, () => {
+      this.toggleTheme();
+    });
+
+    this.onSignal(SIGNALS.focusToggleCodeChips, () => {
+      this.setFocusMode(this.state.focusMode === "chips" ? "code" : "chips");
+    });
+
+    this.onSignal(SIGNALS.appQuit, () => {
+      this.renderer.destroy();
+    });
+
+    this.onSignal(SIGNALS.chipsMove, (delta) => {
+      this.chipSelection.moveSelection(delta);
+    });
+
+    this.onSignal(SIGNALS.chipsToggleSelected, () => {
+      this.chipSelection.toggleSelected();
+    });
+
+    this.onSignal(SIGNALS.cursorMove, (delta, repeated) => {
+      if (this.navigation.shouldThrottleRepeatedMove(repeated)) {
+        return;
+      }
+      this.cursor.moveBy(delta);
+    });
+
+    this.onSignal(SIGNALS.cursorPage, (delta) => {
+      this.cursor.moveBy(this.cursor.pageStep() * delta);
+      if (delta < 0) {
+        this.cursor.goToMinVisibleHeight();
+        return;
+      }
+      this.cursor.goToMaxVisibleHeight();
+    });
+
+    this.onSignal(SIGNALS.visualToggle, () => {
+      this.cursor.toggleVisualMode();
+    });
+
+    this.onSignal(SIGNALS.visualExit, () => {
+      this.cursor.disableVisualMode();
+    });
+
+    this.onSignal(SIGNALS.filesToggleExplorer, () => {
+      this.toggleFilesExplorerMode();
+    });
+
+    this.onSignal(SIGNALS.filesEnterOrOpen, () => {
+      this.openFromCurrentSelection();
+    });
+
+    this.onSignal(SIGNALS.filesOpenInEditor, () => {
+      this.openCurrentSelectionInEditor();
+    });
+
+    this.onSignal(SIGNALS.filesEnterDirectory, () => {
+      this.enterCurrentDirectory();
+    });
+
+    this.onSignal(SIGNALS.filesParentDir, () => {
+      this.goToParentDirectory();
+    });
+
+    this.onSignal(SIGNALS.filesCollapseCurrent, () => {
+      this.toggleCurrentStructureCollapse();
+    });
+
+    this.onSignal(SIGNALS.filesResetVisibility, () => {
+      this.resetVisibilityState();
+    });
+
+    this.onSignal(SIGNALS.groupsSaveOrUpdate, () => {
+      this.groupManagement.saveOrUpdateSelectedGroup();
+    });
+
+    this.onSignal(SIGNALS.groupsDeleteSelected, () => {
+      this.groupManagement.deleteSelectedGroup();
+    });
+
+    this.onSignal(SIGNALS.groupsNameSubmit, () => {
+      this.groupManagement.submitName();
+    });
+
+    this.onSignal(SIGNALS.groupsNameCancel, () => {
+      this.groupManagement.cancelName();
+    });
+
+    this.onSignal(SIGNALS.navJumpTop, () => {
+      this.navigation.jumpToTop();
+    });
+
+    this.onSignal(SIGNALS.navJumpBottom, () => {
+      this.navigation.jumpToBottom();
+    });
+
+    this.onSignal(SIGNALS.navJumpNextFile, () => {
+      this.navigation.jumpToNextFile();
+    });
+
+    this.onSignal(SIGNALS.navJumpPrevFile, () => {
+      this.navigation.jumpToPreviousFile();
+    });
+
+    this.onSignal(SIGNALS.navJumpNextAgent, () => {
+      this.navigation.jumpToNextAgent();
+    });
+
+    this.onSignal(SIGNALS.agentDeleteAtCursor, () => {
+      this.deleteCurrentAgentPrompt();
+    });
+
+    this.onSignal(SIGNALS.promptClose, () => {
+      this.prompt.close();
+    });
+
+    this.onSignal(SIGNALS.promptSubmit, () => {
+      if (this.prompt.isVisible) {
+        this.prompt.submitFromKeyboard();
+        return;
+      }
+      this.openFromCurrentSelection();
+    });
+
+    this.onSignal(SIGNALS.promptFieldCycle, (delta) => {
+      this.prompt.cycleField(delta);
+    });
+
+    this.onSignal(SIGNALS.promptModelCycle, (delta) => {
+      this.prompt.cycleModel(delta);
+    });
+
+    this.onSignal(SIGNALS.promptThinkingCycle, (delta) => {
+      this.prompt.cycleThinkingLevel(delta);
+    });
+
+    this.onSignal(SIGNALS.promptModelsRefresh, () => {
+      this.prompt.refreshModels();
+    });
+
+    this.onSignal(SIGNALS.promptFocusModeChange, (focusMode) => {
+      this.setFocusMode(focusMode);
+    });
+
+    this.onSignal(SIGNALS.promptSubmission, (submission) => {
+      void this.submitPromptToAgent(submission);
+    });
+
+    this.onSignal(SIGNALS.scrollVertical, (position) => {
+      this.cursor.handleExternalScroll(position);
+    });
+
+    this.onSignal(SIGNALS.cursorChanged, () => {
+      this.persistedCursor.updateLastCodeCursorSnapshot();
+      this.applyLineHighlights();
+      if (this.prompt.isVisible) {
+        this.prompt.refreshView();
+      }
+    });
+
+    this.onSignal(SIGNALS.agentRenderRequested, () => {
+      this.renderContent();
+    });
+
+    this.onSignal(SIGNALS.systemStdoutResize, () => {
+      if (resizeState.pendingResizeRerender) {
+        clearTimeout(resizeState.pendingResizeRerender);
+      }
+      if (resizeState.pendingResizeSettleRerender) {
+        clearTimeout(resizeState.pendingResizeSettleRerender);
+        resizeState.pendingResizeSettleRerender = undefined;
+      }
+
+      resizeState.pendingResizeRerender = setTimeout(() => {
+        resizeState.pendingResizeRerender = undefined;
+        this.renderAll();
+
+        resizeState.pendingResizeSettleRerender = setTimeout(() => {
+          resizeState.pendingResizeSettleRerender = undefined;
+          this.renderAll();
+        }, 90);
+      }, 40);
+    });
+
+    this.bindingCleanupFns.push(this.registerKeyboardBindings());
+    this.bindingCleanupFns.push(this.registerScrollBindings());
+    this.bindingCleanupFns.push(this.registerSystemBindings());
   }
 
   private unregisterBindings(): void {
@@ -413,17 +550,444 @@ export class CodeBrowserApp {
     }
   }
 
-  private onSignal<Args extends unknown[]>(
-    signalGroup: SignalGroup<Args>,
-    handler: (...args: Args) => void,
-  ): void {
-    const registrationId = register(signalGroup, handler);
-    this.bindingCleanupFns.push(() => {
-      deregister(registrationId);
-    });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private onSignal(signal: Signal<any>, handler: (...args: any[]) => void): void {
+    const unsub = signal(handler);
+    this.bindingCleanupFns.push(unsub);
   }
 
-  private getKeyboardStateSnapshot(): KeyboardStateSnapshot {
+  private registerKeyboardBindings(): () => void {
+    const onKeypress = (key: KeyEvent): void => {
+      const keyName = (key.name ?? "").toLowerCase();
+      const rawKeyName = key.name;
+      const state = this.getKeyboardStateSnapshot();
+
+      if (state.groupNamePromptVisible) {
+        if (keyName === "escape") {
+          key.preventDefault?.();
+          key.stopPropagation?.();
+          SIGNALS.groupsNameCancel();
+          return;
+        }
+        if (keyName === "return" || keyName === "enter") {
+          key.preventDefault?.();
+          key.stopPropagation?.();
+          SIGNALS.groupsNameSubmit();
+          return;
+        }
+        const handled = this.groupManagement.handleGroupNameInputKey(this.toAppKeyInput(key));
+        if (handled) {
+          key.preventDefault?.();
+          key.stopPropagation?.();
+        }
+        return;
+      }
+
+      if (state.promptVisible) {
+        if (keyName === "escape") {
+          key.preventDefault?.();
+          key.stopPropagation?.();
+          SIGNALS.promptClose();
+          return;
+        }
+        if (keyName === "tab") {
+          key.preventDefault?.();
+          key.stopPropagation?.();
+          SIGNALS.promptFieldCycle(1);
+          return;
+        }
+        if (state.promptField === "model") {
+          if (keyName === "left" || keyName === "up") {
+            key.preventDefault?.();
+            key.stopPropagation?.();
+            SIGNALS.promptModelCycle(-1);
+            return;
+          }
+          if (keyName === "right" || keyName === "down") {
+            key.preventDefault?.();
+            key.stopPropagation?.();
+            SIGNALS.promptModelCycle(1);
+            return;
+          }
+          if (keyName === "r") {
+            key.preventDefault?.();
+            key.stopPropagation?.();
+            SIGNALS.promptModelsRefresh();
+            return;
+          }
+          if (keyName === "return" || keyName === "enter") {
+            key.preventDefault?.();
+            key.stopPropagation?.();
+            SIGNALS.promptFieldCycle(1);
+          }
+          return;
+        }
+        if (state.promptField === "thinking") {
+          if (keyName === "left" || keyName === "up") {
+            key.preventDefault?.();
+            key.stopPropagation?.();
+            SIGNALS.promptThinkingCycle(-1);
+            return;
+          }
+          if (keyName === "right" || keyName === "down") {
+            key.preventDefault?.();
+            key.stopPropagation?.();
+            SIGNALS.promptThinkingCycle(1);
+            return;
+          }
+          if (keyName === "return" || keyName === "enter") {
+            key.preventDefault?.();
+            key.stopPropagation?.();
+            SIGNALS.promptFieldCycle(-2);
+            return;
+          }
+        }
+        if (keyName === "return" || keyName === "enter") {
+          key.preventDefault?.();
+          key.stopPropagation?.();
+          SIGNALS.promptSubmit();
+          return;
+        }
+        const handled = this.prompt.handlePromptInputKey(this.toAppKeyInput(key));
+        if (handled) {
+          key.preventDefault?.();
+          key.stopPropagation?.();
+        }
+        return;
+      }
+
+      const isShortcutsToggleKey = keyName === "?" || rawKeyName === "?" || (keyName === "/" && Boolean(key.shift));
+      if (isShortcutsToggleKey) {
+        key.preventDefault?.();
+        key.stopPropagation?.();
+        SIGNALS.shortcutsToggle();
+        return;
+      }
+
+      if (state.shortcutsVisible) {
+        if (keyName === "escape") {
+          key.preventDefault?.();
+          key.stopPropagation?.();
+          SIGNALS.shortcutsToggle();
+          return;
+        }
+        if (keyName === "up") {
+          key.preventDefault?.();
+          key.stopPropagation?.();
+          SIGNALS.shortcutsScrollLines(-1);
+          return;
+        }
+        if (keyName === "down") {
+          key.preventDefault?.();
+          key.stopPropagation?.();
+          SIGNALS.shortcutsScrollLines(1);
+          return;
+        }
+        if (keyName === "pageup") {
+          key.preventDefault?.();
+          key.stopPropagation?.();
+          SIGNALS.shortcutsScrollPages(-1);
+          return;
+        }
+        if (keyName === "pagedown") {
+          key.preventDefault?.();
+          key.stopPropagation?.();
+          SIGNALS.shortcutsScrollPages(1);
+          return;
+        }
+        key.preventDefault?.();
+        key.stopPropagation?.();
+        return;
+      }
+
+      if (keyName === "t") {
+        key.preventDefault?.();
+        key.stopPropagation?.();
+        SIGNALS.themeToggle();
+        return;
+      }
+
+      if (keyName === "tab") {
+        key.preventDefault?.();
+        key.stopPropagation?.();
+        SIGNALS.focusToggleCodeChips();
+        return;
+      }
+
+      if (keyName === "r" && key.shift) {
+        key.preventDefault?.();
+        key.stopPropagation?.();
+        SIGNALS.workspaceChanged();
+        return;
+      }
+
+      if (keyName === "r") {
+        key.preventDefault?.();
+        key.stopPropagation?.();
+        SIGNALS.filesResetVisibility();
+        return;
+      }
+
+      if (keyName === "s") {
+        key.preventDefault?.();
+        key.stopPropagation?.();
+        SIGNALS.groupsSaveOrUpdate();
+        return;
+      }
+
+      if (state.focusMode === "chips") {
+        if (keyName === "x") {
+          key.preventDefault?.();
+          key.stopPropagation?.();
+          SIGNALS.groupsDeleteSelected();
+          return;
+        }
+        if (keyName === "left") {
+          key.preventDefault?.();
+          key.stopPropagation?.();
+          SIGNALS.chipsMove(-1);
+          return;
+        }
+        if (keyName === "right") {
+          key.preventDefault?.();
+          key.stopPropagation?.();
+          SIGNALS.chipsMove(1);
+          return;
+        }
+        if (keyName === "space" || keyName === "enter" || keyName === "return") {
+          key.preventDefault?.();
+          key.stopPropagation?.();
+          SIGNALS.chipsToggleSelected();
+        }
+        return;
+      }
+
+      let pendingGChordAt: number | null = null;
+      const gChordTimeoutMs = 500;
+      const now = Date.now();
+
+      if (keyName === "up" || keyName === "k") {
+        key.preventDefault?.();
+        key.stopPropagation?.();
+        SIGNALS.cursorMove(-1, Boolean(key.repeated));
+        return;
+      }
+      if (keyName === "down" || keyName === "j") {
+        key.preventDefault?.();
+        key.stopPropagation?.();
+        SIGNALS.cursorMove(1, Boolean(key.repeated));
+        return;
+      }
+      if (keyName === "pageup") {
+        key.preventDefault?.();
+        key.stopPropagation?.();
+        SIGNALS.cursorPage(-1);
+        return;
+      }
+      if (keyName === "pagedown") {
+        key.preventDefault?.();
+        key.stopPropagation?.();
+        SIGNALS.cursorPage(1);
+        return;
+      }
+      if (keyName === "v") {
+        key.preventDefault?.();
+        key.stopPropagation?.();
+        SIGNALS.visualToggle();
+        return;
+      }
+      if (keyName === "c") {
+        key.preventDefault?.();
+        key.stopPropagation?.();
+        SIGNALS.filesCollapseCurrent();
+        return;
+      }
+      if (keyName === "escape") {
+        pendingGChordAt = null;
+        key.preventDefault?.();
+        key.stopPropagation?.();
+        SIGNALS.visualExit();
+        return;
+      }
+      const isShiftG = keyName === "g" && (Boolean(key.shift) || rawKeyName === "G");
+      if (isShiftG) {
+        pendingGChordAt = null;
+        key.preventDefault?.();
+        key.stopPropagation?.();
+        SIGNALS.navJumpBottom();
+        return;
+      }
+      if (keyName === "g" && !key.shift) {
+        if (pendingGChordAt !== null && now - pendingGChordAt <= gChordTimeoutMs) {
+          pendingGChordAt = null;
+          key.preventDefault?.();
+          key.stopPropagation?.();
+          SIGNALS.navJumpTop();
+        } else {
+          pendingGChordAt = now;
+        }
+        return;
+      }
+      if (keyName === "n") {
+        pendingGChordAt = null;
+        key.preventDefault?.();
+        key.stopPropagation?.();
+        SIGNALS.navJumpNextFile();
+        return;
+      }
+      if (keyName === "p") {
+        pendingGChordAt = null;
+        key.preventDefault?.();
+        key.stopPropagation?.();
+        SIGNALS.navJumpPrevFile();
+        return;
+      }
+      if (keyName === "a") {
+        pendingGChordAt = null;
+        key.preventDefault?.();
+        key.stopPropagation?.();
+        SIGNALS.navJumpNextAgent();
+        return;
+      }
+      if (keyName === "x") {
+        pendingGChordAt = null;
+        key.preventDefault?.();
+        key.stopPropagation?.();
+        SIGNALS.agentDeleteAtCursor();
+        return;
+      }
+      if (keyName === "e") {
+        pendingGChordAt = null;
+        key.preventDefault?.();
+        key.stopPropagation?.();
+        SIGNALS.filesOpenInEditor();
+        return;
+      }
+      pendingGChordAt = null;
+      if (keyName === "enter" || keyName === "return") {
+        key.preventDefault?.();
+        key.stopPropagation?.();
+        SIGNALS.filesEnterOrOpen();
+        return;
+      }
+      if (keyName === "backspace") {
+        key.preventDefault?.();
+        key.stopPropagation?.();
+        SIGNALS.filesParentDir();
+        return;
+      }
+    };
+
+    const onPaste = (event: PasteEvent): void => {
+      const pastedText = event.text;
+      if (!pastedText) return;
+
+      const state = this.getKeyboardStateSnapshot();
+      if (state.groupNamePromptVisible) {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        this.groupNameModal.handlePasteText(pastedText);
+        return;
+      }
+
+      if (!state.promptVisible) return;
+
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      this.prompt.handlePromptPasteText(pastedText);
+    };
+
+    this.renderer.keyInput.on("keypress", onKeypress);
+    (this.renderer.keyInput as unknown as { on: (event: string, handler: (event: PasteEvent) => void) => void }).on("paste", onPaste);
+
+    return () => {
+      this.renderer.keyInput.off("keypress", onKeypress);
+      (this.renderer.keyInput as unknown as { off: (event: string, handler: (event: PasteEvent) => void) => void }).off("paste", onPaste);
+    };
+  }
+
+  private registerScrollBindings(): () => void {
+    const onChange = (event: { position?: number } | undefined): void => {
+      const position = event?.position;
+      if (typeof position !== "number") return;
+      SIGNALS.scrollVertical(position);
+    };
+
+    this.scrollbox.verticalScrollBar.on("change", onChange);
+
+    return () => {
+      this.scrollbox.verticalScrollBar.off("change", onChange);
+    };
+  }
+
+  private registerSystemBindings(): () => void {
+    const onResize = (): void => {
+      SIGNALS.systemStdoutResize();
+    };
+
+    process.stdout.on("resize", onResize);
+
+    const rendererWithFocus = this.renderer as { on?: (event: "focus", handler: () => void) => void; off?: (event: "focus", handler: () => void) => void };
+    let focusCleanup: (() => void) | undefined;
+    if (typeof rendererWithFocus.on === "function") {
+      const onFocus = (): void => {
+        SIGNALS.onFocus();
+      };
+      rendererWithFocus.on("focus", onFocus);
+      focusCleanup = () => {
+        if (typeof rendererWithFocus.off === "function") {
+          rendererWithFocus.off("focus", onFocus);
+        }
+      };
+    }
+
+    const runtimeProcess = globalThis.process as { on?: (event: string, handler: () => void) => void; off?: (event: string, handler: () => void) => void };
+    let sigwinchCleanup: (() => void) | undefined;
+    if (typeof runtimeProcess.on === "function") {
+      runtimeProcess.on("SIGWINCH", onResize);
+      sigwinchCleanup = () => {
+        if (typeof runtimeProcess.off === "function") {
+          runtimeProcess.off("SIGWINCH", onResize);
+        }
+      };
+    }
+
+    return () => {
+      process.stdout.off("resize", onResize);
+      focusCleanup?.();
+      sigwinchCleanup?.();
+    };
+  }
+
+  private toAppKeyInput(key: KeyEvent): AppKeyInput {
+    return {
+      name: key.name,
+      ctrl: key.ctrl,
+      meta: key.meta,
+      shift: key.shift,
+      option: key.option,
+      sequence: key.sequence,
+      number: key.number,
+      raw: key.raw,
+      eventType: key.eventType,
+      source: key.source,
+      code: key.code,
+      super: key.super,
+      hyper: key.hyper,
+      capsLock: key.capsLock,
+      numLock: key.numLock,
+      baseCode: key.baseCode,
+      repeated: key.repeated,
+    };
+  }
+
+  private getKeyboardStateSnapshot(): {
+    groupNamePromptVisible: boolean;
+    promptVisible: boolean;
+    focusMode: FocusMode;
+    promptField: PromptComposerField | null;
+    shortcutsVisible: boolean;
+  } {
     return {
       groupNamePromptVisible: this.groupNameModal.isVisible,
       promptVisible: this.prompt.isVisible,

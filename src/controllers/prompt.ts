@@ -1,6 +1,6 @@
 import { KeyEvent } from "@opentui/core";
 import { OpenCode } from "../integrations/opencode";
-import { emit, SIGNALS } from "../signals";
+import { SIGNALS } from "../signals";
 import type { AppKeyInput, ViewMode } from "../types";
 import { readFromClipboard } from "../utils/clipboard";
 import { wrapIndex } from "../utils/math";
@@ -124,7 +124,7 @@ export class Prompt {
     this.field = "prompt";
     this.visible = true;
     this.syncThinkingLevelFromModel();
-    emit(SIGNALS.promptFocusModeChange, "prompt");
+    SIGNALS.promptFocusModeChange("prompt");
     if (!this.isComposerDestroyed()) {
       this.promptComposer.open(this.target.prompt);
     }
@@ -139,7 +139,7 @@ export class Prompt {
     if (!this.isComposerDestroyed()) {
       this.promptComposer.close();
     }
-    emit(SIGNALS.promptFocusModeChange, "code");
+    SIGNALS.promptFocusModeChange("code");
   }
 
   public cycleField(delta: number): void {
@@ -212,7 +212,7 @@ export class Prompt {
     };
 
     this.close();
-    emit(SIGNALS.promptSubmission, submission);
+    SIGNALS.promptSubmission(submission);
   }
 
   /** Moves active prompt field focus by delta with wrapping. */

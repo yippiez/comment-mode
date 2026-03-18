@@ -5,7 +5,7 @@ import { loadPersistedGroups, savePersistedGroups, type PersistedUiGroup } from 
 import { registerTreeSitterParsers } from "./integrations/treesitter";
 import { loadPersistedUiState, PersistedUiStateWriter } from "./persistence";
 import { resolveWorkspaceRoot } from "./project-root";
-import { emit, register, deregister, SIGNALS } from "./signals";
+import { SIGNALS } from "./signals";
 import { getIgnoredDirs, watchWorkspace } from "./workspace";
 
 registerTreeSitterParsers();
@@ -90,17 +90,17 @@ const refreshEntries = async () => {
   refreshRunning = false;
 };
 
-const workspaceChangeRegistrationId = register(SIGNALS.workspaceChanged, () => {
-  void refreshEntries();
-});
+  const workspaceChangeUnsub = SIGNALS.workspaceChanged(() => {
+    void refreshEntries();
+  });
 
-const focusRegistrationId = register(SIGNALS.onFocus, () => {
-  void refreshEntries();
-});
+  const focusUnsub = SIGNALS.onFocus(() => {
+    void refreshEntries();
+  });
 
 const ignoredDirs = await getIgnoredDirs(rootDir);
 const watcher = await watchWorkspace(rootDir, ignoredDirs, () => {
-  emit(SIGNALS.workspaceChanged);
+  SIGNALS.workspaceChanged();
 });
 
 renderer.on("destroy", () => {
@@ -109,7 +109,7 @@ renderer.on("destroy", () => {
   persistedStateWriter.flushNowSync(app.getPersistenceSnapshot());
   persistedStateWriter.dispose();
   app.shutdown();
-  deregister(workspaceChangeRegistrationId);
-  deregister(focusRegistrationId);
+  workspaceChangeUnsub();
+  focusUnsub();
   watcher.close();
 });

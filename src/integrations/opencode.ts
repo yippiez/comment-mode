@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { emit, SIGNALS } from "../signals";
+import { SIGNALS } from "../signals";
 import type { AgentModel, AgentUpdate, ViewMode } from "../types";
 
 type JsonRecord = Record<string, unknown>;
@@ -226,7 +226,7 @@ export class OpenCode {
     if (this.updates.length === previousLength) return false;
 
     this.notifyUpdatesChanged();
-    emit(SIGNALS.agentRenderRequested);
+    SIGNALS.agentRenderRequested();
     return true;
   }
 
@@ -263,7 +263,7 @@ export class OpenCode {
     update.runId = undefined;
     update.messages = [];
     this.notifyUpdatesChanged();
-    emit(SIGNALS.agentRenderRequested);
+    SIGNALS.agentRenderRequested();
 
     let result: OpenCodeRunHandle;
     try {
@@ -290,7 +290,7 @@ export class OpenCode {
             this.pushMessage(update, update.error);
           }
           this.notifyUpdatesChanged();
-          emit(SIGNALS.agentRenderRequested);
+          SIGNALS.agentRenderRequested();
         },
       });
     } catch (error) {
@@ -302,14 +302,14 @@ export class OpenCode {
       update.error = result.error;
       this.pushMessage(update, result.error);
       this.notifyUpdatesChanged();
-      emit(SIGNALS.agentRenderRequested);
+      SIGNALS.agentRenderRequested();
       return;
     }
 
     update.runId = result.runId;
     this.runningStops.set(update.id, result.stop);
     this.notifyUpdatesChanged();
-    emit(SIGNALS.agentRenderRequested);
+    SIGNALS.agentRenderRequested();
   }
 
   private pushMessage(update: AgentUpdate, message: string): void {
@@ -328,7 +328,7 @@ export class OpenCode {
     this.renderTimer = setTimeout(() => {
       this.renderTimer = null;
       this.notifyUpdatesChanged();
-      emit(SIGNALS.agentRenderRequested);
+      SIGNALS.agentRenderRequested();
     }, 60);
   }
 
