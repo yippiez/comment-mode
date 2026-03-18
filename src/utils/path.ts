@@ -1,3 +1,15 @@
+import { spawnSync } from "node:child_process";
+import path from "node:path";
+
+/**
+ * Normalizes a POSIX path by removing empty segments and redundant slashes.
+ * @param path - The POSIX path to normalize.
+ * @returns The normalized path without empty segments or leading/trailing slashes.
+ * @example
+ * normalizePosixPath("foo//bar/baz")     // "foo/bar/baz"
+ * normalizePosixPath("/foo/bar/")         // "foo/bar"
+ * normalizePosixPath("")                // ""
+ */
 export function normalizePosixPath(path: string): string {
   if (!path) return "";
   return path
@@ -6,10 +18,38 @@ export function normalizePosixPath(path: string): string {
     .join("/");
 }
 
+/**
+ * Returns the parent directory of a normalized POSIX path.
+ * @param path - The POSIX path whose parent to retrieve.
+ * @returns The parent path, or empty string if at root or invalid.
+ * @example
+ * getParentPosixPath("foo/bar/baz")      // "foo/bar"
+ * getParentPosixPath("foo/bar")          // "foo"
+ * getParentPosixPath("foo")              // ""
+ * getParentPosixPath("")                 // ""
+ */
 export function getParentPosixPath(path: string): string {
-  const normalized = normalizePosixPath(path);
-  if (!normalized) return "";
-  const parts = normalized.split("/");
-  if (parts.length <= 1) return "";
-  return parts.slice(0, -1).join("/");
+  const parts = normalizePosixPath(path).split("/");
+  return parts.length > 1 ? parts.slice(0, -1).join("/") : "";
+}
+
+/**
+ * Resolves the workspace root directory by finding the nearest git repository.
+ * Falls back to the launch directory if not in a git repository.
+ * @param launchDirectory - The directory to start searching from. Defaults to process.cwd().
+ * @returns The absolute path to the workspace root (git toplevel or launch directory).
+ */
+export function resolveWorkspaceRoot(launchDirectory = process.cwd()): string {
+  const probe = spawnSync("git", ["-C", launchDirectory, "rev-parse", "--show-toplevel"], {
+    encoding: "utf8",
+  });
+
+  if (probe.status === 0) {
+    const gitRoot = probe.stdout.trim();
+    if (gitRoot.length > 0) {
+      return path.resolve(gitRoot);
+    }
+  }
+
+  return path.resolve(launchDirectory);
 }

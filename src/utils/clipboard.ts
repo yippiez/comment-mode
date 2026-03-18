@@ -2,12 +2,12 @@ import { spawn } from "node:child_process";
 
 type ClipboardCommand = { command: string; args: string[] };
 
-const CLIPBOARD_WRITE_COMMANDS: ClipboardCommand[] = [
-  { command: "wl-copy", args: [] },
-  { command: "xclip", args: ["-selection", "clipboard"] },
-  { command: "xsel", args: ["--clipboard", "--input"] },
-  { command: "pbcopy", args: [] },
-];
+// const CLIPBOARD_WRITE_COMMANDS: ClipboardCommand[] = [
+//   { command: "wl-copy", args: [] },
+//   { command: "xclip", args: ["-selection", "clipboard"] },
+//   { command: "xsel", args: ["--clipboard", "--input"] },
+//   { command: "pbcopy", args: [] },
+// ];
 
 const CLIPBOARD_READ_COMMANDS: ClipboardCommand[] = [
   { command: "wl-paste", args: ["--no-newline"] },
@@ -15,18 +15,6 @@ const CLIPBOARD_READ_COMMANDS: ClipboardCommand[] = [
   { command: "xsel", args: ["--clipboard", "--output"] },
   { command: "pbpaste", args: [] },
 ];
-
-/** Copies text to clipboard using native tools, then OSC52 fallback. */
-export async function copyToClipboard(text: string): Promise<boolean> {
-  if (!text) return false;
-
-  for (const entry of CLIPBOARD_WRITE_COMMANDS) {
-    const ok = await runClipboardWriteCommand(entry.command, entry.args, text);
-    if (ok) return true;
-  }
-
-  return writeOsc52Clipboard(text);
-}
 
 /** Reads text from system clipboard using native tools. */
 export async function readFromClipboard(): Promise<string | null> {
@@ -38,26 +26,20 @@ export async function readFromClipboard(): Promise<string | null> {
   return null;
 }
 
-function runClipboardWriteCommand(command: string, args: string[], text: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    let settled = false;
-    const child = spawn(command, args, {
-      stdio: ["pipe", "ignore", "ignore"],
-    });
+/**
+ * Executes a clipboard write command via child process spawn.
+ * @param command - The command to execute.
+ * @param args - Arguments to pass to the command.
+ * @param text - The text to write to the command's stdin.
+ * @returns True if the command exited with code 0, false otherwise.
+ */
 
-    const finish = (ok: boolean) => {
-      if (settled) return;
-      settled = true;
-      resolve(ok);
-    };
-
-    child.on("error", () => finish(false));
-    child.on("close", (code) => finish(code === 0));
-    child.stdin.on("error", () => finish(false));
-    child.stdin.end(text);
-  });
-}
-
+/**
+ * Executes a clipboard read command via child process spawn.
+ * @param command - The command to execute.
+ * @param args - Arguments to pass to the command.
+ * @returns The captured stdout text, or null if the command failed.
+ */
 function runClipboardReadCommand(command: string, args: string[]): Promise<string | null> {
   return new Promise((resolve) => {
     let settled = false;
@@ -87,12 +69,3 @@ function runClipboardReadCommand(command: string, args: string[]): Promise<strin
   });
 }
 
-function writeOsc52Clipboard(text: string): boolean {
-  try {
-    const base64 = Buffer.from(text, "utf8").toString("base64");
-    process.stdout.write(`\u001b]52;c;${base64}\u0007`);
-    return true;
-  } catch {
-    return false;
-  }
-}

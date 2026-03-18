@@ -26,16 +26,12 @@ export async function getIgnoredDirs(root: string): Promise<Set<string>> {
   const ignored = new Set<string>([".git", ".comment"]);
   const gitignorePath = path.join(root, ".gitignore");
 
-  try {
     const content = await readFile(gitignorePath, "utf8");
     for (const line of content.split("\n")) {
       const ignoredDir = parseIgnoredTopLevelDir(line);
       if (!ignoredDir) continue;
       ignored.add(ignoredDir);
     }
-  } catch {
-    // Ignore missing .gitignore.
-  }
 
   return ignored;
 }
