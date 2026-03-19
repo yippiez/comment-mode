@@ -21,108 +21,108 @@ const PERSISTENCE_DIRNAME = ".comment";
 const PERSISTENCE_FILENAME = "groups.json";
 
 export async function loadPersistedGroups(rootDir: string): Promise<PersistedUiGroup[]> {
-  const filePath = getPersistedGroupsFilePath(rootDir);
-  try {
-    const raw = await readFile(filePath, "utf8");
-    const parsed = JSON.parse(raw) as unknown;
-    const normalized = parsePersistedGroupsFile(parsed);
-    return normalized?.groups ?? [];
-  } catch {
-    return [];
-  }
+    const filePath = getPersistedGroupsFilePath(rootDir);
+    try {
+        const raw = await readFile(filePath, "utf8");
+        const parsed = JSON.parse(raw) as unknown;
+        const normalized = parsePersistedGroupsFile(parsed);
+        return normalized?.groups ?? [];
+    } catch {
+        return [];
+    }
 }
 
 export async function savePersistedGroups(rootDir: string, groups: readonly PersistedUiGroup[]): Promise<void> {
-  const filePath = getPersistedGroupsFilePath(rootDir);
-  const directoryPath = path.dirname(filePath);
-  const serialized = serializePersistedGroups(groups);
-  await mkdir(directoryPath, { recursive: true });
-  const tempPath = `${filePath}.${process.pid}.tmp`;
-  await writeFile(tempPath, serialized, "utf8");
-  await rename(tempPath, filePath);
+    const filePath = getPersistedGroupsFilePath(rootDir);
+    const directoryPath = path.dirname(filePath);
+    const serialized = serializePersistedGroups(groups);
+    await mkdir(directoryPath, { recursive: true });
+    const tempPath = `${filePath}.${process.pid}.tmp`;
+    await writeFile(tempPath, serialized, "utf8");
+    await rename(tempPath, filePath);
 }
 
 function getPersistedGroupsFilePath(rootDir: string): string {
-  return path.join(rootDir, PERSISTENCE_DIRNAME, PERSISTENCE_FILENAME);
+    return path.join(rootDir, PERSISTENCE_DIRNAME, PERSISTENCE_FILENAME);
 }
 
 function serializePersistedGroups(groups: readonly PersistedUiGroup[]): string {
-  const normalized = normalizePersistedGroups(groups);
-  return `${JSON.stringify(
-    {
-      version: PERSISTED_GROUPS_VERSION,
-      groups: normalized,
-    },
-    null,
-    2,
-  )}\n`;
+    const normalized = normalizePersistedGroups(groups);
+    return `${JSON.stringify(
+        {
+            version: PERSISTED_GROUPS_VERSION,
+            groups: normalized,
+        },
+        null,
+        2,
+    )}\n`;
 }
 
 function normalizePersistedGroups(groups: readonly PersistedUiGroup[]): PersistedUiGroup[] {
-  const normalized = parsePersistedGroupsFile({
-    version: PERSISTED_GROUPS_VERSION,
-    groups,
-  });
-  return normalized?.groups ?? [];
+    const normalized = parsePersistedGroupsFile({
+        version: PERSISTED_GROUPS_VERSION,
+        groups,
+    });
+    return normalized?.groups ?? [];
 }
 
 function parsePersistedGroupsFile(value: unknown): PersistedUiGroupsFile | null {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
-  const record = value as Record<string, unknown>;
-  if (record.version !== PERSISTED_GROUPS_VERSION) return null;
-  if (!Array.isArray(record.groups)) return null;
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+    const record = value as Record<string, unknown>;
+    if (record.version !== PERSISTED_GROUPS_VERSION) return null;
+    if (!Array.isArray(record.groups)) return null;
 
-  const groups: PersistedUiGroup[] = [];
-  const seenIds = new Set<string>();
+    const groups: PersistedUiGroup[] = [];
+    const seenIds = new Set<string>();
 
-  for (const [index, groupValue] of record.groups.entries()) {
-    const parsedGroup = parsePersistedGroup(groupValue, index, seenIds);
-    if (!parsedGroup) continue;
-    groups.push(parsedGroup);
-  }
+    for (const [index, groupValue] of record.groups.entries()) {
+        const parsedGroup = parsePersistedGroup(groupValue, index, seenIds);
+        if (!parsedGroup) continue;
+        groups.push(parsedGroup);
+    }
 
-  return {
-    version: PERSISTED_GROUPS_VERSION,
-    groups,
-  };
+    return {
+        version: PERSISTED_GROUPS_VERSION,
+        groups,
+    };
 }
 
 function parsePersistedGroup(
-  value: unknown,
-  index: number,
-  seenIds: Set<string>,
+    value: unknown,
+    index: number,
+    seenIds: Set<string>,
 ): PersistedUiGroup | null {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
-  const record = value as Record<string, unknown>;
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+    const record = value as Record<string, unknown>;
 
-  let id = typeof record.id === "string" ? record.id.trim() : "";
-  if (id.length === 0 || seenIds.has(id)) {
-    id = crypto.randomUUID();
-  }
-  seenIds.add(id);
+    let id = typeof record.id === "string" ? record.id.trim() : "";
+    if (id.length === 0 || seenIds.has(id)) {
+        id = crypto.randomUUID();
+    }
+    seenIds.add(id);
 
-  const rawName = typeof record.name === "string" ? record.name.trim() : "";
-  const name = rawName.length > 0 ? rawName : `group-${index + 1}`;
+    const rawName = typeof record.name === "string" ? record.name.trim() : "";
+    const name = rawName.length > 0 ? rawName : `group-${index + 1}`;
 
-  const snapshot = parsePersistedUiState(record.snapshot);
-  if (!snapshot) return null;
+    const snapshot = parsePersistedUiState(record.snapshot);
+    if (!snapshot) return null;
 
-  const nowIso = new Date().toISOString();
-  const createdAt = normalizeIsoTimestamp(record.createdAt, nowIso);
-  const updatedAt = normalizeIsoTimestamp(record.updatedAt, createdAt);
+    const nowIso = new Date().toISOString();
+    const createdAt = normalizeIsoTimestamp(record.createdAt, nowIso);
+    const updatedAt = normalizeIsoTimestamp(record.updatedAt, createdAt);
 
-  return {
-    id,
-    name,
-    snapshot,
-    createdAt,
-    updatedAt,
-  };
+    return {
+        id,
+        name,
+        snapshot,
+        createdAt,
+        updatedAt,
+    };
 }
 
 function normalizeIsoTimestamp(value: unknown, fallback: string): string {
-  if (typeof value !== "string") return fallback;
-  const timestamp = Date.parse(value);
-  if (!Number.isFinite(timestamp)) return fallback;
-  return new Date(timestamp).toISOString();
+    if (typeof value !== "string") return fallback;
+    const timestamp = Date.parse(value);
+    if (!Number.isFinite(timestamp)) return fallback;
+    return new Date(timestamp).toISOString();
 }

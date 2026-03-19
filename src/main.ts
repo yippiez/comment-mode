@@ -19,25 +19,25 @@ const entries = await loadCodeFileEntries(rootDir);
 let groupsWriteQueue = Promise.resolve();
 
 const schedulePersistedGroupsWrite = (groups: PersistedUiGroup[]): void => {
-  groupsWriteQueue = groupsWriteQueue
-    .catch(() => undefined)
-    .then(async () => {
-      try {
-        await savePersistedGroups(rootDir, groups);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        console.error(`[groups] failed to write groups: ${message}`);
-      }
-    });
+    groupsWriteQueue = groupsWriteQueue
+        .catch(() => undefined)
+        .then(async () => {
+            try {
+                await savePersistedGroups(rootDir, groups);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                console.error(`[groups] failed to write groups: ${message}`);
+            }
+        });
 };
 
 const app = new CodeBrowserApp(renderer, entries, {
-  workspaceRootDir: rootDir,
-  initialPersistedUiState: persistedUiState,
-  initialPersistedGroups: persistedGroups,
-  onPersistedGroupsChanged: (groups) => {
-    schedulePersistedGroupsWrite(groups);
-  },
+    workspaceRootDir: rootDir,
+    initialPersistedUiState: persistedUiState,
+    initialPersistedGroups: persistedGroups,
+    onPersistedGroupsChanged: (groups) => {
+        schedulePersistedGroupsWrite(groups);
+    },
 });
 app.start();
 
@@ -45,7 +45,7 @@ const persistedStateWriter = new PersistedUiStateWriter(rootDir);
 persistedStateWriter.seed(persistedUiState);
 
 const persistenceInterval = setInterval(() => {
-  persistedStateWriter.schedule(app.getPersistenceSnapshot());
+    persistedStateWriter.schedule(app.getPersistenceSnapshot());
 }, 250);
 
 let refreshRunning = false;
@@ -54,62 +54,62 @@ let refreshRetryTimer: ReturnType<typeof setTimeout> | undefined;
 let refreshRetryArmed = true;
 
 const clearRefreshRetryTimer = () => {
-  if (!refreshRetryTimer) return;
-  clearTimeout(refreshRetryTimer);
-  refreshRetryTimer = undefined;
+    if (!refreshRetryTimer) return;
+    clearTimeout(refreshRetryTimer);
+    refreshRetryTimer = undefined;
 };
 
 const scheduleRefreshRetry = () => {
-  if (!refreshRetryArmed || refreshRetryTimer) return;
+    if (!refreshRetryArmed || refreshRetryTimer) return;
 
-  refreshRetryArmed = false;
-  refreshRetryTimer = setTimeout(() => {
-    refreshRetryTimer = undefined;
-    void refreshEntries();
-  }, 180);
+    refreshRetryArmed = false;
+    refreshRetryTimer = setTimeout(() => {
+        refreshRetryTimer = undefined;
+        void refreshEntries();
+    }, 180);
 };
 
 const refreshEntries = async () => {
-  if (refreshRunning) {
-    refreshPending = true;
-    return;
-  }
-
-  refreshRunning = true;
-  do {
-    refreshPending = false;
-    try {
-      const nextEntries = await loadCodeFileEntries(rootDir);
-      app.refreshEntries(nextEntries);
-      refreshRetryArmed = true;
-      clearRefreshRetryTimer();
-    } catch {
-      scheduleRefreshRetry();
+    if (refreshRunning) {
+        refreshPending = true;
+        return;
     }
-  } while (refreshPending);
-  refreshRunning = false;
+
+    refreshRunning = true;
+    do {
+        refreshPending = false;
+        try {
+            const nextEntries = await loadCodeFileEntries(rootDir);
+            app.refreshEntries(nextEntries);
+            refreshRetryArmed = true;
+            clearRefreshRetryTimer();
+        } catch {
+            scheduleRefreshRetry();
+        }
+    } while (refreshPending);
+    refreshRunning = false;
 };
 
-  const workspaceChangeUnsub = SIGNALS.workspaceChanged(() => {
+const workspaceChangeUnsub = SIGNALS.workspaceChanged(() => {
     void refreshEntries();
-  });
+});
 
-  const focusUnsub = SIGNALS.onFocus(() => {
+const focusUnsub = SIGNALS.onFocus(() => {
     void refreshEntries();
-  });
+});
 
 const ignoredDirs = await getIgnoredDirs(rootDir);
 const watcher = await watchWorkspace(rootDir, ignoredDirs, () => {
-  SIGNALS.workspaceChanged();
+    SIGNALS.workspaceChanged();
 });
 
 renderer.on("destroy", () => {
-  clearInterval(persistenceInterval);
-  clearRefreshRetryTimer();
-  persistedStateWriter.flushNowSync(app.getPersistenceSnapshot());
-  persistedStateWriter.dispose();
-  app.shutdown();
-  workspaceChangeUnsub();
-  focusUnsub();
-  watcher.close();
+    clearInterval(persistenceInterval);
+    clearRefreshRetryTimer();
+    persistedStateWriter.flushNowSync(app.getPersistenceSnapshot());
+    persistedStateWriter.dispose();
+    app.shutdown();
+    workspaceChangeUnsub();
+    focusUnsub();
+    watcher.close();
 });

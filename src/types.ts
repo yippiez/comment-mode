@@ -1,8 +1,8 @@
 import type {
-  CodeRenderable,
-  KeyEvent as OpenTuiKeyEvent,
-  LineNumberRenderable,
-  RGBA,
+    CodeRenderable,
+    KeyEvent as OpenTuiKeyEvent,
+    LineNumberRenderable,
+    RGBA,
 } from "@opentui/core";
 
 /**

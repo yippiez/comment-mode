@@ -25,37 +25,37 @@ type AgentRowOptions = {
 };
 
 export function createAgentRow(
-  renderer: CliRenderer,
-  options: AgentRowOptions,
+    renderer: CliRenderer,
+    options: AgentRowOptions,
 ): AgentRowDecoration {
-  const row = new BoxRenderable(renderer, {
-    width: "100%",
-    flexDirection: "row",
-    backgroundColor: options.baseBg,
-    paddingLeft: options.paddingLeft,
-    paddingRight: options.paddingRight,
-  });
+    const row = new BoxRenderable(renderer, {
+        width: "100%",
+        flexDirection: "row",
+        backgroundColor: options.baseBg,
+        paddingLeft: options.paddingLeft,
+        paddingRight: options.paddingRight,
+    });
 
-  const text = new TextRenderable(renderer, {
-    content: options.content,
-    fg: options.baseFg,
-    width: "100%",
-    overflow: "hidden",
-    truncate: false,
-    wrapMode: "none",
-    attributes: options.bold ? TextAttributes.BOLD : TextAttributes.NONE,
-  });
+    const text = new TextRenderable(renderer, {
+        content: options.content,
+        fg: options.baseFg,
+        width: "100%",
+        overflow: "hidden",
+        truncate: false,
+        wrapMode: "none",
+        attributes: options.bold ? TextAttributes.BOLD : TextAttributes.NONE,
+    });
 
-  row.add(text);
+    row.add(text);
 
-  return {
-    row,
-    text,
-    baseBg: options.baseBg,
-    baseFg: options.baseFg,
-    selectedBg: options.selectedBg,
-    selectedFg: options.selectedFg,
-    cursorBg: options.cursorBg,
-    cursorFg: options.cursorFg,
-  };
+    return {
+        row,
+        text,
+        baseBg: options.baseBg,
+        baseFg: options.baseFg,
+        selectedBg: options.selectedBg,
+        selectedFg: options.selectedFg,
+        cursorBg: options.cursorBg,
+        cursorFg: options.cursorFg,
+    };
 }

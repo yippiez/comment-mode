@@ -9,10 +9,14 @@
   "scripts": {
     "dev": "bun run --watch src/index.ts",
     "static": "bun install && comment src/index.ts",
-    "install": "bun link"
+    "install": "bun link",
+    "lint": "eslint src --ext .ts"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@typescript-eslint/eslint-plugin": "^8.57.1",
+    "@typescript-eslint/parser": "^8.57.1",
+    "eslint": "^10.0.3"
   },
   "peerDependencies": {
     "typescript": "^5"

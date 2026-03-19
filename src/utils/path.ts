@@ -11,11 +11,11 @@ import path from "node:path";
  * normalizePosixPath("")                // ""
  */
 export function normalizePosixPath(path: string): string {
-  if (!path) return "";
-  return path
-    .split("/")
-    .filter(Boolean)
-    .join("/");
+    if (!path) return "";
+    return path
+        .split("/")
+        .filter(Boolean)
+        .join("/");
 }
 
 /**
@@ -29,8 +29,8 @@ export function normalizePosixPath(path: string): string {
  * getParentPosixPath("")                 // ""
  */
 export function getParentPosixPath(path: string): string {
-  const parts = normalizePosixPath(path).split("/");
-  return parts.length > 1 ? parts.slice(0, -1).join("/") : "";
+    const parts = normalizePosixPath(path).split("/");
+    return parts.length > 1 ? parts.slice(0, -1).join("/") : "";
 }
 
 /**
@@ -40,16 +40,16 @@ export function getParentPosixPath(path: string): string {
  * @returns The absolute path to the workspace root (git toplevel or launch directory).
  */
 export function resolveWorkspaceRoot(launchDirectory = process.cwd()): string {
-  const probe = spawnSync("git", ["-C", launchDirectory, "rev-parse", "--show-toplevel"], {
-    encoding: "utf8",
-  });
+    const probe = spawnSync("git", ["-C", launchDirectory, "rev-parse", "--show-toplevel"], {
+        encoding: "utf8",
+    });
 
-  if (probe.status === 0) {
-    const gitRoot = probe.stdout.trim();
-    if (gitRoot.length > 0) {
-      return path.resolve(gitRoot);
+    if (probe.status === 0) {
+        const gitRoot = probe.stdout.trim();
+        if (gitRoot.length > 0) {
+            return path.resolve(gitRoot);
+        }
     }
-  }
 
-  return path.resolve(launchDirectory);
+    return path.resolve(launchDirectory);
 }
