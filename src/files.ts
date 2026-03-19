@@ -5,8 +5,7 @@ import type { CodeFileEntry } from "./types";
 import { countLogicalLines } from "./utils/text";
 
 export function isMissingCodeFileError(error: unknown): boolean {
-  if (typeof error !== "object" || error === null) return false;
-  return (error as NodeJS.ErrnoException).code === "ENOENT";
+  return error instanceof Error && (error as NodeJS.ErrnoException).code === "ENOENT";
 }
 
 export async function loadCodeFileEntries(rootDir = process.cwd()): Promise<CodeFileEntry[]> {

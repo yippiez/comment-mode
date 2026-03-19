@@ -100,6 +100,7 @@ export class CodeBrowserApp {
   private readonly pendingEntryLoads = new Set<string>();
   private lazyContentModeEnabled = false;
   private readonly bindingCleanupFns: Array<() => void> = [];
+  private pendingGChordAt: number | null = null;
 
   constructor(renderer: CliRenderer, entries: CodeFileEntry[], options: CodeBrowserAppOptions = {}) {
     this.renderer = renderer;
@@ -762,7 +763,6 @@ export class CodeBrowserApp {
         return;
       }
 
-      let pendingGChordAt: number | null = null;
       const gChordTimeoutMs = 500;
       const now = Date.now();
 
@@ -803,7 +803,7 @@ export class CodeBrowserApp {
         return;
       }
       if (keyName === "escape") {
-        pendingGChordAt = null;
+        this.pendingGChordAt = null;
         key.preventDefault?.();
         key.stopPropagation?.();
         SIGNALS.visualExit();
@@ -811,59 +811,59 @@ export class CodeBrowserApp {
       }
       const isShiftG = keyName === "g" && (Boolean(key.shift) || rawKeyName === "G");
       if (isShiftG) {
-        pendingGChordAt = null;
+        this.pendingGChordAt = null;
         key.preventDefault?.();
         key.stopPropagation?.();
         SIGNALS.navJumpBottom();
         return;
       }
       if (keyName === "g" && !key.shift) {
-        if (pendingGChordAt !== null && now - pendingGChordAt <= gChordTimeoutMs) {
-          pendingGChordAt = null;
+        if (this.pendingGChordAt !== null && now - this.pendingGChordAt <= gChordTimeoutMs) {
+          this.pendingGChordAt = null;
           key.preventDefault?.();
           key.stopPropagation?.();
           SIGNALS.navJumpTop();
         } else {
-          pendingGChordAt = now;
+          this.pendingGChordAt = now;
         }
         return;
       }
       if (keyName === "n") {
-        pendingGChordAt = null;
+        this.pendingGChordAt = null;
         key.preventDefault?.();
         key.stopPropagation?.();
         SIGNALS.navJumpNextFile();
         return;
       }
       if (keyName === "p") {
-        pendingGChordAt = null;
+        this.pendingGChordAt = null;
         key.preventDefault?.();
         key.stopPropagation?.();
         SIGNALS.navJumpPrevFile();
         return;
       }
       if (keyName === "a") {
-        pendingGChordAt = null;
+        this.pendingGChordAt = null;
         key.preventDefault?.();
         key.stopPropagation?.();
         SIGNALS.navJumpNextAgent();
         return;
       }
       if (keyName === "x") {
-        pendingGChordAt = null;
+        this.pendingGChordAt = null;
         key.preventDefault?.();
         key.stopPropagation?.();
         SIGNALS.agentDeleteAtCursor();
         return;
       }
       if (keyName === "e") {
-        pendingGChordAt = null;
+        this.pendingGChordAt = null;
         key.preventDefault?.();
         key.stopPropagation?.();
         SIGNALS.filesOpenInEditor();
         return;
       }
-      pendingGChordAt = null;
+      this.pendingGChordAt = null;
       if (keyName === "enter" || keyName === "return") {
         key.preventDefault?.();
         key.stopPropagation?.();

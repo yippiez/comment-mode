@@ -1,3 +1,15 @@
+/**
+ * Calculates the display width of text, accounting for ANSI escape codes and
+ * full-width characters (like CJK characters which occupy 2 cells).
+ *
+ * @param text - The text to measure
+ * @returns The display width in cells
+ *
+ * @example
+ * displayWidth("hello")     // 5
+ * displayWidth("你好")      // 4 (each CJK char is 2 cells)
+ * displayWidth("\x1b[31m") // 0 (ANSI codes have no width)
+ */
 export function displayWidth(text: string): number {
   try {
     return Bun.stringWidth(text);
@@ -6,6 +18,20 @@ export function displayWidth(text: string): number {
   }
 }
 
+/**
+ * Truncates a label from the left side, appending an ellipsis to show
+ * that text was removed. Useful for displaying labels that are too long.
+ *
+ * @param label - The label to truncate
+ * @param maxWidth - Maximum display width allowed
+ * @returns The truncated label with "..." appended, or the original if it fits
+ *
+ * @example
+ * truncateLeftLabel("Hello World", 20)    // "Hello World" (fits)
+ * truncateLeftLabel("Hello World", 8)     // "Hello..."
+ * truncateLeftLabel("Hi", 3)             // "Hi"
+ * truncateLeftLabel("Hello", 2)          // "H"
+ */
 export function truncateLeftLabel(label: string, maxWidth: number): string {
   if (displayWidth(label) <= maxWidth) return label;
   if (maxWidth <= 3) {
@@ -27,9 +53,22 @@ export function truncateLeftLabel(label: string, maxWidth: number): string {
   return `${truncated}${ellipsis}`;
 }
 
+/**
+ * Wraps text to a specified width by breaking lines at word boundaries
+ * (actually character boundaries for simplicity). Tabs are expanded to 4 spaces.
+ *
+ * @param text - The text to wrap
+ * @param width - Maximum width per line
+ * @returns Array of wrapped lines
+ *
+ * @example
+ * wrapTextToWidth("Hello World", 5)   // ["Hello", " World"]
+ * wrapTextToWidth("Hi\nThere", 10)   // ["Hi", "There"]
+ * wrapTextToWidth("test", 100)        // ["test"]
+ */
 export function wrapTextToWidth(text: string, width: number): string[] {
   const safeWidth = Math.max(1, Math.floor(width));
-  const normalized = text.replace(/\t/g, "  ");
+  const normalized = text.replace(/\t/g, "    ");
   const lines = normalized.split("\n");
   const wrapped: string[] = [];
 
@@ -57,9 +96,22 @@ export function wrapTextToWidth(text: string, width: number): string[] {
   return wrapped.length > 0 ? wrapped : [""];
 }
 
+/**
+ * Estimates the number of lines needed to display text at a given width.
+ * Useful for pre-allocating buffers or calculating layout.
+ *
+ * @param text - The text to measure
+ * @param width - The display width constraint
+ * @returns Estimated number of lines (minimum 1)
+ *
+ * @example
+ * estimateWrappedLines("Hello World", 5)  // 2
+ * estimateWrappedLines("Hi", 10)          // 1
+ * estimateWrappedLines("ab cd ef", 3)     // 3
+ */
 export function estimateWrappedLines(text: string, width: number): number {
   if (width <= 1) return 1;
-  const normalized = text.replace(/\t/g, "  ");
+  const normalized = text.replace(/\t/g, "    ");
   const lines = normalized.length === 0 ? [""] : normalized.split("\n");
   let total = 0;
   for (const line of lines) {
@@ -69,11 +121,55 @@ export function estimateWrappedLines(text: string, width: number): number {
   return Math.max(1, total);
 }
 
+/**
+ * Counts the number of logical lines in a string.
+ * Empty content returns 1 to represent a single empty line.
+ *
+ * @param content - The text content to count lines in
+ * @returns Number of lines (minimum 1)
+ *
+ * @example
+ * countLogicalLines("")           // 1
+ * countLogicalLines("a")         // 1
+ * countLogicalLines("a\nb")      // 2
+ * countLogicalLines("a\nb\nc")   // 3
+ */
 export function countLogicalLines(content: string): number {
   if (content.length === 0) return 1;
   return content.split("\n").length;
 }
 
+/**
+ * Converts a value to a trimmed string, but only if it's non-empty.
+ * Useful for optional form fields where empty strings should be undefined.
+ *
+ * @param value - The value to convert
+ * @returns The trimmed string if non-empty, otherwise undefined
+ *
+ * @example
+ * toNonEmptyTrimmedString("  hello  ") // "hello"
+ * toNonEmptyTrimmedString("")          // undefined
+ * toNonEmptyTrimmedString("   ")       // undefined
+ * toNonEmptyTrimmedString(123)         // undefined
+ * toNonEmptyTrimmedString(null)        // undefined
+ */
+export function toNonEmptyTrimmedString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+/**
+ * Normalizes line endings from persisted text by removing trailing carriage returns.
+ * Handles CRLF vs LF differences when loading persisted content.
+ *
+ * @param value - The string to normalize (or null/undefined)
+ * @returns The string with trailing \r removed, or null if input was null/undefined
+ *
+ * @example
+ * normalizePersistedLineText("hello\r") // "hello"
+ * normalizePersistedLineText("hello")   // "hello"
+ * normalizePersistedLineText(null)      // null
+ * normalizePersistedLineText("a\r\nb")  // "a\r\nb" (only trailing \r removed)
+ */
 export function normalizePersistedLineText(value: string | null): string | null {
   if (typeof value !== "string") return null;
   return value.endsWith("\r") ? value.slice(0, -1) : value;

@@ -539,7 +539,7 @@ function parseJsonObjectAfterLine(
 }
 
 function extractVariantNames(value: unknown): string[] {
-  const variantsRecord = asRecord(asRecord(value)?.variants);
+  const variantsRecord = asJsonRecord(asJsonRecord(value)?.variants);
   if (!variantsRecord) return [];
 
   return Object.keys(variantsRecord)
@@ -591,20 +591,20 @@ function parseJsonPayload(payload: unknown): ParsedLineEvent | null {
     };
   }
 
-  const record = asRecord(payload);
+  const record = asJsonRecord(payload);
   if (!record) return null;
 
   const eventType =
     toText(record.type) ?? toText(record.event) ?? toText(record.kind) ?? "message";
 
-  const data = asRecord(record.data);
-  const result = asRecord(record.result);
-  const part = asRecord(record.part);
+  const data = asJsonRecord(record.data);
+  const result = asJsonRecord(record.result);
+  const part = asJsonRecord(record.part);
 
   const errorMessage = firstText(
-    asRecord(record.error)?.message,
-    asRecord(data?.error)?.message,
-    asRecord(result?.error)?.message,
+    asJsonRecord(record.error)?.message,
+    asJsonRecord(data?.error)?.message,
+    asJsonRecord(result?.error)?.message,
     record.error,
     data?.error,
     result?.error,
@@ -654,14 +654,14 @@ function parseJsonPayload(payload: unknown): ParsedLineEvent | null {
 
   if (part && toText(part.type)?.toLowerCase() === "tool") {
     const toolName = firstText(part.tool, part.name) ?? "tool";
-    const state = asRecord(part.state);
-    const input = asRecord(state?.input);
+    const state = asJsonRecord(part.state);
+    const input = asJsonRecord(state?.input);
     const status = firstText(state?.status);
     const target = firstText(
       input?.filePath,
       input?.path,
       state?.path,
-      asRecord(part.target)?.path,
+      asJsonRecord(part.target)?.path,
       part.title,
     );
     const toolParts = [
@@ -696,7 +696,7 @@ function extractContentText(value: unknown): string | undefined {
       if (text) return text;
       continue;
     }
-    const record = asRecord(item);
+    const record = asJsonRecord(item);
     if (!record) continue;
     const text = firstText(record.text, record.message, record.content);
     if (text) return text;
@@ -772,8 +772,8 @@ function toText(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
 }
 
-function asRecord(value: unknown): JsonRecord | undefined {
-  return typeof value === "object" && value !== null ? (value as JsonRecord) : undefined;
+function asJsonRecord(value: unknown): JsonRecord | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as JsonRecord) : undefined;
 }
 
 function dedupeMessages(messages: string[]): string[] {

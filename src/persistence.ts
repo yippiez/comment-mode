@@ -1,7 +1,7 @@
 import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { isRecord } from "./utils/guards";
+import { toNonEmptyTrimmedString } from "./utils/text";
 
 export const PERSISTED_UI_STATE_VERSION = 1;
 const DEFAULT_PERSISTED_THINKING_LEVEL = "auto";
@@ -33,6 +33,12 @@ export type PersistedUiState = {
   cursor: PersistedCursorState;
   prompt: PersistedPromptState;
 };
+
+type PersistedUiStateWire = PersistedUiState;
+type PersistedChipsWire = PersistedUiState["chips"];
+type PersistedFilesWire = PersistedUiState["files"];
+type PersistedCursorWire = PersistedUiState["cursor"];
+type PersistedPromptWire = PersistedUiState["prompt"];
 
 const PERSISTENCE_DIRNAME = ".comment";
 const PERSISTENCE_FILENAME = "state.json";
@@ -198,32 +204,24 @@ export function normalizePersistedUiState(state: PersistedUiState): PersistedUiS
       lineText: typeof state.cursor.lineText === "string" ? state.cursor.lineText : null,
     },
     prompt: {
-      model: toTrimmedString(state.prompt.model),
-      thinkingLevel: toTrimmedString(
-        state.prompt.thinkingLevel,
-        DEFAULT_PERSISTED_THINKING_LEVEL,
-      ),
+      model: toNonEmptyTrimmedString(state.prompt.model) ?? "",
+      thinkingLevel:
+        toNonEmptyTrimmedString(state.prompt.thinkingLevel) ?? DEFAULT_PERSISTED_THINKING_LEVEL,
     },
   };
 }
 
 export function parsePersistedUiState(value: unknown): PersistedUiState | null {
-  if (!isRecord(value)) return null;
-  if (value.version !== PERSISTED_UI_STATE_VERSION) return null;
+  if (!isPersistedUiStateWire(value)) return null;
 
-  const chipsValue = isRecord(value.chips) ? value.chips : {};
-  const filesValue = isRecord(value.files) ? value.files : {};
-  const cursorValue = isRecord(value.cursor) ? value.cursor : {};
-  const promptValue = isRecord(value.prompt) ? value.prompt : {};
-  const collapsedPaths = mergePathLists(
-    toStringArray(filesValue.collapsedPaths),
-    toStringArray(filesValue.ignoredPaths),
-  );
+  const chipsValue = value.chips;
+  const filesValue = value.files;
+  const cursorValue = value.cursor;
+  const promptValue = value.prompt;
+  const collapsedPaths = toStringArray(filesValue.collapsedPaths);
 
   const enabledTypeLabels: Record<string, boolean> = {};
-  const enabledSource = isRecord(chipsValue.enabledTypeLabels) ? chipsValue.enabledTypeLabels : {};
-  for (const [typeLabel, enabled] of Object.entries(enabledSource)) {
-    if (typeof typeLabel !== "string" || typeLabel.length === 0) continue;
+  for (const [typeLabel, enabled] of Object.entries(chipsValue.enabledTypeLabels)) {
     enabledTypeLabels[typeLabel] = Boolean(enabled);
   }
 
@@ -237,24 +235,19 @@ export function parsePersistedUiState(value: unknown): PersistedUiState | null {
     files: {
       collapsedPaths,
       fileBlockCollapsed: Boolean(filesValue.fileBlockCollapsed),
-      directoryPath: typeof filesValue.directoryPath === "string" ? filesValue.directoryPath : "",
+      directoryPath: filesValue.directoryPath,
     },
     cursor: {
       globalLine: Math.max(1, toNonNegativeInteger(cursorValue.globalLine)),
-      filePath: typeof cursorValue.filePath === "string" && cursorValue.filePath.length > 0
-        ? cursorValue.filePath
-        : null,
+      filePath: cursorValue.filePath,
       fileLine: Number.isFinite(cursorValue.fileLine)
         ? Math.max(1, Math.floor(cursorValue.fileLine as number))
         : null,
-      lineText: typeof cursorValue.lineText === "string" ? cursorValue.lineText : null,
+      lineText: cursorValue.lineText,
     },
     prompt: {
-      model: toTrimmedString(promptValue.model),
-      thinkingLevel: toTrimmedString(
-        promptValue.thinkingLevel,
-        DEFAULT_PERSISTED_THINKING_LEVEL,
-      ),
+      model: promptValue.model,
+      thinkingLevel: promptValue.thinkingLevel,
     },
   });
 }
@@ -263,10 +256,6 @@ function normalizePathList(value: readonly string[]): string[] {
   return [...new Set(value.filter((entry) => typeof entry === "string" && entry.length > 0))].sort((a, b) =>
     a.localeCompare(b),
   );
-}
-
-function mergePathLists(primary: readonly string[], secondary: readonly string[]): string[] {
-  return [...primary, ...secondary];
 }
 
 function toStringArray(value: unknown): string[] {
@@ -281,8 +270,53 @@ function toNonNegativeInteger(value: unknown): number {
   return Math.max(0, Math.floor(value));
 }
 
-function toTrimmedString(value: unknown, fallback = ""): string {
-  if (typeof value !== "string") return fallback;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : fallback;
+function isPersistedUiStateWire(value: unknown): value is PersistedUiStateWire {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return (
+    record.version === PERSISTED_UI_STATE_VERSION &&
+    isPersistedChipsWire(record.chips) &&
+    isPersistedFilesWire(record.files) &&
+    isPersistedCursorWire(record.cursor) &&
+    isPersistedPromptWire(record.prompt)
+  );
+}
+
+function isPersistedChipsWire(value: unknown): value is PersistedChipsWire {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.selectedChipIndex === "number" &&
+    typeof record.chipWindowStartIndex === "number" &&
+    record.enabledTypeLabels !== null &&
+    typeof record.enabledTypeLabels === "object" &&
+    !Array.isArray(record.enabledTypeLabels)
+  );
+}
+
+function isPersistedFilesWire(value: unknown): value is PersistedFilesWire {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return (
+    Array.isArray(record.collapsedPaths) &&
+    typeof record.fileBlockCollapsed === "boolean" &&
+    typeof record.directoryPath === "string"
+  );
+}
+
+function isPersistedCursorWire(value: unknown): value is PersistedCursorWire {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.globalLine === "number" &&
+    (record.filePath === null || typeof record.filePath === "string") &&
+    (record.fileLine === null || typeof record.fileLine === "number") &&
+    (record.lineText === null || typeof record.lineText === "string")
+  );
+}
+
+function isPersistedPromptWire(value: unknown): value is PersistedPromptWire {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return typeof record.model === "string" && typeof record.thinkingLevel === "string";
 }

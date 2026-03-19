@@ -1,7 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parsePersistedUiState, type PersistedUiState } from "./persistence";
-import { isRecord } from "./utils/guards";
 
 export const PERSISTED_GROUPS_VERSION = 1;
 
@@ -68,15 +67,16 @@ function normalizePersistedGroups(groups: readonly PersistedUiGroup[]): Persiste
 }
 
 function parsePersistedGroupsFile(value: unknown): PersistedUiGroupsFile | null {
-  if (!isRecord(value)) return null;
-  if (value.version !== PERSISTED_GROUPS_VERSION) return null;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (record.version !== PERSISTED_GROUPS_VERSION) return null;
+  if (!Array.isArray(record.groups)) return null;
 
-  const sourceGroups = Array.isArray(value.groups) ? value.groups : [];
   const groups: PersistedUiGroup[] = [];
   const seenIds = new Set<string>();
 
-  for (let index = 0; index < sourceGroups.length; index += 1) {
-    const parsedGroup = parsePersistedGroup(sourceGroups[index], index, seenIds);
+  for (const [index, groupValue] of record.groups.entries()) {
+    const parsedGroup = parsePersistedGroup(groupValue, index, seenIds);
     if (!parsedGroup) continue;
     groups.push(parsedGroup);
   }
@@ -92,23 +92,24 @@ function parsePersistedGroup(
   index: number,
   seenIds: Set<string>,
 ): PersistedUiGroup | null {
-  if (!isRecord(value)) return null;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
 
-  let id = typeof value.id === "string" ? value.id.trim() : "";
+  let id = typeof record.id === "string" ? record.id.trim() : "";
   if (id.length === 0 || seenIds.has(id)) {
     id = crypto.randomUUID();
   }
   seenIds.add(id);
 
-  const rawName = typeof value.name === "string" ? value.name.trim() : "";
+  const rawName = typeof record.name === "string" ? record.name.trim() : "";
   const name = rawName.length > 0 ? rawName : `group-${index + 1}`;
 
-  const snapshot = parsePersistedUiState(value.snapshot);
+  const snapshot = parsePersistedUiState(record.snapshot);
   if (!snapshot) return null;
 
   const nowIso = new Date().toISOString();
-  const createdAt = normalizeIsoTimestamp(value.createdAt, nowIso);
-  const updatedAt = normalizeIsoTimestamp(value.updatedAt, createdAt);
+  const createdAt = normalizeIsoTimestamp(record.createdAt, nowIso);
+  const updatedAt = normalizeIsoTimestamp(record.updatedAt, createdAt);
 
   return {
     id,
