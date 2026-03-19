@@ -5,9 +5,9 @@ import {
     TextRenderable,
     type CliRenderer,
 } from "@opentui/core";
-import { theme } from "../theme";
-import { clearChildren } from "../utils/ui";
-import { displayWidth, estimateWrappedLines, truncateLeftLabel } from "../utils/text";
+import { theme } from "../../theme";
+import { clearChildren } from "../../utils/ui";
+import { displayWidth, estimateWrappedLines, truncateLeftLabel } from "../../utils/text";
 
 type RuntimeTextareaStyleApi = {
   backgroundColor?: string;

@@ -1,10 +1,10 @@
 import type { CliRenderer } from "@opentui/core";
 import { Cursor } from "../controllers/cursor";
-import { LineModel } from "../line-model";
-import type { PersistedCursorState } from "../persistence";
+import { LineModel } from "../line_model";
+import type { PersistedCursorState } from "./persistence";
 import type { CodeFileEntry } from "../types";
 import { normalizePersistedLineText } from "../utils/text";
-import { FileExplorer } from "./file_explorer";
+import { FileExplorer } from "../app/components/file_explorer";
 
 type LastCodeCursorSnapshot = {
   filePath: string;

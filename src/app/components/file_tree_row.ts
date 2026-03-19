@@ -1,7 +1,7 @@
 import { CodeRenderable, SyntaxStyle, type CliRenderer } from "@opentui/core";
-import type { FileTreeRow } from "./view_modes";
-import { theme } from "../theme";
-import { displayWidth, truncateLeftLabel } from "../utils/text";
+import type { FileTreeRow } from "../view_modes";
+import { theme } from "../../theme";
+import { displayWidth, truncateLeftLabel } from "../../utils/text";
 
 export type FileTreeRowView = {
   codeView: CodeRenderable;

@@ -3,10 +3,9 @@ import path from "node:path";
 import { getIgnoredDirs, loadCodeFileEntries as loadWorkspaceCodeFileEntries } from "./workspace";
 import type { CodeFileEntry } from "./types";
 import { countLogicalLines } from "./utils/text";
+import { isMissingCodeFileError } from "./utils/validation";
 
-export function isMissingCodeFileError(error: unknown): boolean {
-    return error instanceof Error && (error as NodeJS.ErrnoException).code === "ENOENT";
-}
+export { isMissingCodeFileError };
 
 export async function loadCodeFileEntries(rootDir = process.cwd()): Promise<CodeFileEntry[]> {
     const ignoredDirs = await getIgnoredDirs(rootDir);

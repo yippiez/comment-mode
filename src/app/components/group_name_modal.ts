@@ -6,9 +6,9 @@ import {
     TextRenderable,
     type CliRenderer,
 } from "@opentui/core";
-import { theme } from "../theme";
-import { readFromClipboard } from "../utils/clipboard";
-import type { AppKeyInput } from "../types";
+import { theme } from "../../theme";
+import { readFromClipboard } from "../../utils/clipboard";
+import type { AppKeyInput } from "../../types";
 
 type RuntimeTextareaStyleApi = {
   backgroundColor?: string;

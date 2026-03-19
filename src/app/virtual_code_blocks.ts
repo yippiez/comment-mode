@@ -1,6 +1,6 @@
 import type { SupplementalTypeState } from "../controllers/state";
 import type { CodeFileEntry } from "../types";
-import { FileExplorer } from "./file_explorer";
+import { FileExplorer } from "./components/file_explorer";
 import type { FileTreeRow } from "./view_modes";
 
 export type VirtualCodeBlockId = "FILE";

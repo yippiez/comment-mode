@@ -1,6 +1,3 @@
-import { spawnSync } from "node:child_process";
-import path from "node:path";
-
 /**
  * Normalizes a POSIX path by removing empty segments and redundant slashes.
  * @param path - The POSIX path to normalize.
@@ -31,25 +28,4 @@ export function normalizePosixPath(path: string): string {
 export function getParentPosixPath(path: string): string {
     const parts = normalizePosixPath(path).split("/");
     return parts.length > 1 ? parts.slice(0, -1).join("/") : "";
-}
-
-/**
- * Resolves the workspace root directory by finding the nearest git repository.
- * Falls back to the launch directory if not in a git repository.
- * @param launchDirectory - The directory to start searching from. Defaults to process.cwd().
- * @returns The absolute path to the workspace root (git toplevel or launch directory).
- */
-export function resolveWorkspaceRoot(launchDirectory = process.cwd()): string {
-    const probe = spawnSync("git", ["-C", launchDirectory, "rev-parse", "--show-toplevel"], {
-        encoding: "utf8",
-    });
-
-    if (probe.status === 0) {
-        const gitRoot = probe.stdout.trim();
-        if (gitRoot.length > 0) {
-            return path.resolve(gitRoot);
-        }
-    }
-
-    return path.resolve(launchDirectory);
 }

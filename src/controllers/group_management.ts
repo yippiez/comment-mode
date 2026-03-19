@@ -1,7 +1,7 @@
-import type { PersistedUiGroup } from "../groups";
-import type { PersistedUiState } from "../persistence";
+import type { PersistedUiGroup, PersistedUiState } from "./persistence";
 import type { AppKeyInput } from "../types";
-import { GroupNameModal } from "./group_name_modal";
+import { GroupNameModal } from "../app/components/group_name_modal";
+import { toIsoTimestamp } from "../utils/time";
 
 type GroupManagementControllerOptions = {
   initialGroups: readonly PersistedUiGroup[];
@@ -244,11 +244,4 @@ export class GroupManagementController {
         if (!this.options.onPersistedGroupsChanged) return;
         this.options.onPersistedGroupsChanged(this.cloneGroups(this.groups));
     }
-}
-
-function toIsoTimestamp(value: unknown, fallback: string): string {
-    if (typeof value !== "string") return fallback;
-    const parsed = Date.parse(value);
-    if (!Number.isFinite(parsed)) return fallback;
-    return new Date(parsed).toISOString();
 }

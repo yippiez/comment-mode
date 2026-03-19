@@ -2,8 +2,16 @@ import { spawnSync } from "node:child_process";
 import { existsSync, lstatSync, watch, type FSWatcher } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
-import { isCodeExtension, resolveFileType, resolveTypeLabel, resolveTypePriority } from "./file-types";
+import { isCodeExtension, resolveFileType, resolveTypeLabel, resolveTypePriority } from "./file_types";
 import { countLogicalLines } from "./utils/text";
+import {
+    filterGitIgnored,
+    isPathInsideIgnoredDir,
+    isPathWithinRoot,
+    listGitWorkspaceFiles,
+    mergePatchChangedLines,
+    parseIgnoredTopLevelDir,
+} from "./utils/git";
 
 export type WorkspaceCodeFileEntry = {
   relativePath: string;
@@ -248,94 +256,6 @@ export async function watchWorkspace(
     };
 }
 
-function parseIgnoredTopLevelDir(rawLine: string): string | null {
-    const trimmed = rawLine.trim();
-    if (trimmed.length === 0) return null;
-    if (trimmed.startsWith("#") || trimmed.startsWith("!")) return null;
-
-    let normalized = trimmed;
-    if (normalized.startsWith("/")) {
-        normalized = normalized.slice(1);
-    }
-    if (normalized.endsWith("/")) {
-        normalized = normalized.slice(0, -1);
-    }
-
-    if (normalized.length === 0) return null;
-    if (normalized.includes("/")) return null;
-    if (/[*?\[\\]/.test(normalized)) return null;
-    if (normalized === "." || normalized === "..") return null;
-    return normalized;
-}
-
-function listGitWorkspaceFiles(root: string): string[] | null {
-    const probe = spawnSync("git", ["-C", root, "rev-parse", "--is-inside-work-tree"], {
-        encoding: "utf8",
-    });
-
-    if (probe.status !== 0 || probe.stdout.trim() !== "true") {
-        return null;
-    }
-
-    const lsFiles = spawnSync(
-        "git",
-        ["-C", root, "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
-        {
-            encoding: "utf8",
-        },
-    );
-
-    if (lsFiles.status !== 0) {
-        return null;
-    }
-
-    return [...new Set((lsFiles.stdout ?? "").split("\0").filter(Boolean))].filter((relativePath) => {
-        const absolutePath = path.join(root, relativePath);
-        return existsSync(absolutePath);
-    });
-}
-
-function filterGitIgnored(root: string, files: string[]): string[] {
-    if (files.length === 0) return files;
-
-    const checkIgnore = spawnSync("git", ["-C", root, "check-ignore", "--no-index", "-z", "--stdin"], {
-        input: `${files.join("\0")}\0`,
-        encoding: "utf8",
-    });
-
-    if (checkIgnore.status === 129) {
-        return filterGitIgnoredInRepository(root, files);
-    }
-
-    if (checkIgnore.status !== 0 && checkIgnore.status !== 1) {
-        return files;
-    }
-
-    const ignored = new Set(checkIgnore.stdout.split("\0").filter(Boolean));
-    return files.filter((file) => !ignored.has(file));
-}
-
-function filterGitIgnoredInRepository(root: string, files: string[]): string[] {
-    const probe = spawnSync("git", ["-C", root, "rev-parse", "--is-inside-work-tree"], {
-        encoding: "utf8",
-    });
-
-    if (probe.status !== 0 || probe.stdout.trim() !== "true") {
-        return files;
-    }
-
-    const checkIgnore = spawnSync("git", ["-C", root, "check-ignore", "-z", "--stdin"], {
-        input: `${files.join("\0")}\0`,
-        encoding: "utf8",
-    });
-
-    if (checkIgnore.status !== 0 && checkIgnore.status !== 1) {
-        return files;
-    }
-
-    const ignored = new Set(checkIgnore.stdout.split("\0").filter(Boolean));
-    return files.filter((file) => !ignored.has(file));
-}
 
 type UncommittedLinesSnapshot = {
   linesByFile: Map<string, Set<number>>;
@@ -400,7 +320,8 @@ function collectUncommittedLinesByFile(
     mergePatchChangedLines(linesByFile, stagedPatch.stdout ?? "");
 
     if (untracked.status === 0) {
-        const untrackedFiles = new Set((untracked.stdout ?? "").split("\0").filter(Boolean));
+        const untrackedOutput = typeof untracked.stdout === "string" ? untracked.stdout : "";
+        const untrackedFiles = new Set(untrackedOutput.split("\0").filter(Boolean));
         for (const filePath of untrackedFiles) {
             if (!knownFiles.has(filePath)) continue;
             wholeFileUncommitted.add(filePath);
@@ -413,34 +334,6 @@ function collectUncommittedLinesByFile(
     };
 }
 
-function mergePatchChangedLines(target: Map<string, Set<number>>, patch: string): void {
-    let currentPath: string | null = null;
-    const lines = patch.split("\n");
-
-    for (const line of lines) {
-        if (line.startsWith("+++ ")) {
-            const nextPath = line.slice(4).trim();
-            currentPath = nextPath === "/dev/null" ? null : nextPath;
-            continue;
-        }
-
-        if (!currentPath) continue;
-        if (!line.startsWith("@@ ")) continue;
-
-        const match = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line);
-        if (!match) continue;
-
-        const start = Number.parseInt(match[1] ?? "0", 10);
-        const count = Number.parseInt(match[2] ?? "1", 10);
-        if (count <= 0 || Number.isNaN(start)) continue;
-
-        const fileSet = target.get(currentPath) ?? new Set<number>();
-        for (let lineNo = start; lineNo < start + count; lineNo += 1) {
-            fileSet.add(lineNo);
-        }
-        target.set(currentPath, fileSet);
-    }
-}
 
 async function listWatchableDirs(root: string, ignoredDirs: ReadonlySet<string>): Promise<string[]> {
     const gitVisibleFiles = listGitWorkspaceFiles(root);
@@ -489,17 +382,4 @@ function buildWatchableDirsFromFiles(root: string, relativePaths: readonly strin
     }
 
     return [...dirs].sort((a, b) => a.localeCompare(b));
-}
-
-function isPathInsideIgnoredDir(relativePath: string, ignoredDirs: ReadonlySet<string>): boolean {
-    const normalized = relativePath.split(path.sep).join("/");
-    const firstSegment = normalized.split("/")[0]?.trim();
-    if (!firstSegment) return false;
-    return ignoredDirs.has(firstSegment);
-}
-
-function isPathWithinRoot(root: string, absolutePath: string): boolean {
-    const relative = path.relative(root, absolutePath);
-    if (relative.length === 0) return true;
-    return !relative.startsWith("..") && !path.isAbsolute(relative);
 }

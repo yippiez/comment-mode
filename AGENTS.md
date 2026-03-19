@@ -6,3 +6,4 @@
 - A decoder should return a complete valid object or `null`; do not partially coerce invalid shapes.
 - Avoid reusable generic object helpers like `asObject`; use specific parsers or guards for each shape.
 - Prefer one strict decoder boundary per file, then work with concrete typed values after decode.
+- Run `bun lint -- --fix` before committing to keep 4-space indentation consistent.

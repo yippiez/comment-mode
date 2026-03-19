@@ -6,15 +6,12 @@
  * visual highlights for selection and cursor positions.
  */
 import { type CliRenderer, type ScrollBoxRenderable } from "@opentui/core";
-import { createAgentRow, type AgentRowDecoration } from "./agent-row";
-import { LineModel } from "../line-model";
-import { theme } from "../theme";
-import type { AgentUpdate } from "../types";
-import {
-    computeAgentContentWidth,
-    formatAgentUpdateLine,
-} from "./renderer";
-import { wrapTextToWidth } from "../utils/text";
+import { createAgentRow, type AgentRowDecoration } from "./agent_row";
+import { LineModel } from "../../line_model";
+import { theme } from "../../theme";
+import type { AgentUpdate } from "../../types";
+import { computeAgentContentWidth } from "../../utils/viewport";
+import { formatAgentUpdateLine, wrapTextToWidth } from "../../utils/text";
 
 type RenderCursor = {
   nextLineNumber: number;

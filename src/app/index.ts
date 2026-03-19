@@ -15,12 +15,12 @@ import {
     type PromptTarget,
     type PromptSubmission,
 } from "../controllers/prompt";
-import { PromptComposerBar, type PromptComposerLayout } from "./prompt-composer-bar";
-import { ShortcutsModal } from "./shortcuts_modal";
+import { PromptComposerBar, type PromptComposerLayout } from "./components/prompt_composer_bar";
+import { ShortcutsModal } from "./components/shortcuts_modal";
 import { SIGNALS, type Signal } from "../signals";
 import { openFileInEditor } from "../utils/editor";
 import { Cursor } from "../controllers/cursor";
-import { LineModel } from "../line-model";
+import { LineModel } from "../line_model";
 import {
     AppStateStore,
     recomputeTypeState,
@@ -32,25 +32,24 @@ import type {
     FocusMode,
 } from "../types";
 import { Highlight } from "../controllers/highlight";
-import type { PromptComposerField } from "./prompt-composer-bar";
+import type { PromptComposerField } from "./components/prompt_composer_bar";
 import type { AppKeyInput } from "../types";
 import {
     createPromptTargetFromSelection,
 } from "./selection";
-import { FileExplorer } from "./file_explorer";
-import { AgentTimeline } from "./agent_timeline";
-import { DocumentBlocks } from "./document_blocks";
+import { FileExplorer } from "./components/file_explorer";
+import { AgentTimeline } from "./components/agent_timeline";
+import { DocumentBlocks } from "./components/document_blocks";
 import { AppRenderer } from "./renderer";
 import { VirtualCodeBlocks } from "./virtual_code_blocks";
 import {
-    PERSISTED_UI_STATE_VERSION,
+    type PersistedUiGroup,
     type PersistedUiState,
-} from "../persistence";
-import type { PersistedUiGroup } from "../groups";
-import { GroupNameModal } from "./group_name_modal";
-import { ChipSelectionController } from "./chip_selection_controller";
-import { GroupManagementController } from "./group_management_controller";
-import { PersistedCursorController } from "./persisted_cursor_controller";
+} from "../controllers/persistence";
+import { GroupNameModal } from "./components/group_name_modal";
+import { ChipSelectionController } from "../controllers/chip_selection";
+import { GroupManagementController } from "../controllers/group_management";
+import { PersistedCursorController } from "../controllers/persisted_cursor";
 
 type CodeBrowserAppOptions = {
   workspaceRootDir?: string;
@@ -312,7 +311,6 @@ export class CodeBrowserApp {
         }
 
         return {
-            version: PERSISTED_UI_STATE_VERSION,
             chips: {
                 selectedChipIndex: this.state.selectedChipIndex,
                 chipWindowStartIndex: this.state.chipWindowStartIndex,

@@ -1,6 +1,6 @@
 import { Camera } from "./camera";
 import { Cursor } from "./cursor";
-import { LineModel } from "../line-model";
+import { LineModel } from "../line_model";
 
 type NavigationBindings = {
   cursor: Cursor;
@@ -101,5 +101,3 @@ export class NavigationController {
         this.bindings.cursor.goToLine(next, "auto");
     }
 }
-
-export { NavigationController as Navigation };

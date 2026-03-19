@@ -5,9 +5,9 @@ import {
     TextRenderable,
     type CliRenderer,
 } from "@opentui/core";
-import { theme } from "../theme";
-import { truncateLeftLabel } from "../utils/text";
-import { clearChildren } from "../utils/ui";
+import { theme } from "../../theme";
+import { truncateLeftLabel } from "../../utils/text";
+import { clearChildren } from "../../utils/ui";
 
 type ShortcutItem = {
   keys: string;

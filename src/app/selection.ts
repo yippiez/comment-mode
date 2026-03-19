@@ -1,9 +1,9 @@
 import type { PromptTarget } from "../controllers/prompt";
 import type { Cursor } from "../controllers/cursor";
-import type { LineModel } from "../line-model";
+import type { LineModel } from "../line_model";
 import type { FileTreeRow, ModeSelectionLineInfo } from "./view_modes";
 import { clamp } from "../utils/math";
-import type { PromptComposerLayout } from "./prompt-composer-bar";
+import type { PromptComposerLayout } from "./components/prompt_composer_bar";
 
 export type SelectionLineInfo = ModeSelectionLineInfo;
 

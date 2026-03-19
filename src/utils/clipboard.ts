@@ -16,7 +16,14 @@ const CLIPBOARD_READ_COMMANDS: ClipboardCommand[] = [
     { command: "pbpaste", args: [] },
 ];
 
-/** Reads text from system clipboard using native tools. */
+/**
+ * Reads text from system clipboard using native tools.
+ * Tries multiple backends (wl-paste, xclip, xsel, pbpaste) in order.
+ * @returns The clipboard text content, or null if no clipboard tool succeeded
+ * @example
+ * const text = await readFromClipboard();
+ * if (text) console.log("Clipboard:", text);
+ */
 export async function readFromClipboard(): Promise<string | null> {
     for (const entry of CLIPBOARD_READ_COMMANDS) {
         const text = await runClipboardReadCommand(entry.command, entry.args);
@@ -36,9 +43,11 @@ export async function readFromClipboard(): Promise<string | null> {
 
 /**
  * Executes a clipboard read command via child process spawn.
- * @param command - The command to execute.
- * @param args - Arguments to pass to the command.
- * @returns The captured stdout text, or null if the command failed.
+ * @param command - The command to execute (e.g., "wl-paste", "xclip")
+ * @param args - Arguments to pass to the command
+ * @returns The captured stdout text, or null if the command failed
+ * @example
+ * runClipboardReadCommand("wl-paste", ["--no-newline"]) // "clipboard contents" or null
  */
 function runClipboardReadCommand(command: string, args: string[]): Promise<string | null> {
     return new Promise((resolve) => {

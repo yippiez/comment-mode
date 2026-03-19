@@ -1,3 +1,5 @@
+import type { AgentUpdate } from "../types";
+
 /**
  * Calculates the display width of text, accounting for ANSI escape codes and
  * full-width characters (like CJK characters which occupy 2 cells).
@@ -172,4 +174,62 @@ export function toNonEmptyTrimmedString(value: unknown): string | undefined {
 export function normalizePersistedLineText(value: string | null): string | null {
     if (typeof value !== "string") return null;
     return value.endsWith("\r") ? value.slice(0, -1) : value;
+}
+
+/**
+ * Formats a label as a single line of the specified width, centering the content and padding with spaces.
+ *
+ * If the trimmed label is longer than or equal to the width, it will be truncated. Otherwise, it will be centered with spaces.
+ *
+ * @param label - The text label to format.
+ * @param width - The desired total width of the output line.
+ * @returns The formatted, centered, single-line string of the specified width.
+ *
+ * @example
+ * formatCollapsedContentLine("Example", 10) // "  Example  "
+ * formatCollapsedContentLine("LongLabelText", 5) // "LongL"
+ */
+export function formatCollapsedContentLine(label: string, width: number): string {
+    const trimmed = label.trim();
+    if (trimmed.length >= width) return trimmed.slice(0, width);
+    const remaining = width - trimmed.length;
+    const left = Math.floor(remaining / 2);
+    const right = remaining - left;
+    return `${" ".repeat(left)}${trimmed}${" ".repeat(right)}`;
+}
+
+/**
+ * Formats an AgentUpdate object as a concise, human-readable status line for display.
+ *
+ * Includes information about agent status, model, variant, prompt, runId, and error.
+ * Each field is conditionally included if present/non-empty. Also handles prompt omission.
+ *
+ * @param update - The AgentUpdate object to format.
+ * @returns A formatted string representing the agent's update state.
+ *
+ * @example
+ * formatAgentUpdateLine({
+ *   status: "completed",
+ *   model: "gpt-4",
+ *   prompt: "Generate code.",
+ *   variant: "default",
+ *   runId: "abc123",
+ *   error: "",
+ * })
+ * // "● AGENT DONE · gpt-4 · think:default · Generate code. · abc123"
+ */
+export function formatAgentUpdateLine(update: AgentUpdate): string {
+    const prefix =
+        update.status === "running"
+            ? "AGENT RUNNING"
+            : update.status === "completed"
+                ? "AGENT DONE"
+                : update.status === "failed"
+                    ? "AGENT FAILED"
+                    : "AGENT DRAFT";
+    const prompt = update.prompt.trim().length > 0 ? update.prompt : "<type prompt>";
+    const variantSuffix = update.variant ? ` · think:${update.variant}` : "";
+    const runSuffix = update.runId ? ` · ${update.runId}` : "";
+    const errorSuffix = update.error ? ` | error: ${update.error}` : "";
+    return `● ${prefix} · ${update.model}${variantSuffix} · ${prompt}${runSuffix}${errorSuffix}`;
 }

@@ -10,31 +10,19 @@ import type { Cursor } from "../controllers/cursor";
 import type { AppStateStore } from "../controllers/state";
 import type { Highlight } from "../controllers/highlight";
 import type { AgentUpdate, BlockKind, CodeFileEntry, FocusMode } from "../types";
-import type { LineModel } from "../line-model";
-import type { PromptComposerBar, PromptComposerLayout } from "./prompt-composer-bar";
-import type { FileExplorer } from "./file_explorer";
-import type { AgentTimeline } from "./agent_timeline";
-import type { DocumentBlocks } from "./document_blocks";
+import type { LineModel } from "../line_model";
+import type { PromptComposerBar, PromptComposerLayout } from "./components/prompt_composer_bar";
+import type { FileExplorer } from "./components/file_explorer";
+import type { AgentTimeline } from "./components/agent_timeline";
+import type { DocumentBlocks } from "./components/document_blocks";
 import type { VirtualCodeBlocks } from "./virtual_code_blocks";
 import { theme } from "../theme";
-import { clearChildren, makeSlashLine } from "../utils/ui";
 import { clamp } from "../utils/math";
-import { displayWidth } from "../utils/text";
+import { clearChildren, makeSlashLine } from "../utils/ui";
+import { renderTypeChips } from "../utils/chips";
+import { resolveBlockKindPenalty } from "../utils/restore";
+import { normalizePersistedLineText } from "../utils/text";
 import { resolvePromptComposerLayout as resolvePromptComposerLayoutForSelection } from "./selection";
-
-type RenderTypeChipsOptions = {
-  renderer: CliRenderer;
-  chipsRow: BoxRenderable;
-  sortedTypes: readonly string[];
-  groupChips: readonly GroupChipDescriptor[];
-  selectedChipIndex: number;
-  chipWindowStartIndex: number;
-  chipsFocused: boolean;
-  getTypeCounts: (type: string) => { shown: number; hidden: number };
-  isTypeEnabled: (type: string) => boolean;
-  onChipSelected: (index: number) => void;
-  onToggleSelectedChip: () => void;
-};
 
 type GroupChipDescriptor = {
   id: string;
@@ -95,20 +83,6 @@ type AppRendererOptions = {
   scheduleFileContentLoad: (entry: CodeFileEntry) => void;
   isPromptVisible: () => boolean;
   refreshPromptView: () => void;
-};
-
-const CHIP_SCROLL_LEFT_TRIGGER_RATIO = 0.2;
-const CHIP_SCROLL_RIGHT_TRIGGER_RATIO = 0.8;
-const CHIP_GAP_WIDTH = 1;
-const CHIP_OVERFLOW_LEFT_INDICATOR = "<-";
-const CHIP_OVERFLOW_RIGHT_INDICATOR = "->";
-const CHIP_OVERFLOW_INDICATOR_COLOR = "#00ffff";
-
-const BLOCK_KIND_RESTORE_ORDER: Record<BlockKind, readonly BlockKind[]> = {
-    code: ["code", "collapsed", "file", "agent"],
-    collapsed: ["collapsed", "code", "file", "agent"],
-    file: ["file", "collapsed", "code", "agent"],
-    agent: ["agent", "code", "collapsed", "file"],
 };
 
 export class AppRenderer {
@@ -742,7 +716,7 @@ export class AppRenderer {
         }
 
         const preferredFileLine = typeof reference.fileLine === "number" ? reference.fileLine : null;
-        const normalizedLineText = normalizeLineTextForRestore(reference.lineText);
+        const normalizedLineText = normalizePersistedLineText(reference.lineText);
 
         if (preferredFileLine !== null) {
             const mappedByLine = this.lineModel.findGlobalLineForFileLine(filePath, preferredFileLine);
@@ -751,7 +725,7 @@ export class AppRenderer {
                     return mappedByLine;
                 }
 
-                const mappedText = normalizeLineTextForRestore(
+                const mappedText = normalizePersistedLineText(
                     this.lineModel.getVisibleLineInfo(mappedByLine)?.text ?? null,
                 );
                 if (mappedText === normalizedLineText) {
@@ -810,7 +784,7 @@ export class AppRenderer {
             if (block.filePath !== filePath) continue;
 
             for (let offset = 0; offset < block.renderedLines.length; offset += 1) {
-                const candidateText = normalizeLineTextForRestore(block.renderedLines[offset] ?? null);
+                const candidateText = normalizePersistedLineText(block.renderedLines[offset] ?? null);
                 if (candidateText !== normalizedLineText) continue;
 
                 const candidateGlobalLine = block.lineStart + offset;
@@ -903,301 +877,4 @@ export class AppRenderer {
         }
         return candidate.globalLine < currentBest.globalLine;
     }
-}
-
-function resolveBlockKindPenalty(candidate: BlockKind, preferred: BlockKind | null): number {
-    if (!preferred) return 0;
-    const order = BLOCK_KIND_RESTORE_ORDER[preferred];
-    const index = order.indexOf(candidate);
-    return index >= 0 ? index : order.length;
-}
-
-function normalizeLineTextForRestore(value: string | null): string | null {
-    if (typeof value !== "string") return null;
-    return value.endsWith("\r") ? value.slice(0, -1) : value;
-}
-
-export function renderTypeChips(options: RenderTypeChipsOptions): number {
-    clearChildren(options.chipsRow);
-
-    const typeChipCount = options.sortedTypes.length;
-    const totalChipCount = typeChipCount + options.groupChips.length;
-
-    if (totalChipCount === 0) {
-        return 0;
-    }
-
-    const typeChipLabels = options.sortedTypes.map((type) => {
-        const counts = options.getTypeCounts(type);
-        return counts.hidden > 0
-            ? `${type} (${counts.shown}/${counts.hidden})`
-            : `${type} (${counts.shown})`;
-    });
-    const groupChipLabels = options.groupChips.map((group) => `@${group.name}`);
-    const chipLabels = [...typeChipLabels, ...groupChipLabels];
-    const chipWidths = chipLabels.map((label) => Math.max(1, displayWidth(label) + 2));
-    const selectedChipIndex = clampIndex(options.selectedChipIndex, 0, chipWidths.length - 1);
-    const viewportWidth = resolveChipsViewportWidth(options);
-    const { startIndex, endIndex, hasHiddenLeft, hasHiddenRight } = resolveChipWindow(
-        chipWidths,
-        viewportWidth,
-        selectedChipIndex,
-        options.chipWindowStartIndex,
-    );
-
-    options.chipsRow.add(createOverflowIndicator(options.renderer, "left", hasHiddenLeft));
-    const chipsViewport = new BoxRenderable(options.renderer, {
-        flexDirection: "row",
-        flexWrap: "no-wrap",
-        alignItems: "center",
-        gap: CHIP_GAP_WIDTH,
-        flexGrow: 1,
-    });
-    options.chipsRow.add(chipsViewport);
-
-    for (let index = startIndex; index < endIndex; index += 1) {
-        const isTypeChip = index < typeChipCount;
-        const type = isTypeChip ? options.sortedTypes[index] : null;
-        if (isTypeChip && !type) continue;
-
-        const enabled = isTypeChip && type ? options.isTypeEnabled(type) : true;
-        const selected = index === selectedChipIndex;
-
-        const chip = new BoxRenderable(options.renderer, {
-            paddingLeft: 1,
-            paddingRight: 1,
-            backgroundColor: selected
-                ? theme.getChipSelectedBackgroundColor(options.chipsFocused)
-                : theme.getChipBackgroundColor(enabled),
-            onMouseDown: () => {
-                options.onChipSelected(index);
-                options.onToggleSelectedChip();
-            },
-        });
-
-        chip.add(
-            new TextRenderable(options.renderer, {
-                content: chipLabels[index] ?? "",
-                fg: theme.getChipTextColor(selected, enabled),
-                attributes: selected
-                    ? TextAttributes.BOLD | TextAttributes.UNDERLINE
-                    : isTypeChip && !enabled
-                        ? TextAttributes.DIM
-                        : TextAttributes.BOLD,
-            }),
-        );
-
-        chipsViewport.add(chip);
-    }
-
-    options.chipsRow.add(createOverflowIndicator(options.renderer, "right", hasHiddenRight));
-
-    return startIndex;
-}
-
-export function computeFilesModeViewportWidth(
-    viewportWidth: number,
-    scrollboxWidth: number,
-    rendererWidth: number,
-): number {
-    const resolved = resolveViewportWidth(viewportWidth, scrollboxWidth, rendererWidth);
-    return Math.max(1, resolved - 1);
-}
-
-export function formatCollapsedContentLine(label: string, width: number): string {
-    const trimmed = label.trim();
-    if (trimmed.length >= width) return trimmed.slice(0, width);
-    const remaining = width - trimmed.length;
-    const left = Math.floor(remaining / 2);
-    const right = remaining - left;
-    return `${" ".repeat(left)}${trimmed}${" ".repeat(right)}`;
-}
-
-export function formatAgentUpdateLine(update: AgentUpdate): string {
-    const prefix =
-    update.status === "running"
-        ? "AGENT RUNNING"
-        : update.status === "completed"
-            ? "AGENT DONE"
-            : update.status === "failed"
-                ? "AGENT FAILED"
-                : "AGENT DRAFT";
-    const prompt = update.prompt.trim().length > 0 ? update.prompt : "<type prompt>";
-    const variantSuffix = update.variant ? ` · think:${update.variant}` : "";
-    const runSuffix = update.runId ? ` · ${update.runId}` : "";
-    const errorSuffix = update.error ? ` | error: ${update.error}` : "";
-    return `● ${prefix} · ${update.model}${variantSuffix} · ${prompt}${runSuffix}${errorSuffix}`;
-}
-
-export function computeAgentContentWidth(
-    viewportWidth: number,
-    scrollboxWidth: number,
-    rendererWidth: number,
-    paddingLeft: number,
-    paddingRight: number,
-): number {
-    const resolved = resolveViewportWidth(viewportWidth, scrollboxWidth, rendererWidth);
-    return Math.max(8, resolved - Math.max(0, paddingLeft) - Math.max(0, paddingRight));
-}
-
-function resolveViewportWidth(viewportWidth: number, scrollboxWidth: number, rendererWidth: number): number {
-    if (Number.isFinite(viewportWidth) && viewportWidth > 0) {
-        return Math.floor(viewportWidth);
-    }
-    if (Number.isFinite(scrollboxWidth) && scrollboxWidth > 0) {
-        return Math.floor(scrollboxWidth);
-    }
-    return Math.max(1, Math.floor(rendererWidth));
-}
-
-function resolveChipsViewportWidth(options: RenderTypeChipsOptions): number {
-    if (typeof options.chipsRow.width === "number" && Number.isFinite(options.chipsRow.width)) {
-        const rowWidth = Math.floor(options.chipsRow.width);
-        if (rowWidth > 1) return rowWidth;
-    }
-
-    const rendererWidth = Math.floor(options.renderer.width);
-    if (Number.isFinite(rendererWidth) && rendererWidth > 1) {
-        return rendererWidth;
-    }
-
-    return Number.MAX_SAFE_INTEGER;
-}
-
-function resolveChipWindow(
-    chipWidths: readonly number[],
-    viewportWidth: number,
-    selectedChipIndex: number,
-    previousStartIndex: number,
-): { startIndex: number; endIndex: number; hasHiddenLeft: boolean; hasHiddenRight: boolean } {
-    if (chipWidths.length === 0) {
-        return { startIndex: 0, endIndex: 0, hasHiddenLeft: false, hasHiddenRight: false };
-    }
-
-    const safeSelectedIndex = clampIndex(selectedChipIndex, 0, chipWidths.length - 1);
-    const safeViewportWidth = Math.max(1, Math.floor(viewportWidth));
-    const chipsViewportWidth = resolveChipsViewportForWindow(safeViewportWidth);
-    if (computeTotalChipWidth(chipWidths) <= chipsViewportWidth) {
-        return { startIndex: 0, endIndex: chipWidths.length, hasHiddenLeft: false, hasHiddenRight: false };
-    }
-
-    let startIndex = clampIndex(previousStartIndex, 0, chipWidths.length - 1);
-
-    const ensureSelectionVisible = (): void => {
-        if (safeSelectedIndex < startIndex) {
-            startIndex = safeSelectedIndex;
-            return;
-        }
-        while (safeSelectedIndex >= computeWindowEnd(chipWidths, startIndex, chipsViewportWidth)) {
-            if (startIndex >= safeSelectedIndex) break;
-            startIndex += 1;
-        }
-    };
-
-    ensureSelectionVisible();
-
-    const leftTrigger = Math.max(0, Math.floor((chipsViewportWidth - 1) * CHIP_SCROLL_LEFT_TRIGGER_RATIO));
-    const rightTrigger = Math.max(
-        leftTrigger + 1,
-        Math.floor((chipsViewportWidth - 1) * CHIP_SCROLL_RIGHT_TRIGGER_RATIO),
-    );
-    let cursorPosition = computeChipCursorPosition(chipWidths, startIndex, safeSelectedIndex);
-    while (cursorPosition > rightTrigger && startIndex < safeSelectedIndex) {
-        startIndex += 1;
-        cursorPosition = computeChipCursorPosition(chipWidths, startIndex, safeSelectedIndex);
-    }
-
-    while (cursorPosition < leftTrigger && startIndex > 0) {
-        startIndex -= 1;
-        cursorPosition = computeChipCursorPosition(chipWidths, startIndex, safeSelectedIndex);
-    }
-
-    ensureSelectionVisible();
-    const endIndex = computeWindowEnd(chipWidths, startIndex, chipsViewportWidth);
-
-    return {
-        startIndex,
-        endIndex,
-        hasHiddenLeft: startIndex > 0,
-        hasHiddenRight: endIndex < chipWidths.length,
-    };
-}
-
-function resolveChipsViewportForWindow(viewportWidth: number): number {
-    let available = Math.max(1, Math.floor(viewportWidth));
-    available -= computeIndicatorFootprint() * 2;
-    return Math.max(1, available);
-}
-
-function computeTotalChipWidth(chipWidths: readonly number[]): number {
-    if (chipWidths.length === 0) return 0;
-    let total = 0;
-    for (let index = 0; index < chipWidths.length; index += 1) {
-        total += Math.max(1, Math.floor(chipWidths[index] ?? 1));
-        if (index > 0) total += 1;
-    }
-    return total;
-}
-
-function computeWindowEnd(chipWidths: readonly number[], startIndex: number, viewportWidth: number): number {
-    const safeViewportWidth = Math.max(1, Math.floor(viewportWidth));
-    let consumed = 0;
-    let index = startIndex;
-
-    while (index < chipWidths.length) {
-        const chipWidth = Math.max(1, Math.floor(chipWidths[index] ?? 1));
-        const additionalWidth = consumed === 0 ? chipWidth : chipWidth + CHIP_GAP_WIDTH;
-        if (consumed > 0 && consumed + additionalWidth > safeViewportWidth) {
-            break;
-        }
-        consumed += additionalWidth;
-        index += 1;
-        if (consumed >= safeViewportWidth) {
-            break;
-        }
-    }
-
-    return Math.max(startIndex + 1, index);
-}
-
-function computeChipCursorPosition(
-    chipWidths: readonly number[],
-    startIndex: number,
-    selectedChipIndex: number,
-): number {
-    let cursor = 0;
-    for (let index = startIndex; index < selectedChipIndex; index += 1) {
-        cursor += Math.max(1, Math.floor(chipWidths[index] ?? 1)) + CHIP_GAP_WIDTH;
-    }
-    const selectedWidth = Math.max(1, Math.floor(chipWidths[selectedChipIndex] ?? 1));
-    return cursor + Math.floor(selectedWidth / 2);
-}
-
-function computeIndicatorFootprint(): number {
-    return computeOverflowIndicatorWidth() + CHIP_GAP_WIDTH;
-}
-
-function createOverflowIndicator(
-    renderer: CliRenderer,
-    direction: "left" | "right",
-    visible: boolean,
-): TextRenderable {
-    const arrow = direction === "left" ? CHIP_OVERFLOW_LEFT_INDICATOR : CHIP_OVERFLOW_RIGHT_INDICATOR;
-    const width = computeOverflowIndicatorWidth();
-    return new TextRenderable(renderer, {
-        content: visible ? arrow : " ".repeat(width),
-        fg: CHIP_OVERFLOW_INDICATOR_COLOR,
-        attributes: visible ? TextAttributes.BOLD : TextAttributes.NONE,
-    });
-}
-
-function computeOverflowIndicatorWidth(): number {
-    return Math.max(
-        displayWidth(CHIP_OVERFLOW_LEFT_INDICATOR),
-        displayWidth(CHIP_OVERFLOW_RIGHT_INDICATOR),
-    );
-}
-
-function clampIndex(value: number, min: number, max: number): number {
-    return Math.min(max, Math.max(min, value));
 }

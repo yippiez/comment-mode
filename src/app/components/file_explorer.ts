@@ -1,7 +1,7 @@
-import { ensureExplorerDirectoryVisible } from "../controllers/state";
-import { buildFileTreeRows, type FileTreeRow } from "./view_modes";
-import type { CodeFileEntry } from "../types";
-import { getParentPosixPath } from "../utils/path";
+import { ensureExplorerDirectoryVisible } from "../../controllers/state";
+import { buildFileTreeRows, type FileTreeRow } from "../view_modes";
+import type { CodeFileEntry } from "../../types";
+import { getParentPosixPath } from "../../utils/path";
 
 export class FileExplorer {
     public static readonly FILE_PAGE_ID = "FILE";

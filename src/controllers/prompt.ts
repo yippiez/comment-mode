@@ -8,7 +8,7 @@ import {
     PromptComposerBar,
     type PromptComposerField,
     type PromptComposerLayout,
-} from "../app/prompt-composer-bar";
+} from "../app/components/prompt_composer_bar";
 
 export type PromptTarget = {
   updateId?: string;

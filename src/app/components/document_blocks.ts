@@ -7,13 +7,14 @@ import {
     type CliRenderer,
     type ScrollBoxRenderable,
 } from "@opentui/core";
-import { createFileTreeRowView } from "./file-tree-row";
-import { LineModel } from "../line-model";
-import { theme } from "../theme";
-import type { CodeFileEntry } from "../types";
-import { computeFilesModeViewportWidth, formatCollapsedContentLine } from "./renderer";
+import { createFileTreeRowView } from "./file_tree_row";
+import { LineModel } from "../../line_model";
+import { theme } from "../../theme";
+import type { CodeFileEntry } from "../../types";
 import { FileExplorer } from "./file_explorer";
-import type { FileTreeRow } from "./view_modes";
+import type { FileTreeRow } from "../view_modes";
+import { computeFilesModeViewportWidth } from "../../utils/viewport";
+import { formatCollapsedContentLine } from "../../utils/text";
 
 type RenderCursor = {
   nextLineNumber: number;
@@ -354,5 +355,4 @@ export class DocumentBlocks {
         }
         return signs;
     }
-
 }
