@@ -28,20 +28,49 @@ class MyHomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       bottomNavigationBar: const BottomBar(),
-      body: Center(
-        child: Builder(
-          builder: (context) {
-            final orientation = MediaQuery.of(context).orientation;
-            final maxWidthPercentage = orientation == Orientation.portrait
-                ? 0.5
-                : 0.33;
-            return Card(
-              title: 'Example Card',
+      body: Builder(
+        builder: (context) {
+          final orientation = MediaQuery.of(context).orientation;
+          final maxWidthPercentage = orientation == Orientation.portrait
+              ? 0.4
+              : 0.3;
+          final cards = [
+            Card(
+              title: 'Card 1',
               maxWidthPercentage: maxWidthPercentage,
-              child: const Text('Hello, this is a card component!'),
-            );
-          },
-        ),
+              child: Text('Content 1'),
+            ),
+            Card(
+              title: 'Card 2',
+              maxWidthPercentage: maxWidthPercentage,
+              child: Text('Content 2'),
+            ),
+            Card(
+              title: 'Card 3',
+              maxWidthPercentage: maxWidthPercentage,
+              child: Text('Content 3'),
+            ),
+            Card(
+              title: 'Card 4',
+              maxWidthPercentage: maxWidthPercentage,
+              child: Text('Content 4'),
+            ),
+            Card(
+              title: 'Card 5',
+              maxWidthPercentage: maxWidthPercentage,
+              child: Text('Content 5'),
+            ),
+            Card(
+              title: 'Card 6',
+              maxWidthPercentage: maxWidthPercentage,
+              child: Text('Content 6'),
+            ),
+          ];
+          return Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Wrap(spacing: 16.0, runSpacing: 16.0, children: cards),
+          );
+        },
       ),
     );
   }
