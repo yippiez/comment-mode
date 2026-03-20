@@ -28,6 +28,7 @@ class MyHomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBody: true,
       bottomNavigationBar: const BottomBar(),
       body: Builder(
         builder: (context) {
@@ -44,7 +45,7 @@ class MyHomePage extends StatelessWidget {
                 child: ConstrainedBox(
                   constraints: BoxConstraints(maxWidth: constraints.maxWidth),
                   child: MasonryGridView.builder(
-                    padding: const EdgeInsets.all(16.0),
+                    padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 104.0),
                     gridDelegate:
                         SliverSimpleGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: crossAxisCount,

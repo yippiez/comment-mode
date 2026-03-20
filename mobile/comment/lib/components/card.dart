@@ -18,16 +18,18 @@ class Card extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
+    final screenSize = MediaQuery.of(context).size;
+    final screenWidth = screenSize.width;
     final maxWidth = maxWidthPercentage == null
         ? null
         : maxWidthPercentage! * screenWidth;
+    final maxCardHeight = 0.8 * screenSize.height;
+    final maxContentHeight = (maxCardHeight - 52)
+        .clamp(0.0, double.infinity)
+        .toDouble();
     final constraints = maxWidth == null
-        ? BoxConstraints(maxHeight: 0.8 * MediaQuery.of(context).size.height)
-        : BoxConstraints(
-            maxWidth: maxWidth,
-            maxHeight: 0.8 * MediaQuery.of(context).size.height,
-          );
+        ? BoxConstraints(maxHeight: maxCardHeight)
+        : BoxConstraints(maxWidth: maxWidth, maxHeight: maxCardHeight);
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -46,7 +48,30 @@ class Card extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(12, 10, 8, 8),
               child: Row(children: [Text(title)]),
             ),
-            child,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: maxContentHeight),
+                child: ClipRect(
+                  child: ShaderMask(
+                    shaderCallback: (bounds) {
+                      return const LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.black,
+                          Colors.black,
+                          Colors.transparent,
+                        ],
+                        stops: [0.0, 0.85, 1.0],
+                      ).createShader(bounds);
+                    },
+                    blendMode: BlendMode.dstIn,
+                    child: child,
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),
