@@ -18,11 +18,14 @@ class Card extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final maxWidth = maxWidthPercentage * screenWidth;
     return GestureDetector(
       onTap: onTap,
       child: Container(
+        width: maxWidth,
         constraints: BoxConstraints(
-          maxWidth: maxWidthPercentage * MediaQuery.of(context).size.width,
+          maxWidth: maxWidth,
           maxHeight: 0.4 * MediaQuery.of(context).size.height,
         ),
         decoration: BoxDecoration(
