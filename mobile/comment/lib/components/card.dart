@@ -26,7 +26,7 @@ class Card extends StatelessWidget {
         width: maxWidth,
         constraints: BoxConstraints(
           maxWidth: maxWidth,
-          maxHeight: 0.4 * MediaQuery.of(context).size.height,
+          maxHeight: 0.8 * MediaQuery.of(context).size.height,
         ),
         decoration: BoxDecoration(
           color: Colors.grey[850],
@@ -41,6 +41,7 @@ class Card extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(12, 10, 8, 8),
               child: Row(children: [Text(title)]),
             ),
+            child,
           ],
         ),
       ),

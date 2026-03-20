@@ -47,7 +47,13 @@ class MyHomePage extends StatelessWidget {
             return Card(
               title: 'Card ${index + 1}',
               maxWidthPercentage: maxWidthPercentage,
-              child: Text(text),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12.0,
+                  vertical: 8.0,
+                ),
+                child: Text(text, style: TextStyle(color: Colors.grey[400])),
+              ),
             );
           });
           return Padding(
