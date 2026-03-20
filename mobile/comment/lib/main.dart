@@ -1,14 +1,41 @@
 import 'package:flutter/material.dart' hide Card;
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
+import 'package:provider/provider.dart';
 import 'package:comment/shared/theme.dart';
 import 'package:comment/components/card.dart';
 import 'package:comment/components/card_container.dart';
 import 'package:comment/components/bottom_bar.dart';
+import 'package:comment/components/search_window.dart';
+import 'package:comment/providers.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await LiquidGlassWidgets.initialize();
-  runApp(const MyApp());
+  runApp(
+    ChangeNotifierProvider(
+      create: (_) => CardsProvider()..initializeCards(_buildInitialCards()),
+      child: const MyApp(),
+    ),
+  );
+}
+
+List<CardData> _buildInitialCards() {
+  const loremIpsum =
+      'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. ';
+  final repeatedLorem = loremIpsum * 3;
+  final lengths = [50, 120, 250, 400, 600, 800];
+  return List<CardData>.generate(lengths.length, (index) {
+    final length = lengths[index];
+    final text = repeatedLorem.substring(
+      0,
+      length > repeatedLorem.length ? repeatedLorem.length : length,
+    );
+    return CardData(
+      id: 'card-${index + 1}',
+      title: 'Card ${index + 1}',
+      content: text,
+    );
+  });
 }
 
 class MyApp extends StatelessWidget {
@@ -30,34 +57,57 @@ class MyHomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cardsProvider = context.watch<CardsProvider>();
+    final cards = cardsProvider.cards
+        .map(
+          (cardData) => Card(
+            title: cardData.title,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12.0,
+                vertical: 8.0,
+              ),
+              child: Text(
+                cardData.content,
+                style: TextStyle(color: Colors.grey[400]),
+              ),
+            ),
+          ),
+        )
+        .toList(growable: false);
+
     return Scaffold(
       extendBody: true,
-      bottomNavigationBar: const BottomBar(),
-      body: Builder(
-        builder: (context) {
-          final loremIpsum =
-              'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. ';
-          final repeatedLorem = loremIpsum * 3;
-          final lengths = [50, 120, 250, 400, 600, 800];
-          final cards = List<Widget>.generate(lengths.length, (index) {
-            final length = lengths[index];
-            final text = repeatedLorem.substring(
-              0,
-              length > repeatedLorem.length ? repeatedLorem.length : length,
-            );
-            return Card(
-              title: 'Card ${index + 1}',
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12.0,
-                  vertical: 8.0,
-                ),
-                child: Text(text, style: TextStyle(color: Colors.grey[400])),
-              ),
-            );
-          });
-          return CardContainer(children: cards);
+      bottomNavigationBar: BottomBar(
+        onSearch: () => context.read<CardsProvider>().openSearch(),
+        onNew: () {
+          final provider = context.read<CardsProvider>();
+          final nextIndex = provider.allCards.length + 1;
+          final now = DateTime.now().millisecondsSinceEpoch;
+          provider.addCard(
+            CardData(
+              id: 'card-$now',
+              title: 'Card $nextIndex',
+              content:
+                  'New card content for item $nextIndex. Add your own text here to test fuzzy search quickly.',
+            ),
+          );
         },
+      ),
+      body: Stack(
+        children: [
+          CardContainer(children: cards),
+          SearchWindow(
+            isOpen: cardsProvider.isSearchOpen,
+            initialQuery: cardsProvider.searchQuery,
+            resultCount: cardsProvider.cards.length,
+            onChanged: (query) =>
+                context.read<CardsProvider>().filterCards(query),
+            onClose: () => context.read<CardsProvider>().closeSearch(),
+            onSubmit: () =>
+                context.read<CardsProvider>().closeSearchKeepingFilters(),
+          ),
+        ],
       ),
     );
   }
