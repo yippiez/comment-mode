@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 class Card extends StatelessWidget {
   final String title;
-  final double maxWidthPercentage;
+  final double? maxWidthPercentage;
   final Widget child;
   final VoidCallback? onTap;
   final VoidCallback? onDelete;
@@ -10,7 +10,7 @@ class Card extends StatelessWidget {
   const Card({
     super.key,
     required this.title,
-    required this.maxWidthPercentage,
+    this.maxWidthPercentage,
     required this.child,
     this.onTap,
     this.onDelete,
@@ -19,15 +19,20 @@ class Card extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
-    final maxWidth = maxWidthPercentage * screenWidth;
+    final maxWidth = maxWidthPercentage == null
+        ? null
+        : maxWidthPercentage! * screenWidth;
+    final constraints = maxWidth == null
+        ? BoxConstraints(maxHeight: 0.8 * MediaQuery.of(context).size.height)
+        : BoxConstraints(
+            maxWidth: maxWidth,
+            maxHeight: 0.8 * MediaQuery.of(context).size.height,
+          );
     return GestureDetector(
       onTap: onTap,
       child: Container(
         width: maxWidth,
-        constraints: BoxConstraints(
-          maxWidth: maxWidth,
-          maxHeight: 0.8 * MediaQuery.of(context).size.height,
-        ),
+        constraints: constraints,
         decoration: BoxDecoration(
           color: Colors.grey[850],
           borderRadius: BorderRadius.circular(12),
