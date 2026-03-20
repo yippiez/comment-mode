@@ -1,42 +1,66 @@
 import 'package:flutter/material.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 class BottomBar extends StatelessWidget {
-  final VoidCallback? onTap;
+  final VoidCallback? onNew;
+  final VoidCallback? onSearch;
+  final VoidCallback? onFiles;
 
-  const BottomBar({super.key, this.onTap});
+  const BottomBar({super.key, this.onNew, this.onSearch, this.onFiles});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 72,
-      width: double.infinity,
-      alignment: Alignment.bottomCenter,
+    return SafeArea(
+      top: false,
       child: Padding(
-        padding: const EdgeInsets.only(bottom: 24, left: 40, right: 40),
-        child: GestureDetector(
-          onTap: onTap,
-          child: Container(
-            width: MediaQuery.of(context).size.width * 0.8,
-            height: 56,
-            decoration: BoxDecoration(
-              color: Colors.grey[850],
-              borderRadius: BorderRadius.circular(28),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.3),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
+        padding: const EdgeInsets.only(left: 16, right: 16, bottom: 12),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _BottomActionButton(
+              icon: Icons.folder_open_outlined,
+              label: 'Files',
+              onTap: onFiles,
             ),
-            child: onTap != null
-                ? Center(
-                    child: Icon(Icons.sort, color: Colors.grey[400], size: 24),
-                  )
-                : null,
-          ),
+            const SizedBox(width: 16),
+            _BottomActionButton(
+              icon: Icons.search,
+              label: 'Search',
+              onTap: onSearch,
+            ),
+            const SizedBox(width: 16),
+            _BottomActionButton(icon: Icons.add, label: '+ New', onTap: onNew),
+          ],
         ),
       ),
+    );
+  }
+}
+
+class _BottomActionButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+
+  const _BottomActionButton({
+    required this.icon,
+    required this.label,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassButton(
+      icon: icon,
+      iconSize: 24,
+      iconColor: Colors.white,
+      width: 56,
+      height: 56,
+      label: label,
+      onTap: onTap ?? () {},
+      useOwnLayer: true,
+      quality: GlassQuality.standard,
+      glowRadius: 1.1,
     );
   }
 }

@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart' hide Card;
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:comment/shared/theme.dart';
 import 'package:comment/components/card.dart';
 import 'package:comment/components/bottom_bar.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await LiquidGlassWidgets.initialize();
   runApp(const MyApp());
 }
 
