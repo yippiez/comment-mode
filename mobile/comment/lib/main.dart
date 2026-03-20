@@ -34,38 +34,22 @@ class MyHomePage extends StatelessWidget {
           final maxWidthPercentage = orientation == Orientation.portrait
               ? 0.4
               : 0.3;
-          final cards = [
-            Card(
-              title: 'Card 1',
+          final loremIpsum =
+              'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. ';
+          final repeatedLorem = loremIpsum * 3; // about 1300 chars
+          final lengths = [50, 120, 250, 400, 600, 800];
+          final cards = List.generate(6, (index) {
+            final length = lengths[index];
+            final text = repeatedLorem.substring(
+              0,
+              length > repeatedLorem.length ? repeatedLorem.length : length,
+            );
+            return Card(
+              title: 'Card ${index + 1}',
               maxWidthPercentage: maxWidthPercentage,
-              child: Text('Content 1'),
-            ),
-            Card(
-              title: 'Card 2',
-              maxWidthPercentage: maxWidthPercentage,
-              child: Text('Content 2'),
-            ),
-            Card(
-              title: 'Card 3',
-              maxWidthPercentage: maxWidthPercentage,
-              child: Text('Content 3'),
-            ),
-            Card(
-              title: 'Card 4',
-              maxWidthPercentage: maxWidthPercentage,
-              child: Text('Content 4'),
-            ),
-            Card(
-              title: 'Card 5',
-              maxWidthPercentage: maxWidthPercentage,
-              child: Text('Content 5'),
-            ),
-            Card(
-              title: 'Card 6',
-              maxWidthPercentage: maxWidthPercentage,
-              child: Text('Content 6'),
-            ),
-          ];
+              child: Text(text),
+            );
+          });
           return Padding(
             padding: const EdgeInsets.all(16.0),
             child: Align(
