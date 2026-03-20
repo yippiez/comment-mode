@@ -1,3 +1,7 @@
+/**
+ * OpenCode theme definition: syntax palette + UI colors that match the
+ * OpenCode visual style.
+ */
 import type { ThemeDefinition } from "./types";
 
 export const opencodeTheme: ThemeDefinition = {

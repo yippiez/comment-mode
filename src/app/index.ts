@@ -1,3 +1,7 @@
+/**
+ * Main TUI app composition: wires controllers, renders content, and handles
+ * keyboard/prompt/persistence interactions for browsing and prompting code.
+ */
 import {
     BoxRenderable,
     ScrollBoxRenderable,
@@ -8,7 +12,7 @@ import {
 import { Camera } from "../controllers/camera";
 import { OpenCode, type OpenCodeSubmission } from "../integrations/opencode";
 import { Layout } from "../controllers/layout";
-import { hydrateCodeFileEntry, isMissingCodeFileError } from "../files";
+import { hydrateCodeFileEntry, isMissingCodeFileError } from "../utils/files";
 import { NavigationController } from "../controllers/navigation";
 import {
     Prompt,
@@ -280,6 +284,10 @@ export class CodeBrowserApp {
         this.applyTheme();
     }
 
+    // ------------------------------------------
+    // Actions
+    // ------------------------------------------
+
     public start(): void {
         this.pruneAgentUpdates();
         this.registerBindings();
@@ -297,6 +305,10 @@ export class CodeBrowserApp {
         this.recomputeTypesState();
         this.renderAll({ preferFirstAnchor: this.lazyContentModeEnabled });
     }
+
+    // ------------------------------------------
+    // Getters
+    // ------------------------------------------
 
     public getAgentUpdates(): AgentUpdate[] {
         return this.agent.getUpdates();
@@ -326,6 +338,10 @@ export class CodeBrowserApp {
         };
     }
 
+    // ------------------------------------------
+    // Actions
+    // ------------------------------------------
+
     public shutdown(): void {
         this.unregisterBindings();
         this.agent.shutdown();
@@ -333,6 +349,10 @@ export class CodeBrowserApp {
             this.prompt.close();
         }
     }
+
+    // ------------------------------------------
+    // Private Helpers
+    // ------------------------------------------
 
     private registerBindings(): void {
         if (this.bindingCleanupFns.length > 0) return;

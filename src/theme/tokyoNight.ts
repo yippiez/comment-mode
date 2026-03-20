@@ -1,3 +1,6 @@
+/**
+ * Tokyo Night theme definition: syntax palette + UI colors for the TUI.
+ */
 import type { ThemeDefinition } from "./types";
 
 export const tokyoNightTheme: ThemeDefinition = {

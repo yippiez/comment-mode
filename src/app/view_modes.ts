@@ -1,3 +1,7 @@
+/**
+ * View-mode builder: constructs the virtual “file tree” rows and selection
+ * metadata used by the renderer when focusing non-code modes.
+ */
 import type { BlockKind, CodeFileEntry } from "../types";
 import { getParentPosixPath, normalizePosixPath } from "../utils/path";
 

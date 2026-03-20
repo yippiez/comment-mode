@@ -1,5 +1,5 @@
 /**
- * Resolves the effective viewport width using the first usable source.
+ * Viewport/layout width calculations for the TUI.
  * @param viewportWidth - Measured viewport width from layout, if available
  * @param scrollboxWidth - Fallback width from the scroll container
  * @param rendererWidth - Final fallback width from the renderer

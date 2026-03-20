@@ -1,3 +1,7 @@
+/**
+ * Editor integration: opens files in the user's configured `$EDITOR`
+ * at a specified line number.
+ */
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 

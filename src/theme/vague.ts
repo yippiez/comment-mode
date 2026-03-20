@@ -1,3 +1,7 @@
+/**
+ * Vague theme definition: syntax palette + UI color values used for
+ * consistent styling across the terminal UI.
+ */
 import type { ThemeDefinition } from "./types";
 
 export const vagueTheme: ThemeDefinition = {

@@ -1,3 +1,7 @@
+/**
+ * Cursor controller: tracks the current cursor line, visual selection
+ * anchor/range, and signals changes to the camera.
+ */
 import { clamp } from "../utils/math";
 import { SIGNALS } from "../signals";
 import { Camera } from "./camera";
@@ -18,6 +22,10 @@ export class Cursor {
         this.bindings = bindings;
     }
 
+    // ------------------------------------------
+    // Getters
+    // ------------------------------------------
+
     public get cursorLine(): number {
         return this.line;
     }
@@ -34,6 +42,10 @@ export class Cursor {
     public get isVisualModeEnabled(): boolean {
         return this.visualMode;
     }
+
+    // ------------------------------------------
+    // Actions
+    // ------------------------------------------
 
     public configure(totalLines: number): void {
         this.configureWithTarget(totalLines);
@@ -121,6 +133,10 @@ export class Cursor {
         this.line = nextLine;
         SIGNALS.cursorChanged();
     }
+
+    // ------------------------------------------
+    // Private Helpers
+    // ------------------------------------------
 
     private clampState(): void {
         if (this.totalLines <= 0) {

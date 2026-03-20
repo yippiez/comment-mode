@@ -1,3 +1,7 @@
+/**
+ * Persistence controller: versioned read/write of UI state and groups
+ * under the `.comment/` directory in the workspace.
+ */
 import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -61,6 +65,10 @@ export class PersistenceController {
     };
     private writeQueue: Promise<void> = Promise.resolve();
 
+    // ------------------------------------------
+    // Actions
+    // ------------------------------------------
+
     public async load(rootDir: string): Promise<void> {
         this.rootDir = rootDir;
         const loaded = await this.readState(rootDir);
@@ -98,6 +106,10 @@ export class PersistenceController {
         renameSync(tempPath, filePath);
     }
 
+    // ------------------------------------------
+    // Setters
+    // ------------------------------------------
+
     public setUiState(state: PersistedUiState | null): void {
         this.state.ui = state ? structuredClone(state) : null;
     }
@@ -105,6 +117,10 @@ export class PersistenceController {
     public setGroups(groups: readonly PersistedUiGroup[]): void {
         this.state.groups = structuredClone([...groups]);
     }
+
+    // ------------------------------------------
+    // Getters
+    // ------------------------------------------
 
     public getState(): PersistedState {
         return structuredClone(this.state);
@@ -133,6 +149,10 @@ export class PersistenceController {
     public getPromptState(): PersistedPromptState | null {
         return this.state.ui ? structuredClone(this.state.ui.prompt) : null;
     }
+
+    // ------------------------------------------
+    // Private Helpers
+    // ------------------------------------------
 
     private async readState(rootDir: string): Promise<PersistedState | null> {
         const filePath = getPersistenceFilePath(rootDir);

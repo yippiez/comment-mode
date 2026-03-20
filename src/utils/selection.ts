@@ -1,5 +1,5 @@
 /**
- * Returns the path if all given paths are identical, otherwise returns null.
+ * Selection/string utilities: build stable prompt paths from cursor selection metadata.
  * @param paths - Array of paths to check for uniqueness
  * @returns The unique path if all paths are the same, null otherwise
  * @example

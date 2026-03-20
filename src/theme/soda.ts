@@ -1,3 +1,6 @@
+/**
+ * Soda theme definition: syntax palette + UI colors for the terminal UI.
+ */
 import type { ThemeDefinition } from "./types";
 
 export const sodaTheme: ThemeDefinition = {

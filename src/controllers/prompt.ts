@@ -1,3 +1,8 @@
+/**
+ * Prompt orchestration: builds prompt targets from the current selection,
+ * runs the configured agent harness (via integrations), and emits timeline
+ * updates through signals.
+ */
 import { KeyEvent } from "@opentui/core";
 import { OpenCode } from "../integrations/opencode";
 import { SIGNALS } from "../signals";
@@ -78,6 +83,10 @@ export class Prompt {
         this.resolveLayout = options.resolveLayout;
     }
 
+    // ------------------------------------------
+    // Getters
+    // ------------------------------------------
+
     /** Returns whether prompt composer is currently visible. */
     public get isVisible(): boolean {
         return this.visible;
@@ -98,6 +107,10 @@ export class Prompt {
             thinkingLevel: this.lastModelConfig.thinkingLevel,
         };
     }
+
+    // ------------------------------------------
+    // Actions
+    // ------------------------------------------
 
     public applyPersistedModelConfig(config: PromptModelConfig): void {
         this.lastModelConfig = {
@@ -189,6 +202,10 @@ export class Prompt {
     }
 
     /** Commits prompt state and hands submission back to app orchestration. */
+    // ------------------------------------------
+    // Private Helpers
+    // ------------------------------------------
+
     private submit(): void {
         if (!this.target) return;
         const promptText = this.promptComposer.promptInput.plainText.trim();
@@ -250,6 +267,10 @@ export class Prompt {
         this.rememberCurrentModelConfig();
         this.render();
     }
+
+    // ------------------------------------------
+    // Getters
+    // ------------------------------------------
 
     private getModelOptions(): string[] {
         if (!this.target) return this.availableModels;

@@ -1,3 +1,7 @@
+/**
+ * App state helpers: holds minimal UI state and derives chip/filter
+ * enablement from the current set of loaded code files.
+ */
 import type { CodeFileEntry, FocusMode } from "../types";
 import { clamp } from "../utils/math";
 import { getParentPosixPath } from "../utils/path";

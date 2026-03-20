@@ -61,6 +61,10 @@ export class DocumentBlocks {
         this.fileExplorer = fileExplorer;
     }
 
+    // ------------------------------------------
+    // Actions
+    // ------------------------------------------
+
     public beginRender(): void {
         this.renderPass += 1;
         this.activeCodeBlockKeys.clear();
@@ -83,6 +87,10 @@ export class DocumentBlocks {
             if (this.cachedCodeBlocks.size <= MAX_CACHED_CODE_BLOCKS) break;
         }
     }
+
+    // ------------------------------------------
+    // Adders
+    // ------------------------------------------
 
     public addFileTreeRowBlock(
         row: FileTreeRow,
@@ -292,6 +300,10 @@ export class DocumentBlocks {
         };
     }
 
+    // ------------------------------------------
+    // Getters
+    // ------------------------------------------
+
     private getFilesModeViewportWidth(): number {
         return computeFilesModeViewportWidth(
             Math.floor(this.scrollbox.viewport.width),
@@ -299,6 +311,10 @@ export class DocumentBlocks {
             this.renderer.width,
         );
     }
+
+    // ------------------------------------------
+    // Builders
+    // ------------------------------------------
 
     private buildCollapsedBlockKey(
         filePath: string,
@@ -315,6 +331,10 @@ export class DocumentBlocks {
             content,
         ].join("|");
     }
+
+    // ------------------------------------------
+    // Builders
+    // ------------------------------------------
 
     private buildCodeBlockKey(
         filePath: string,
@@ -334,10 +354,18 @@ export class DocumentBlocks {
         ].join("|");
     }
 
+    // ------------------------------------------
+    // Actions
+    // ------------------------------------------
+
     private touchCachedBlock(key: string, block: CachedCodeBlock): void {
         this.activeCodeBlockKeys.add(key);
         block.lastUsedRenderPass = this.renderPass;
     }
+
+    // ------------------------------------------
+    // Computations
+    // ------------------------------------------
 
     private computeDefaultLineSigns(
         entry: CodeFileEntry,

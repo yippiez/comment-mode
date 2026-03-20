@@ -1,3 +1,7 @@
+/**
+ * Chip selection controller: manages the current selected chip index,
+ * toggling enabled type/group filters, and triggering re-renders.
+ */
 import { wrapIndex } from "../utils/math";
 
 export type SelectedChipTarget =
@@ -22,6 +26,10 @@ export class ChipSelectionController {
     constructor(options: ChipSelectionControllerOptions) {
         this.options = options;
     }
+
+    // ------------------------------------------
+    // Actions
+    // ------------------------------------------
 
     public moveSelection(delta: number): void {
         const chipCount = this.options.getChipCount();

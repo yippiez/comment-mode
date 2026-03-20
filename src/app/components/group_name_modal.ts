@@ -1,3 +1,7 @@
+/**
+ * Group name modal: prompts the user for a group label when saving/updating
+ * persisted UI state snapshots.
+ */
 import {
     BoxRenderable,
     KeyEvent,
@@ -110,6 +114,10 @@ export class GroupNameModal {
         this.applyTheme();
     }
 
+    // ------------------------------------------
+    // Getters
+    // ------------------------------------------
+
     public get renderable(): BoxRenderable {
         return this.overlay;
     }
@@ -117,6 +125,10 @@ export class GroupNameModal {
     public get isVisible(): boolean {
         return this.overlay.visible;
     }
+
+    // ------------------------------------------
+    // Actions
+    // ------------------------------------------
 
     public open(initialName: string): void {
         this.refreshLayout();
@@ -176,6 +188,10 @@ export class GroupNameModal {
         this.applyTextareaTheme();
         this.overlay.requestRender();
     }
+
+    // ------------------------------------------
+    // Private Helpers
+    // ------------------------------------------
 
     private applyTextareaTheme(): void {
         const runtimeTextarea = this.input as unknown as RuntimeTextareaStyleApi;

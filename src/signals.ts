@@ -1,4 +1,8 @@
 
+/**
+ * Signals bus: a lightweight typed pub/sub layer used to route app-wide
+ * events (cursor movement, theme toggles, prompt submissions, etc.).
+ */
 import type { PromptSubmission } from "./controllers/prompt";
 
 export interface SignalListener<Args extends unknown[]> {

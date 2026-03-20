@@ -1,3 +1,7 @@
+/**
+ * Tree-sitter integration: registers custom parsers/queries for additional
+ * filetypes so OpenTUI can highlight syntax correctly.
+ */
 import { addDefaultParsers, type FiletypeParserOptions } from "@opentui/core";
 
 const CUSTOM_TREE_SITTER_PARSERS: FiletypeParserOptions[] = [

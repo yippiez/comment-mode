@@ -1,5 +1,5 @@
 /**
- * Clamps a value between minimum and maximum bounds.
+ * Math helpers used by the TUI (clamping and index wrapping).
  * @param value - The number to clamp
  * @param min - The minimum bound (inclusive)
  * @param max - The maximum bound (inclusive)

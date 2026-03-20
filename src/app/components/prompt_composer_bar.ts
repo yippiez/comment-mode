@@ -1,3 +1,7 @@
+/**
+ * Prompt composer bar: inline overlay that lets users author/select an LLM
+ * prompt (model + thinking level) for a chosen selection/context.
+ */
 import {
     BoxRenderable,
     TextareaRenderable,
@@ -163,6 +167,10 @@ export class PromptComposerBar {
         this.applyTheme();
     }
 
+    // ------------------------------------------
+    // Getters
+    // ------------------------------------------
+
     public get renderable(): BoxRenderable {
         return this.overlay;
     }
@@ -171,6 +179,10 @@ export class PromptComposerBar {
     public get promptInput(): TextareaRenderable {
         return this.input;
     }
+
+    // ------------------------------------------
+    // Actions
+    // ------------------------------------------
 
     /** Shows the prompt overlay and focuses prompt input. */
     public open(promptText: string): void {
@@ -270,6 +282,10 @@ export class PromptComposerBar {
         this.applyTextareaTheme();
         this.overlay.requestRender();
     }
+
+    // ------------------------------------------
+    // Private Helpers
+    // ------------------------------------------
 
     /** Formats the model chip label with loading state suffix. */
     private getModelLabel(state: PromptComposerViewState): string {

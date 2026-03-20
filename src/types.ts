@@ -1,3 +1,7 @@
+/**
+ * Domain types: defines the core app model (cursor/selection/render blocks)
+ * and the payload shapes passed between controllers and renderers.
+ */
 import type {
     CodeRenderable,
     KeyEvent as OpenTuiKeyEvent,

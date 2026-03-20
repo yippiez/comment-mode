@@ -1,3 +1,7 @@
+/**
+ * Selection helpers: extracts per-line selection metadata from the cursor
+ * and converts code/virtual selections into `PromptTarget` payloads.
+ */
 import type { PromptTarget } from "../controllers/prompt";
 import type { Cursor } from "../controllers/cursor";
 import type { LineModel } from "../line_model";

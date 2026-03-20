@@ -1,3 +1,7 @@
+/**
+ * Type/group chip rendering: draws filter chips, handles horizontal scrolling,
+ * and reflects selection/enabled state for the TUI.
+ */
 import {
     BoxRenderable,
     TextAttributes,

@@ -1,3 +1,7 @@
+/**
+ * Virtual code blocks: defines non-files sections (e.g. file tree) that can
+ * be rendered like code blocks and contribute supplemental type filtering.
+ */
 import type { SupplementalTypeState } from "../controllers/state";
 import type { CodeFileEntry } from "../types";
 import { FileExplorer } from "./components/file_explorer";
@@ -34,6 +38,10 @@ export class VirtualCodeBlocks {
 
     constructor(private readonly fileExplorer: FileExplorer) {}
 
+    // ------------------------------------------
+    // Getters
+    // ------------------------------------------
+
     public getSupplementalTypes(): SupplementalTypeState[] {
         return this.descriptors.map((descriptor) => ({
             typeLabel: descriptor.typeLabel,
@@ -69,6 +77,10 @@ export class VirtualCodeBlocks {
         return this.descriptors[0]?.promptFilePath ?? ".";
     }
 
+    // ------------------------------------------
+    // Setters
+    // ------------------------------------------
+
     public setAnchorLine(blockId: VirtualCodeBlockId, line: number): void {
         if (blockId !== FileExplorer.FILE_PAGE_ID) return;
         this.fileExplorer.setFilePageAnchorLine(line);
@@ -78,11 +90,19 @@ export class VirtualCodeBlocks {
         this.fileExplorer.setFilePageCollapsed(collapsed);
     }
 
+    // ------------------------------------------
+    // Actions
+    // ------------------------------------------
+
     public toggleFileBlockCollapseAtLine(line: number): boolean {
         if (!this.isLineInFileBlock(line)) return false;
         this.fileExplorer.toggleFilePageCollapsed();
         return true;
     }
+
+    // ------------------------------------------
+    // Getters
+    // ------------------------------------------
 
     public isLineInFileBlock(line: number): boolean {
         if (this.fileExplorer.getRowAtLine(line)) return true;
@@ -101,6 +121,10 @@ export class VirtualCodeBlocks {
         const safePath = row.path.length > 0 ? row.path : "__root__";
         return `${FILE_BLOCK_DESCRIPTOR.anchorPath}/${row.kind}/${safePath}`;
     }
+
+    // ------------------------------------------
+    // Actions
+    // ------------------------------------------
 
     public openAtLine(line: number): { openedFilePath?: string; enteredDirectory: boolean } {
         const row = this.fileExplorer.getRowAtLine(line);

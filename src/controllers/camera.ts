@@ -1,3 +1,7 @@
+/**
+ * Camera controller: manages scroll positioning so the cursor stays visible,
+ * including page steps and programmatic scroll correction.
+ */
 import { clamp } from "../utils/math";
 
 type CameraBindings = {
@@ -23,6 +27,10 @@ export class Camera {
     constructor(bindings: CameraBindings) {
         this.bindings = bindings;
     }
+
+    // ------------------------------------------
+    // Actions
+    // ------------------------------------------
 
     public pageStep(): number {
         return Math.max(1, this.bindings.getViewportHeight() - 1);
@@ -127,6 +135,10 @@ export class Camera {
         if (clampedLine === currentCursorLine) return undefined;
         return clampedLine;
     }
+
+    // ------------------------------------------
+    // Private Helpers
+    // ------------------------------------------
 
     private ensureCursorVisible(cursorLine: number, direction: number): void {
         const row = this.bindings.getDisplayRowForLine(cursorLine);

@@ -1,3 +1,7 @@
+/**
+ * File-level loaders for the TUI.
+ * Converts workspace-discovered entries into hydrated `CodeFileEntry` records.
+ */
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { getIgnoredDirs, loadCodeFileEntries as loadWorkspaceCodeFileEntries } from "./workspace";

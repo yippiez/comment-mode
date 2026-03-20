@@ -1,4 +1,8 @@
 /**
+ * Validation and normalization utilities used during workspace loading and
+ * persistence hydration (path lists, numeric conversions, and missing-file detection).
+ */
+/**
  * Checks if an error represents a "file not found" error (ENOENT).
  * @param error - The error object to check
  * @returns True if the error is an ENOENT error, false otherwise

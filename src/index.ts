@@ -1,9 +1,13 @@
 #!/usr/bin/env bun
 
+/**
+ * CLI entrypoint for the terminal code browser.
+ * Boots the TUI renderer, loads persisted state and workspace entries, and starts the app.
+ */
 import { createCliRenderer } from "@opentui/core";
 import { CodeBrowserApp } from "./app";
 import { PersistenceController } from "./controllers/persistence";
-import { loadCodeFileEntries } from "./files";
+import { loadCodeFileEntries } from "./utils/files";
 import { registerTreeSitterParsers } from "./integrations/treesitter";
 import { SIGNALS } from "./signals";
 import { getIgnoredDirs, watchWorkspace } from "./workspace";

@@ -40,12 +40,20 @@ export class AgentTimeline {
         this.lineModel = lineModel;
     }
 
+    // ------------------------------------------
+    // Actions
+    // ------------------------------------------
+
     public resetForRender(): void {
         this.agentLineByUpdateId = new Map();
         this.agentLineRangeByUpdateId = new Map();
         this.updateIdByAgentLine = new Map();
         this.agentRowDecorations = new Map();
     }
+
+    // ------------------------------------------
+    // Getters
+    // ------------------------------------------
 
     public getPromptLines(): number[] {
         return [...this.agentLineByUpdateId.values()];
@@ -63,6 +71,10 @@ export class AgentTimeline {
         return this.updateIdByAgentLine.get(line);
     }
 
+    // ------------------------------------------
+    // Adders
+    // ------------------------------------------
+
     public addUpdateWithMessages(
         update: AgentUpdate,
         nextLineNumber: number,
@@ -76,6 +88,10 @@ export class AgentTimeline {
         });
         return withMessages;
     }
+
+    // ------------------------------------------
+    // Actions
+    // ------------------------------------------
 
     public applyHighlights(selectionStart: number, selectionEnd: number, cursorLine: number): void {
         for (const [line, decoration] of this.agentRowDecorations.entries()) {
@@ -93,6 +109,10 @@ export class AgentTimeline {
             decoration.row.requestRender();
         }
     }
+
+    // ------------------------------------------
+    // Private Helpers
+    // ------------------------------------------
 
     private addUpdateBlock(
         update: AgentUpdate,
@@ -243,6 +263,10 @@ export class AgentTimeline {
             blockStartLine,
         };
     }
+
+    // ------------------------------------------
+    // Getters
+    // ------------------------------------------
 
     private getContentWidth(paddingLeft: number, paddingRight: number): number {
         return computeAgentContentWidth(

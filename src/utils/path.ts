@@ -1,5 +1,5 @@
 /**
- * Normalizes a POSIX path by removing empty segments and redundant slashes.
+ * POSIX path utilities used across the app (normalization and parent extraction).
  * @param path - The POSIX path to normalize.
  * @returns The normalized path without empty segments or leading/trailing slashes.
  * @example

@@ -1,3 +1,7 @@
+/**
+ * Clipboard integration: reads and writes text using available system
+ * commands (Wayland/X11/macOS fallbacks).
+ */
 import { spawn } from "node:child_process";
 
 type ClipboardCommand = { command: string; args: string[] };

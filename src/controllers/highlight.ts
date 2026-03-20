@@ -1,3 +1,7 @@
+/**
+ * Highlight controller: applies cursor/selection/visual-mode styling onto
+ * rendered line/code views in the TUI.
+ */
 import { CodeRenderable, LineNumberRenderable, RGBA, Selection } from "@opentui/core";
 import { theme } from "../theme";
 import type { RenderedLineBlock } from "../types";
@@ -16,6 +20,10 @@ export class Highlight {
     private static readonly MAX_SELECTION_COL = 8192;
 
     private activeCodeViews = new Set<CodeRenderable>();
+
+    // ------------------------------------------
+    // Actions
+    // ------------------------------------------
 
     public reset(): void {
         for (const codeView of this.activeCodeViews) {
@@ -81,6 +89,10 @@ export class Highlight {
 
         this.activeCodeViews = nextActiveCodeViews;
     }
+
+    // ------------------------------------------
+    // Private Helpers
+    // ------------------------------------------
 
     private applyCodeSelection(
         codeView: CodeRenderable,

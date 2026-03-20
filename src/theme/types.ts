@@ -1,3 +1,7 @@
+/**
+ * Theme typing helpers: defines syntax palettes and UI color contracts used
+ * by theme implementations and the shared syntax style builder.
+ */
 import { SyntaxStyle } from "@opentui/core";
 
 export type SyntaxPalette = {

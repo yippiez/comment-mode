@@ -1,3 +1,7 @@
+/**
+ * Navigation controller: implements vim-like movement and jumps between
+ * files and agent prompt blocks while coordinating cursor and camera.
+ */
 import { Camera } from "./camera";
 import { Cursor } from "./cursor";
 import { LineModel } from "../line_model";
@@ -20,6 +24,10 @@ export class NavigationController {
     constructor(bindings: NavigationBindings) {
         this.bindings = bindings;
     }
+
+    // ------------------------------------------
+    // Actions
+    // ------------------------------------------
 
     /** Throttles repeated keypress bursts to avoid queued jump spikes. */
     public shouldThrottleRepeatedMove(repeated: boolean): boolean {
@@ -53,6 +61,10 @@ export class NavigationController {
     }
 
     /** Moves cursor/camera to next file anchor and places divider near top band. */
+    // ------------------------------------------
+    // Private Helpers
+    // ------------------------------------------
+
     private jumpToNextFileStart(): void {
         if (this.bindings.lineModel.totalLines <= 0) return;
         const currentAnchorIndex = this.bindings.lineModel.findCurrentFileAnchorIndex(

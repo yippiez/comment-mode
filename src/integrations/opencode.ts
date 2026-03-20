@@ -1,3 +1,7 @@
+/**
+ * OpenCode integration: launches OpenCode/headless runs, parses streaming
+ * JSON line events, and updates the agent timeline via `SIGNALS`.
+ */
 import { spawn } from "node:child_process";
 import { SIGNALS } from "../signals";
 import type { AgentModel, AgentUpdate, ViewMode } from "../types";
@@ -156,6 +160,10 @@ export class OpenCode {
         this.renderTimer = null;
     }
 
+    // ------------------------------------------
+    // Getters
+    // ------------------------------------------
+
     public getUpdates(): AgentUpdate[] {
         return this.updates.map((update) => ({ ...update, messages: [...update.messages] }));
     }
@@ -163,6 +171,10 @@ export class OpenCode {
     public getMutableUpdates(): AgentUpdate[] {
         return this.updates;
     }
+
+    // ------------------------------------------
+    // Updaters
+    // ------------------------------------------
 
     public upsertFromSubmission(submission: OpenCodeSubmission): AgentUpdate {
         let update = submission.updateId
@@ -201,6 +213,10 @@ export class OpenCode {
         return update;
     }
 
+    // ------------------------------------------
+    // Finders
+    // ------------------------------------------
+
     public findById(id: string): AgentUpdate | undefined {
         return this.updates.find((update) => update.id === id);
     }
@@ -213,6 +229,10 @@ export class OpenCode {
         if (!updateId) return undefined;
         return this.findById(updateId);
     }
+
+    // ------------------------------------------
+    // Removers
+    // ------------------------------------------
 
     public remove(updateId: string): boolean {
         const stop = this.runningStops.get(updateId);
@@ -311,6 +331,10 @@ export class OpenCode {
         this.notifyUpdatesChanged();
         SIGNALS.agentRenderRequested();
     }
+
+    // ------------------------------------------
+    // Private Helpers
+    // ------------------------------------------
 
     private pushMessage(update: AgentUpdate, message: string): void {
         const trimmed = message.replace(/\s+/g, " ").trim();

@@ -1,3 +1,7 @@
+/**
+ * Main renderer: converts app state (cursor, selection, chips, blocks, prompt)
+ * into OpenTUI renderables and manages restore/highlight cycles.
+ */
 import {
     BoxRenderable,
     ScrollBoxRenderable,
@@ -141,6 +145,10 @@ export class AppRenderer {
         this.isPromptVisible = options.isPromptVisible;
         this.refreshPromptView = options.refreshPromptView;
     }
+
+    // ------------------------------------------
+    // Actions
+    // ------------------------------------------
 
     public applyTheme(): void {
         this.root.backgroundColor = theme.getBackgroundColor();
@@ -578,6 +586,10 @@ export class AppRenderer {
         };
     }
 
+    // ------------------------------------------
+    // Getters
+    // ------------------------------------------
+
     public getViewportHeight(): number {
         return Math.max(
             1,
@@ -628,6 +640,10 @@ export class AppRenderer {
         if (!Number.isFinite(resolved)) return anchor.dividerRow;
         return Math.max(0, Math.round(resolved));
     }
+
+    // ------------------------------------------
+    // Private Helpers
+    // ------------------------------------------
 
     private renderEmptyState(message: string): void {
         clearChildren(this.scrollbox);

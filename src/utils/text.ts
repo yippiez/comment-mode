@@ -1,3 +1,7 @@
+/**
+ * Text utilities for the TUI: measures display widths, wraps/truncates
+ * labels, and formats code/file-tree lines for rendering.
+ */
 import type { AgentUpdate } from "../types";
 
 /**

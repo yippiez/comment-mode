@@ -1,8 +1,12 @@
+/**
+ * Workspace loader/watcher: discovers code files, tracks git-ignored paths,
+ * and hydrates/patches file contents for the TUI app.
+ */
 import { spawnSync } from "node:child_process";
 import { existsSync, lstatSync, watch, type FSWatcher } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
-import { isCodeExtension, resolveFileType, resolveTypeLabel, resolveTypePriority } from "./file_types";
+import { isCodeExtension, resolveFileType, resolveTypeLabel, resolveTypePriority } from "./utils/files";
 import { countLogicalLines } from "./utils/text";
 import {
     filterGitIgnored,

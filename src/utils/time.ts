@@ -1,4 +1,7 @@
 /**
+ * Time formatting helpers for the UI (e.g. ISO timestamp conversions).
+ */
+/**
  * Parses a value as a date and returns an ISO timestamp string.
  * @param value - The value to parse as a date
  * @param fallback - The fallback string to return if parsing fails

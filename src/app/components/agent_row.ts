@@ -1,3 +1,7 @@
+/**
+ * Agent row factory: creates a single timeline row render decoration
+ * (text styles + selectable/cursor background colors) for a given update line.
+ */
 import { BoxRenderable, TextAttributes, TextRenderable, type CliRenderer } from "@opentui/core";
 
 export type AgentRowDecoration = {

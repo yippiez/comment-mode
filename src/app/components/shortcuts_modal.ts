@@ -1,3 +1,7 @@
+/**
+ * Shortcuts modal: renders the help overlay with keyboard shortcuts grouped
+ * by feature area and styled for the current theme.
+ */
 import {
     BoxRenderable,
     ScrollBoxRenderable,
@@ -160,13 +164,25 @@ export class ShortcutsModal {
         this.refreshLayout();
     }
 
+    // ------------------------------------------
+    // Getters
+    // ------------------------------------------
+
     public get renderable(): BoxRenderable {
         return this.overlay;
     }
 
+    // ------------------------------------------
+    // Getters
+    // ------------------------------------------
+
     public get isVisible(): boolean {
         return this.overlay.visible;
     }
+
+    // ------------------------------------------
+    // Actions
+    // ------------------------------------------
 
     public setVisible(visible: boolean): void {
         this.overlay.visible = visible;
@@ -213,6 +229,10 @@ export class ShortcutsModal {
         const step = Math.max(1, this.content.viewport.height || this.content.height || 1);
         this.scrollByLines(step * delta);
     }
+
+    // ------------------------------------------
+    // Private Helpers
+    // ------------------------------------------
 
     private renderShortcuts(): void {
         clearChildren(this.content);
@@ -276,6 +296,10 @@ export class ShortcutsModal {
         const maxWidth = widths.length > 0 ? Math.max(...widths) : 12;
         return Math.max(12, Math.min(24, maxWidth));
     }
+
+    // ------------------------------------------
+    // Getters
+    // ------------------------------------------
 
     private getContentWidth(): number {
         const panelWidth = typeof this.panel.width === "number" ? this.panel.width : this.renderer.width;

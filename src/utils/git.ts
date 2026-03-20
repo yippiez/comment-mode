@@ -1,3 +1,7 @@
+/**
+ * Git workspace helpers: parse `.gitignore`/top-level ignores and list
+ * workspace files tracked/untracked for the TUI.
+ */
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";

@@ -1,3 +1,7 @@
+/**
+ * Persistence helper for cursor state: captures the last visible code location
+ * and restores it across renders by mapping between file lines and global lines.
+ */
 import type { CliRenderer } from "@opentui/core";
 import { Cursor } from "../controllers/cursor";
 import { LineModel } from "../line_model";
@@ -27,6 +31,10 @@ export class PersistedCursorController {
     constructor(options: PersistedCursorControllerOptions) {
         this.options = options;
     }
+
+    // ------------------------------------------
+    // Actions
+    // ------------------------------------------
 
     public updateLastCodeCursorSnapshot(): void {
         const lineInfo = this.options.lineModel.getVisibleLineInfo(this.options.cursor.cursorLine);
@@ -105,6 +113,10 @@ export class PersistedCursorController {
             this.pendingPersistedCursorState = null;
         }
     }
+
+    // ------------------------------------------
+    // Private Helpers
+    // ------------------------------------------
 
     private ensurePersistedCursorVisibility(cursor: PersistedCursorState): void {
         const filePath = cursor.filePath;
@@ -200,6 +212,10 @@ export class PersistedCursorController {
             shouldRetry: false,
         };
     }
+
+    // ------------------------------------------
+    // Finders
+    // ------------------------------------------
 
     private findClosestLineByPersistedText(
         filePath: string,

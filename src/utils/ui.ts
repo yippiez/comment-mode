@@ -1,5 +1,5 @@
 /**
- * Creates a centered text line padded with slashes on both sides.
+ * UI string helpers for TUI rendering (e.g. slash separators and container cleanup).
  * @param label - The text to display in the center
  * @param width - Total width of the resulting string
  * @returns A string with slashes padding the centered label

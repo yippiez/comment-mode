@@ -1,3 +1,7 @@
+/**
+ * Group management controller: creates/renames/deletes persisted UI groups
+ * and applies their snapshots back into app state.
+ */
 import type { PersistedUiGroup, PersistedUiState } from "./persistence";
 import type { AppKeyInput } from "../types";
 import { GroupNameModal } from "../app/components/group_name_modal";
@@ -30,6 +34,10 @@ export class GroupManagementController {
         this.groups = this.cloneGroups(options.initialGroups);
     }
 
+    // ------------------------------------------
+    // Getters
+    // ------------------------------------------
+
     public getGroups(): readonly PersistedUiGroup[] {
         return this.groups;
     }
@@ -49,6 +57,10 @@ export class GroupManagementController {
         return this.groups[groupIndex] ?? null;
     }
 
+    // ------------------------------------------
+    // Actions
+    // ------------------------------------------
+
     public saveOrUpdateSelectedGroup(): void {
         const selectedGroup = this.getSelectedGroup();
         if (selectedGroup) {
@@ -57,6 +69,10 @@ export class GroupManagementController {
         }
         this.createGroupFromCurrentState();
     }
+
+    // ------------------------------------------
+    // Removers
+    // ------------------------------------------
 
     public deleteSelectedGroup(): void {
         const selectedIndex = this.options.getSelectedChipIndex();
@@ -78,6 +94,10 @@ export class GroupManagementController {
         this.notifyGroupsChanged();
         this.options.renderChips();
     }
+
+    // ------------------------------------------
+    // Actions
+    // ------------------------------------------
 
     public applyGroupSnapshot(groupId: string): void {
         const group = this.getGroupById(groupId);
@@ -130,6 +150,10 @@ export class GroupManagementController {
         return this.groupNameModal.handleInputKey(key);
     }
 
+    // ------------------------------------------
+    // Private Helpers
+    // ------------------------------------------
+
     private cloneGroups(groups: readonly PersistedUiGroup[]): PersistedUiGroup[] {
         const seenIds = new Set<string>();
         const normalized: PersistedUiGroup[] = [];
@@ -162,6 +186,10 @@ export class GroupManagementController {
         return normalized;
     }
 
+    // ------------------------------------------
+    // Getters
+    // ------------------------------------------
+
     private getGroupById(groupId: string): PersistedUiGroup | null {
         return this.groups.find((group) => group.id === groupId) ?? null;
     }
@@ -192,6 +220,10 @@ export class GroupManagementController {
         this.pendingGroupNameGroupId = group.id;
         this.groupNameModal.open(group.name);
     }
+
+    // ------------------------------------------
+    // Updaters
+    // ------------------------------------------
 
     private updateGroupSnapshot(groupId: string): void {
         const groupIndex = this.groups.findIndex((group) => group.id === groupId);

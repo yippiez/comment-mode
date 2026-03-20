@@ -1,3 +1,7 @@
+/**
+ * Theme manager: holds available themes and provides a cached OpenTUI
+ * `SyntaxStyle` plus themed color accessors used throughout the app.
+ */
 import { SyntaxStyle } from "@opentui/core";
 import { vagueTheme } from "./vague";
 import { opencodeTheme } from "./opencode";
@@ -18,6 +22,10 @@ export class ThemeManager {
         this.themes = [vagueTheme, opencodeTheme, tokyoNightTheme, sodaTheme];
     }
 
+    // ------------------------------------------
+    // Getters
+    // ------------------------------------------
+
     public static getInstance(): ThemeManager {
         if (!ThemeManager.instance) {
             ThemeManager.instance = new ThemeManager();
@@ -25,10 +33,18 @@ export class ThemeManager {
         return ThemeManager.instance;
     }
 
+    // ------------------------------------------
+    // Actions
+    // ------------------------------------------
+
     public toggleTheme(): string {
         this.currentThemeIndex = (this.currentThemeIndex + 1) % this.themes.length;
         return this.getThemeName();
     }
+
+    // ------------------------------------------
+    // Getters
+    // ------------------------------------------
 
     public getThemeName(): string {
         return this.currentTheme.name;
@@ -287,6 +303,10 @@ export class ThemeManager {
     public getTransparentColor(): string {
         return "transparent";
     }
+
+    // ------------------------------------------
+    // Private Helpers
+    // ------------------------------------------
 
     private get currentTheme(): ThemeDefinition {
         const current = this.themes[this.currentThemeIndex];

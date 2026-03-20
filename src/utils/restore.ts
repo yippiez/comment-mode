@@ -1,3 +1,7 @@
+/**
+ * Restore heuristics: provides scoring/order helpers used to pick the best
+ * block kind when returning the cursor/view to a prior state.
+ */
 import type { BlockKind } from "../types";
 
 const BLOCK_KIND_RESTORE_ORDER: Record<BlockKind, readonly BlockKind[]> = {

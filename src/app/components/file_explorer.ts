@@ -1,3 +1,7 @@
+/**
+ * Virtual file explorer: manages the current directory tree, collapsed/
+ * expanded state, and row mappings used by the file tree view.
+ */
 import { ensureExplorerDirectoryVisible } from "../../controllers/state";
 import { buildFileTreeRows, type FileTreeRow } from "../view_modes";
 import type { CodeFileEntry } from "../../types";
@@ -18,27 +22,51 @@ export class FileExplorer {
     private filePageAnchorLine: number | null = null;
     private pendingCodeTargetFilePath: string | null = null;
 
+    // ------------------------------------------
+    // Removers
+    // ------------------------------------------
+
     public clearRows(): void {
         this.fileTreeRowsByLine = new Map();
         this.collapsedGroupPathsByLine = new Map();
         this.filePageAnchorLine = null;
     }
 
+    // ------------------------------------------
+    // Getters
+    // ------------------------------------------
+
     public getRowsByLine(): ReadonlyMap<number, FileTreeRow> {
         return this.fileTreeRowsByLine;
     }
+
+    // ------------------------------------------
+    // Setters
+    // ------------------------------------------
 
     public setRowAtLine(line: number, row: FileTreeRow): void {
         this.fileTreeRowsByLine.set(line, row);
     }
 
+    // ------------------------------------------
+    // Getters
+    // ------------------------------------------
+
     public getRowAtLine(line: number): FileTreeRow | undefined {
         return this.fileTreeRowsByLine.get(line);
     }
 
+    // ------------------------------------------
+    // Setters
+    // ------------------------------------------
+
     public setFilePageAnchorLine(line: number): void {
         this.filePageAnchorLine = line;
     }
+
+    // ------------------------------------------
+    // Getters
+    // ------------------------------------------
 
     public getFilePageAnchorLine(): number | null {
         return this.filePageAnchorLine;
@@ -48,21 +76,41 @@ export class FileExplorer {
         return this.filePageCollapsed;
     }
 
+    // ------------------------------------------
+    // Setters
+    // ------------------------------------------
+
     public setFilePageCollapsed(collapsed: boolean): void {
         this.filePageCollapsed = collapsed;
     }
+
+    // ------------------------------------------
+    // Getters
+    // ------------------------------------------
 
     public getDirectoryPath(): string {
         return this.directoryPath;
     }
 
+    // ------------------------------------------
+    // Setters
+    // ------------------------------------------
+
     public setDirectoryPath(directoryPath: string): void {
         this.directoryPath = directoryPath;
     }
 
+    // ------------------------------------------
+    // Getters
+    // ------------------------------------------
+
     public getCollapsedFiles(): string[] {
         return [...this.collapsedFiles].sort((a, b) => a.localeCompare(b));
     }
+
+    // ------------------------------------------
+    // Setters
+    // ------------------------------------------
 
     public setCollapsedFiles(filePaths: readonly string[]): void {
         this.collapsedFiles = new Set(filePaths.filter((filePath) => filePath.length > 0));
@@ -74,6 +122,10 @@ export class FileExplorer {
         this.collapsedGroupPathsByLine.set(line, [...filePaths]);
     }
 
+    // ------------------------------------------
+    // Getters
+    // ------------------------------------------
+
     public getCollapsedGroupAtLine(line: number): readonly string[] | undefined {
         return this.collapsedGroupPathsByLine.get(line);
     }
@@ -82,6 +134,10 @@ export class FileExplorer {
         if (filePaths.length <= 1) return false;
         return this.expandedCollapsedGroupKeys.has(this.buildCollapsedGroupKey(filePaths));
     }
+
+    // ------------------------------------------
+    // Actions
+    // ------------------------------------------
 
     public toggleCollapsedGroupExpanded(filePaths: readonly string[]): boolean {
         if (filePaths.length <= 1) return false;
@@ -161,9 +217,17 @@ export class FileExplorer {
         return next;
     }
 
+    // ------------------------------------------
+    // Getters
+    // ------------------------------------------
+
     public isCollapsed(filePath: string): boolean {
         return this.collapsedFiles.has(filePath);
     }
+
+    // ------------------------------------------
+    // Actions
+    // ------------------------------------------
 
     public expandFile(filePath: string): boolean {
         const changed = this.collapsedFiles.delete(filePath);
@@ -183,6 +247,10 @@ export class FileExplorer {
         this.expandedCollapsedGroupKeys = new Set();
         return true;
     }
+
+    // ------------------------------------------
+    // Private Helpers
+    // ------------------------------------------
 
     private buildCollapsedGroupKey(filePaths: readonly string[]): string {
         return filePaths.join("\n");

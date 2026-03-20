@@ -1,3 +1,7 @@
+/**
+ * File tree row view helpers: formats directory/file rows and constructs
+ * the corresponding OpenTUI `CodeRenderable` for rendering.
+ */
 import { CodeRenderable, SyntaxStyle, type CliRenderer } from "@opentui/core";
 import type { FileTreeRow } from "../view_modes";
 import { theme } from "../../theme";

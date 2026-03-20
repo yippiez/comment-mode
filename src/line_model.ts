@@ -1,3 +1,7 @@
+/**
+ * Line model: maps rendered line/code blocks to file anchors and visible
+ * line metadata, enabling cursor navigation, selection, and restore logic.
+ */
 import type { CodeRenderable, LineNumberRenderable, RGBA } from "@opentui/core";
 import type { BlockKind, RenderedLineBlock } from "./types";
 import { clamp } from "./utils/math";
@@ -46,6 +50,10 @@ export class LineModel {
     private visibleLineInfo: Array<VisibleLineInfo | undefined> = [];
     private totalVisibleLines = 0;
 
+    // ------------------------------------------
+    // Reset
+    // ------------------------------------------
+
     public reset(): void {
         this.renderedLineBlocks = [];
         this.fileAnchors = [];
@@ -55,6 +63,10 @@ export class LineModel {
         this.totalVisibleLines = 0;
     }
 
+    // ------------------------------------------
+    // Getters
+    // ------------------------------------------
+
     public get blocks(): readonly RenderedLineBlock[] {
         return this.renderedLineBlocks;
     }
@@ -63,21 +75,41 @@ export class LineModel {
         return this.totalVisibleLines;
     }
 
+    // ------------------------------------------
+    // Setters
+    // ------------------------------------------
+
     public setTotalLines(total: number): void {
         this.totalVisibleLines = Math.max(0, total);
     }
+
+    // ------------------------------------------
+    // Getters
+    // ------------------------------------------
 
     public get mappedDisplayRowCount(): number {
         return this.displayRowToLine.length;
     }
 
+    // ------------------------------------------
+    // Actions
+    // ------------------------------------------
+
     public markDivider(displayRow: number): void {
         this.displayRowToLine[Math.max(0, displayRow)] = undefined;
     }
 
+    // ------------------------------------------
+    // Adders
+    // ------------------------------------------
+
     public addFileAnchor(anchor: FileAnchor): void {
         this.fileAnchors.push(anchor);
     }
+
+    // ------------------------------------------
+    // Getters
+    // ------------------------------------------
 
     public getFileAnchor(index: number): FileAnchor | undefined {
         return this.fileAnchors[index];
@@ -86,6 +118,10 @@ export class LineModel {
     public getFileAnchorByPath(filePath: string): FileAnchor | undefined {
         return this.fileAnchors.find((anchor) => anchor.filePath === filePath);
     }
+
+    // ------------------------------------------
+    // Adders
+    // ------------------------------------------
 
     public addBlock(params: AddBlockParams): void {
         const {
@@ -132,9 +168,17 @@ export class LineModel {
         }
     }
 
+    // ------------------------------------------
+    // Getters
+    // ------------------------------------------
+
     public getVisibleLineInfo(globalLine: number): VisibleLineInfo | undefined {
         return this.visibleLineInfo[globalLine];
     }
+
+    // ------------------------------------------
+    // Finders
+    // ------------------------------------------
 
     public findGlobalLineForFileLine(filePath: string, fileLine: number): number | undefined {
         for (const block of this.renderedLineBlocks) {
@@ -158,12 +202,20 @@ export class LineModel {
         return undefined;
     }
 
+    // ------------------------------------------
+    // Getters
+    // ------------------------------------------
+
     public getDisplayRowForLine(globalLine: number): number {
         const directHit = this.lineToDisplayRow[globalLine];
         if (directHit !== undefined) return directHit;
         if (globalLine <= 1) return 0;
         return Math.max(0, this.displayRowToLine.length - 1);
     }
+
+    // ------------------------------------------
+    // Finders
+    // ------------------------------------------
 
     public findLineForDisplayRow(targetRow: number, movementDelta: number): number | undefined {
         if (this.displayRowToLine.length === 0) return undefined;
@@ -179,6 +231,10 @@ export class LineModel {
         return this.findLineAtOrAbove(clampedRow) ?? this.findLineAtOrBelow(clampedRow);
     }
 
+    // ------------------------------------------
+    // Getters
+    // ------------------------------------------
+
     public getCurrentFilePath(cursorLine: number): string | undefined {
         if (cursorLine <= 0) return undefined;
         let lastSeenFilePath: string | undefined;
@@ -192,6 +248,10 @@ export class LineModel {
         return lastSeenFilePath;
     }
 
+    // ------------------------------------------
+    // Finders
+    // ------------------------------------------
+
     public findCurrentFileAnchorIndex(cursorLine: number): number {
         if (this.fileAnchors.length === 0) return -1;
 
@@ -203,6 +263,10 @@ export class LineModel {
 
         return this.findFileAnchorIndexByLine(cursorLine);
     }
+
+    // ------------------------------------------
+    // Private Helpers
+    // ------------------------------------------
 
     private findLineAtOrBelow(startRow: number): number | undefined {
         for (let row = startRow; row < this.displayRowToLine.length; row += 1) {
