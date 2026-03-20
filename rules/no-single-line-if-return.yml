@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/ast-grep/ast-grep/main/schemas/rule.json
+
+id: no-single-line-if-return
+message: TypeScript if statements must use braces (no single-line if without a block).
+severity: error # error, warning, info, hint
+language: TypeScript
+rule:
+  # Matches single-statement `if` consequents that end with a semicolon.
+  # Example: `if (cond) return value;`
+  pattern: if ($cond) $stmt;
+# utils: Extract repeated rule as local utility here.
+# note: Add detailed explanation for the rule.
