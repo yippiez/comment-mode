@@ -56,8 +56,8 @@ export class VirtualCodeBlocks {
     ): VirtualCodeBlockRenderModel[] {
         const blocks: VirtualCodeBlockRenderModel[] = [];
         for (const descriptor of this.descriptors) {
-            if (!isTypeEnabled(descriptor.typeLabel)) continue;
-            if (descriptor.id !== FileExplorer.FILE_PAGE_ID) continue;
+            if (!isTypeEnabled(descriptor.typeLabel)) { continue; }
+            if (descriptor.id !== FileExplorer.FILE_PAGE_ID) { continue; }
 
             this.fileExplorer.ensureDirectoryVisible(entries);
             blocks.push({
@@ -82,7 +82,7 @@ export class VirtualCodeBlocks {
     // ------------------------------------------
 
     public setAnchorLine(blockId: VirtualCodeBlockId, line: number): void {
-        if (blockId !== FileExplorer.FILE_PAGE_ID) return;
+        if (blockId !== FileExplorer.FILE_PAGE_ID) { return; }
         this.fileExplorer.setFilePageAnchorLine(line);
     }
 
@@ -95,7 +95,7 @@ export class VirtualCodeBlocks {
     // ------------------------------------------
 
     public toggleFileBlockCollapseAtLine(line: number): boolean {
-        if (!this.isLineInFileBlock(line)) return false;
+        if (!this.isLineInFileBlock(line)) { return false; }
         this.fileExplorer.toggleFilePageCollapsed();
         return true;
     }
@@ -105,7 +105,7 @@ export class VirtualCodeBlocks {
     // ------------------------------------------
 
     public isLineInFileBlock(line: number): boolean {
-        if (this.fileExplorer.getRowAtLine(line)) return true;
+        if (this.fileExplorer.getRowAtLine(line)) { return true; }
         return this.fileExplorer.getFilePageAnchorLine() === line;
     }
 
@@ -128,7 +128,7 @@ export class VirtualCodeBlocks {
 
     public openAtLine(line: number): { openedFilePath?: string; enteredDirectory: boolean } {
         const row = this.fileExplorer.getRowAtLine(line);
-        if (!row) return { enteredDirectory: false };
+        if (!row) { return { enteredDirectory: false }; }
         if (row.kind === "dir") {
             const enteredDirectory = this.fileExplorer.enterCurrentDirectoryAtLine(line);
             return { enteredDirectory };
@@ -146,13 +146,13 @@ export class VirtualCodeBlocks {
     }
 
     public goToParentDirectoryForLine(line: number): boolean {
-        if (!this.isLineInFileBlock(line)) return false;
+        if (!this.isLineInFileBlock(line)) { return false; }
         return this.fileExplorer.goToParentDirectory();
     }
 
     public resolveEditorTargetAtLine(line: number): { filePath: string; fileLine: number } | null {
         const row = this.fileExplorer.getRowAtLine(line);
-        if (!row) return null;
+        if (!row) { return null; }
         const filePath = row.filePath.length > 0 ? row.filePath : ".";
         return { filePath, fileLine: 1 };
     }

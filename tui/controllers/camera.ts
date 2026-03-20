@@ -48,7 +48,7 @@ export class Camera {
     }
 
     public onCursorMoved(cursorLine: number, totalLines: number, direction: number): void {
-        if (totalLines <= 0) return;
+        if (totalLines <= 0) { return; }
         this.ensureCursorVisible(cursorLine, direction);
         this.updatePreferredViewportOffset(cursorLine);
     }
@@ -59,7 +59,7 @@ export class Camera {
         previousLine: number,
         positionMode: "auto" | "top" | "bottom",
     ): void {
-        if (totalLines <= 0) return;
+        if (totalLines <= 0) { return; }
 
         if (positionMode === "top") {
             this.scrollTo(0);
@@ -73,7 +73,7 @@ export class Camera {
     }
 
     public goToCursorMaxVisibleHeight(cursorLine: number, totalLines: number): void {
-        if (totalLines <= 0) return;
+        if (totalLines <= 0) { return; }
         const row = this.bindings.getDisplayRowForLine(cursorLine);
         this.scrollTo(row - this.maxVisibleOffset());
         this.ensureInViewport(row);
@@ -81,7 +81,7 @@ export class Camera {
     }
 
     public goToCursorMinVisibleHeight(cursorLine: number, totalLines: number): void {
-        if (totalLines <= 0) return;
+        if (totalLines <= 0) { return; }
         const row = this.bindings.getDisplayRowForLine(cursorLine);
         this.scrollTo(row - this.minVisibleOffset());
         this.ensureInViewport(row);
@@ -96,7 +96,7 @@ export class Camera {
     }
 
     public placeLineAtMinVisibleHeight(line: number, totalLines: number): void {
-        if (totalLines <= 0) return;
+        if (totalLines <= 0) { return; }
         const displayRow = this.bindings.getDisplayRowForLine(line);
         this.placeDisplayRowAtMinVisibleHeight(displayRow, line);
     }
@@ -122,17 +122,17 @@ export class Camera {
 
         const delta = normalizedTop - this.lastKnownScrollTop;
         this.lastKnownScrollTop = normalizedTop;
-        if (totalLines <= 0) return undefined;
+        if (totalLines <= 0) { return undefined; }
 
         const viewportHeight = this.bindings.getViewportHeight();
         const preferredOffset = clamp(this.preferredViewportOffset, 0, viewportHeight - 1);
         const targetRow = normalizedTop + preferredOffset;
         const nextLine = this.bindings.getLineForDisplayRow(targetRow, delta);
-        if (nextLine === undefined) return undefined;
+        if (nextLine === undefined) { return undefined; }
 
         const clampedLine = clamp(nextLine, 1, totalLines);
         this.updatePreferredViewportOffset(clampedLine);
-        if (clampedLine === currentCursorLine) return undefined;
+        if (clampedLine === currentCursorLine) { return undefined; }
         return clampedLine;
     }
 
@@ -227,7 +227,7 @@ export class Camera {
     private consumeProgrammaticScrollEvent(top: number): boolean {
         this.pruneProgrammaticScrollEvents();
         const index = this.pendingProgrammaticScrolls.findIndex((entry) => entry.top === top);
-        if (index < 0) return false;
+        if (index < 0) { return false; }
         this.pendingProgrammaticScrolls.splice(index, 1);
         return true;
     }

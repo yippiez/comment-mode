@@ -176,7 +176,7 @@ export class Prompt {
     }
 
     public handlePromptInputKey(key: AppKeyInput): boolean {
-        if (!this.visible || this.isComposerDestroyed()) return false;
+        if (!this.visible || this.isComposerDestroyed()) { return false; }
 
         if (this.isClipboardPasteKey(key)) {
             void this.pasteClipboardIntoPrompt();
@@ -184,20 +184,20 @@ export class Prompt {
         }
 
         const handled = this.promptComposer.promptInput.handleKeyPress(new KeyEvent(key));
-        if (!handled) return false;
+        if (!handled) { return false; }
         this.render();
         return true;
     }
 
     public handlePromptPasteText(text: string): void {
-        if (!this.visible || this.isComposerDestroyed()) return;
-        if (text.length === 0) return;
+        if (!this.visible || this.isComposerDestroyed()) { return; }
+        if (text.length === 0) { return; }
         this.insertTextIntoPrompt(text);
     }
 
     /** Re-renders prompt UI using latest layout constraints. */
     public refreshView(): void {
-        if (!this.visible) return;
+        if (!this.visible) { return; }
         this.render();
     }
 
@@ -207,9 +207,9 @@ export class Prompt {
     // ------------------------------------------
 
     private submit(): void {
-        if (!this.target) return;
+        if (!this.target) { return; }
         const promptText = this.promptComposer.promptInput.plainText.trim();
-        if (!promptText) return;
+        if (!promptText) { return; }
 
         this.target.prompt = promptText;
         this.rememberCurrentModelConfig();
@@ -243,9 +243,9 @@ export class Prompt {
 
     /** Cycles selected model in full model list. */
     private cycleModelInternal(delta: number): void {
-        if (!this.target) return;
+        if (!this.target) { return; }
         const modelPool = this.getModelOptions();
-        if (modelPool.length === 0) return;
+        if (modelPool.length === 0) { return; }
         const currentIndex = modelPool.indexOf(this.target.model);
         const baseIndex = currentIndex >= 0 ? currentIndex : 0;
         const nextIndex = wrapIndex(baseIndex + delta, modelPool.length);
@@ -257,7 +257,7 @@ export class Prompt {
 
     /** Cycles thinking level using variants supported by selected model. */
     private cycleThinkingLevelInternal(delta: number): void {
-        if (!this.target) return;
+        if (!this.target) { return; }
         const levels = this.getThinkingLevelsForModel(this.target.model);
         const currentLevel = this.target.thinkingLevel ?? Prompt.DEFAULT_THINKING_LEVEL;
         const currentIndex = levels.indexOf(currentLevel);
@@ -273,21 +273,21 @@ export class Prompt {
     // ------------------------------------------
 
     private getModelOptions(): string[] {
-        if (!this.target) return this.availableModels;
-        if (this.availableModels.includes(this.target.model)) return this.availableModels;
+        if (!this.target) { return this.availableModels; }
+        if (this.availableModels.includes(this.target.model)) { return this.availableModels; }
         return [this.target.model, ...this.availableModels];
     }
 
     /** Picks default model with preference for opencode/big-pickle. */
     private getDefaultModel(): string {
         const preferred = "opencode/big-pickle";
-        if (this.availableModels.includes(preferred)) return preferred;
+        if (this.availableModels.includes(preferred)) { return preferred; }
         return this.availableModels[0] ?? preferred;
     }
 
     /** Refreshes model list and variant map from opencode metadata. */
     private async refreshAvailableModels(): Promise<void> {
-        if (this.modelListLoading) return;
+        if (this.modelListLoading) { return; }
         this.modelListLoading = true;
         this.render();
 
@@ -316,7 +316,7 @@ export class Prompt {
         const unique = new Set<string>([Prompt.DEFAULT_THINKING_LEVEL]);
         if (configuredVariants) {
             for (const variant of configuredVariants) {
-                if (variant.trim().length === 0) continue;
+                if (variant.trim().length === 0) { continue; }
                 unique.add(variant);
             }
         }
@@ -325,7 +325,7 @@ export class Prompt {
 
     /** Keeps active thinking level valid for selected model variants. */
     private syncThinkingLevelFromModel(): void {
-        if (!this.target) return;
+        if (!this.target) { return; }
         const levels = this.getThinkingLevelsForModel(this.target.model);
         const current = this.target.thinkingLevel ?? Prompt.DEFAULT_THINKING_LEVEL;
         this.target.thinkingLevel = levels.includes(current)
@@ -335,9 +335,9 @@ export class Prompt {
 
     private resolveModelForOpen(target: PromptTarget): string {
         const targetModel = this.normalizeModel(target.model);
-        if (targetModel.length > 0) return targetModel;
+        if (targetModel.length > 0) { return targetModel; }
         const preferredModel = this.lastModelConfig.model;
-        if (preferredModel.length > 0) return preferredModel;
+        if (preferredModel.length > 0) { return preferredModel; }
         return this.getDefaultModel();
     }
 
@@ -352,7 +352,7 @@ export class Prompt {
     }
 
     private rememberCurrentModelConfig(): void {
-        if (!this.target) return;
+        if (!this.target) { return; }
         this.lastModelConfig = {
             model: this.normalizeModel(this.target.model),
             thinkingLevel: this.normalizeThinkingLevel(this.target.thinkingLevel),
@@ -360,7 +360,7 @@ export class Prompt {
     }
 
     private syncPersistedModelConfig(): void {
-        if (this.lastModelConfig.model.length === 0) return;
+        if (this.lastModelConfig.model.length === 0) { return; }
         if (!this.availableModels.includes(this.lastModelConfig.model)) {
             this.lastModelConfig.model = this.getDefaultModel();
         }
@@ -384,14 +384,14 @@ export class Prompt {
     }
 
     private isClipboardPasteKey(key: AppKeyInput): boolean {
-        if (key.repeated) return false;
+        if (key.repeated) { return false; }
         return key.ctrl && (key.name ?? "").toLowerCase() === "v";
     }
 
     private async pasteClipboardIntoPrompt(): Promise<void> {
         const clipboardText = await readFromClipboard();
-        if (clipboardText === null || clipboardText.length === 0) return;
-        if (!this.visible || this.isComposerDestroyed()) return;
+        if (clipboardText === null || clipboardText.length === 0) { return; }
+        if (!this.visible || this.isComposerDestroyed()) { return; }
 
         this.insertTextIntoPrompt(clipboardText);
     }
@@ -400,7 +400,7 @@ export class Prompt {
         try {
             this.promptComposer.promptInput.insertText(text);
         } catch (error) {
-            if (this.isDestroyedError(error)) return;
+            if (this.isDestroyedError(error)) { return; }
             throw error;
         }
 
@@ -413,7 +413,7 @@ export class Prompt {
 
     /** Renders prompt composer with current prompt, model, and thinking state. */
     private render(): void {
-        if (this.isComposerDestroyed()) return;
+        if (this.isComposerDestroyed()) { return; }
 
         const layout = this.resolveLayout(this.target, this.anchorLine);
         const visible = this.visible && Boolean(this.target);
@@ -422,7 +422,7 @@ export class Prompt {
             try {
                 promptText = this.promptComposer.promptInput.plainText;
             } catch (error) {
-                if (this.isDestroyedError(error)) return;
+                if (this.isDestroyedError(error)) { return; }
                 throw error;
             }
         }
@@ -442,7 +442,7 @@ export class Prompt {
                 layout,
             );
         } catch (error) {
-            if (this.isDestroyedError(error)) return;
+            if (this.isDestroyedError(error)) { return; }
             throw error;
         }
     }

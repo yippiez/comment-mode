@@ -8,7 +8,7 @@
  * normalizePosixPath("")                // ""
  */
 export function normalizePosixPath(path: string): string {
-    if (!path) return "";
+    if (!path) { return ""; }
     return path
         .split("/")
         .filter(Boolean)

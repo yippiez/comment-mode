@@ -22,7 +22,7 @@ const BLOCK_KIND_RESTORE_ORDER: Record<BlockKind, readonly BlockKind[]> = {
  * resolveBlockKindPenalty("agent", null) // 0
  */
 export function resolveBlockKindPenalty(candidate: BlockKind, preferred: BlockKind | null): number {
-    if (!preferred) return 0;
+    if (!preferred) { return 0; }
     const order = BLOCK_KIND_RESTORE_ORDER[preferred];
     const index = order.indexOf(candidate);
     return index >= 0 ? index : order.length;

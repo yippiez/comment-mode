@@ -31,7 +31,7 @@ export class NavigationController {
 
     /** Throttles repeated keypress bursts to avoid queued jump spikes. */
     public shouldThrottleRepeatedMove(repeated: boolean): boolean {
-        if (!repeated) return false;
+        if (!repeated) { return false; }
         const now = Date.now();
         if (now - this.lastRepeatedMoveAt < NavigationController.REPEATED_MOVE_THROTTLE_MS) {
             return true;
@@ -66,12 +66,12 @@ export class NavigationController {
     // ------------------------------------------
 
     private jumpToNextFileStart(): void {
-        if (this.bindings.lineModel.totalLines <= 0) return;
+        if (this.bindings.lineModel.totalLines <= 0) { return; }
         const currentAnchorIndex = this.bindings.lineModel.findCurrentFileAnchorIndex(
             this.bindings.cursor.cursorLine,
         );
         const target = this.bindings.lineModel.getFileAnchor(currentAnchorIndex + 1);
-        if (!target) return;
+        if (!target) { return; }
         this.bindings.camera.placeDisplayRowAtMinVisibleHeight(
             this.bindings.getAnchorDividerDisplayRow(target),
             target.line,
@@ -81,18 +81,18 @@ export class NavigationController {
 
     /** Moves cursor/camera to current or previous file anchor depending on cursor line. */
     private jumpToPreviousFileStart(): void {
-        if (this.bindings.lineModel.totalLines <= 0) return;
+        if (this.bindings.lineModel.totalLines <= 0) { return; }
         const currentAnchorIndex = this.bindings.lineModel.findCurrentFileAnchorIndex(
             this.bindings.cursor.cursorLine,
         );
         const currentAnchor = this.bindings.lineModel.getFileAnchor(currentAnchorIndex);
-        if (!currentAnchor) return;
+        if (!currentAnchor) { return; }
 
         const target =
       this.bindings.cursor.cursorLine > currentAnchor.line
           ? currentAnchor
           : this.bindings.lineModel.getFileAnchor(currentAnchorIndex - 1);
-        if (!target) return;
+        if (!target) { return; }
 
         this.bindings.camera.placeDisplayRowAtMinVisibleHeight(
             this.bindings.getAnchorDividerDisplayRow(target),
@@ -103,13 +103,13 @@ export class NavigationController {
 
     /** Jumps cursor to the next rendered agent prompt row with wrap-around. */
     private jumpToNextAgentPrompt(): void {
-        if (this.bindings.lineModel.totalLines <= 0) return;
+        if (this.bindings.lineModel.totalLines <= 0) { return; }
         const lines = this.bindings.getAgentPromptLines().sort((a, b) => a - b);
-        if (lines.length === 0) return;
+        if (lines.length === 0) { return; }
 
         const currentLine = this.bindings.cursor.cursorLine;
         const next = lines.find((line) => line > currentLine) ?? lines[0];
-        if (typeof next !== "number") return;
+        if (typeof next !== "number") { return; }
         this.bindings.cursor.goToLine(next, "auto");
     }
 }

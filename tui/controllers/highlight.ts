@@ -53,7 +53,7 @@ export class Highlight {
 
             const overlapStart = Math.max(selectionStart, block.lineStart);
             const overlapEnd = Math.min(selectionEnd, block.lineEnd);
-            if (overlapStart > overlapEnd) continue;
+            if (overlapStart > overlapEnd) { continue; }
 
             if (visualModeEnabled && block.codeView) {
                 nextActiveCodeViews.add(block.codeView);
@@ -64,7 +64,7 @@ export class Highlight {
             }
 
             for (let globalLine = overlapStart; globalLine <= overlapEnd; globalLine += 1) {
-                if (!block.lineView) continue;
+                if (!block.lineView) { continue; }
                 const localLine = globalLine - block.lineStart;
                 const isCursorLine = globalLine === cursorLine;
                 block.lineView.setLineColor(localLine, {
@@ -73,7 +73,7 @@ export class Highlight {
                 });
 
                 const defaultSign = block.defaultLineSigns.get(localLine);
-                if (!defaultSign) continue;
+                if (!defaultSign) { continue; }
                 block.lineView.setLineSign(localLine, {
                     ...defaultSign,
                     beforeColor: highlightedLineNumberFg,
@@ -83,7 +83,7 @@ export class Highlight {
         }
 
         for (const codeView of this.activeCodeViews) {
-            if (nextActiveCodeViews.has(codeView)) continue;
+            if (nextActiveCodeViews.has(codeView)) { continue; }
             this.clearCodeSelection(codeView);
         }
 
@@ -101,7 +101,7 @@ export class Highlight {
         overlapEnd: number,
     ): void {
         const runtimeCodeView = codeView as unknown as RuntimeCodeSelectionApi;
-        if (typeof runtimeCodeView.onSelectionChanged !== "function") return;
+        if (typeof runtimeCodeView.onSelectionChanged !== "function") { return; }
 
         runtimeCodeView.selectionFg = undefined;
         runtimeCodeView.selectionBg = theme.getTransparentColor();
@@ -125,7 +125,7 @@ export class Highlight {
 
     private clearCodeSelection(codeView: CodeRenderable): void {
         const runtimeCodeView = codeView as unknown as RuntimeCodeSelectionApi;
-        if (typeof runtimeCodeView.onSelectionChanged !== "function") return;
+        if (typeof runtimeCodeView.onSelectionChanged !== "function") { return; }
         runtimeCodeView.onSelectionChanged(null);
     }
 

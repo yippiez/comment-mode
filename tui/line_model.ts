@@ -182,12 +182,12 @@ export class LineModel {
 
     public findGlobalLineForFileLine(filePath: string, fileLine: number): number | undefined {
         for (const block of this.renderedLineBlocks) {
-            if (block.filePath !== filePath) continue;
-            if (block.fileLineStart === null) continue;
+            if (block.filePath !== filePath) { continue; }
+            if (block.fileLineStart === null) { continue; }
             const localLine = fileLine - block.fileLineStart;
-            if (localLine < 0) continue;
+            if (localLine < 0) { continue; }
             const blockLength = block.lineEnd - block.lineStart + 1;
-            if (localLine >= blockLength) continue;
+            if (localLine >= blockLength) { continue; }
             return block.lineStart + localLine;
         }
         return undefined;
@@ -208,8 +208,8 @@ export class LineModel {
 
     public getDisplayRowForLine(globalLine: number): number {
         const directHit = this.lineToDisplayRow[globalLine];
-        if (directHit !== undefined) return directHit;
-        if (globalLine <= 1) return 0;
+        if (directHit !== undefined) { return directHit; }
+        if (globalLine <= 1) { return 0; }
         return Math.max(0, this.displayRowToLine.length - 1);
     }
 
@@ -218,11 +218,11 @@ export class LineModel {
     // ------------------------------------------
 
     public findLineForDisplayRow(targetRow: number, movementDelta: number): number | undefined {
-        if (this.displayRowToLine.length === 0) return undefined;
+        if (this.displayRowToLine.length === 0) { return undefined; }
 
         const clampedRow = clamp(Math.round(targetRow), 0, this.displayRowToLine.length - 1);
         const exactLine = this.displayRowToLine[clampedRow];
-        if (exactLine !== undefined) return exactLine;
+        if (exactLine !== undefined) { return exactLine; }
 
         if (movementDelta >= 0) {
             return this.findLineAtOrBelow(clampedRow) ?? this.findLineAtOrAbove(clampedRow);
@@ -236,13 +236,13 @@ export class LineModel {
     // ------------------------------------------
 
     public getCurrentFilePath(cursorLine: number): string | undefined {
-        if (cursorLine <= 0) return undefined;
+        if (cursorLine <= 0) { return undefined; }
         let lastSeenFilePath: string | undefined;
         for (const block of this.renderedLineBlocks) {
             if (cursorLine < block.lineStart) {
                 return lastSeenFilePath ?? block.filePath;
             }
-            if (cursorLine <= block.lineEnd) return block.filePath;
+            if (cursorLine <= block.lineEnd) { return block.filePath; }
             lastSeenFilePath = block.filePath;
         }
         return lastSeenFilePath;
@@ -253,12 +253,12 @@ export class LineModel {
     // ------------------------------------------
 
     public findCurrentFileAnchorIndex(cursorLine: number): number {
-        if (this.fileAnchors.length === 0) return -1;
+        if (this.fileAnchors.length === 0) { return -1; }
 
         const currentFilePath = this.getCurrentFilePath(cursorLine);
         if (currentFilePath) {
             const byPath = this.fileAnchors.findIndex((anchor) => anchor.filePath === currentFilePath);
-            if (byPath >= 0) return byPath;
+            if (byPath >= 0) { return byPath; }
         }
 
         return this.findFileAnchorIndexByLine(cursorLine);
@@ -271,7 +271,7 @@ export class LineModel {
     private findLineAtOrBelow(startRow: number): number | undefined {
         for (let row = startRow; row < this.displayRowToLine.length; row += 1) {
             const line = this.displayRowToLine[row];
-            if (line !== undefined) return line;
+            if (line !== undefined) { return line; }
         }
         return undefined;
     }
@@ -279,7 +279,7 @@ export class LineModel {
     private findLineAtOrAbove(startRow: number): number | undefined {
         for (let row = startRow; row >= 0; row -= 1) {
             const line = this.displayRowToLine[row];
-            if (line !== undefined) return line;
+            if (line !== undefined) { return line; }
         }
         return undefined;
     }

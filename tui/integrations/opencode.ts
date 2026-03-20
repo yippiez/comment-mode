@@ -112,7 +112,7 @@ export class OpenCode {
 
         let finished = false;
         const finalize = (result: { success: boolean; error?: string }): void => {
-            if (finished) return;
+            if (finished) { return; }
             finished = true;
             onExit(result);
         };
@@ -143,7 +143,7 @@ export class OpenCode {
             ok: true,
             runId: startResult.runId,
             stop: () => {
-                if (finished) return;
+                if (finished) { return; }
                 startResult.stop();
                 finalize({ success: false, error: "opencode run was cancelled." });
             },
@@ -155,7 +155,7 @@ export class OpenCode {
             stop();
         }
         this.runningStops.clear();
-        if (!this.renderTimer) return;
+        if (!this.renderTimer) { return; }
         clearTimeout(this.renderTimer);
         this.renderTimer = null;
     }
@@ -226,7 +226,7 @@ export class OpenCode {
         updateIdByAgentLine: ReadonlyMap<number, string>,
     ): AgentUpdate | undefined {
         const updateId = updateIdByAgentLine.get(cursorLine);
-        if (!updateId) return undefined;
+        if (!updateId) { return undefined; }
         return this.findById(updateId);
     }
 
@@ -243,7 +243,7 @@ export class OpenCode {
 
         const previousLength = this.updates.length;
         this.updates = this.updates.filter((entry) => entry.id !== updateId);
-        if (this.updates.length === previousLength) return false;
+        if (this.updates.length === previousLength) { return false; }
 
         this.notifyUpdatesChanged();
         SIGNALS.agentRenderRequested();
@@ -253,20 +253,20 @@ export class OpenCode {
     public pruneForEntries(relativePaths: ReadonlySet<string>): void {
         const removedIds = new Set<string>();
         for (const update of this.updates) {
-            if (relativePaths.has(update.filePath)) continue;
+            if (relativePaths.has(update.filePath)) { continue; }
             removedIds.add(update.id);
         }
 
         for (const updateId of removedIds) {
             const stop = this.runningStops.get(updateId);
-            if (!stop) continue;
+            if (!stop) { continue; }
             stop();
             this.runningStops.delete(updateId);
         }
 
         const previousLength = this.updates.length;
         this.updates = this.updates.filter((update) => relativePaths.has(update.filePath));
-        if (this.updates.length === previousLength) return;
+        if (this.updates.length === previousLength) { return; }
 
         this.notifyUpdatesChanged();
     }
@@ -338,9 +338,9 @@ export class OpenCode {
 
     private pushMessage(update: AgentUpdate, message: string): void {
         const trimmed = message.replace(/\s+/g, " ").trim();
-        if (trimmed.length === 0) return;
+        if (trimmed.length === 0) { return; }
         const previous = update.messages[update.messages.length - 1];
-        if (previous === trimmed) return;
+        if (previous === trimmed) { return; }
         update.messages.push(trimmed);
         if (update.messages.length > 64) {
             update.messages.splice(0, update.messages.length - 64);
@@ -348,7 +348,7 @@ export class OpenCode {
     }
 
     private scheduleRender(): void {
-        if (this.renderTimer) return;
+        if (this.renderTimer) { return; }
         this.renderTimer = setTimeout(() => {
             this.renderTimer = null;
             this.notifyUpdatesChanged();
@@ -371,14 +371,14 @@ async function listOpencodeModelCatalogInternal(rootDir: string): Promise<OpenCo
     }
 
     const result = await runProcessCapture("opencode", ["models"], rootDir);
-    if (result.error) return [];
+    if (result.error) { return []; }
 
     const merged = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
     const models = new Set<string>();
     for (const rawLine of merged.split(/\r?\n/)) {
         const line = sanitizeLine(rawLine);
-        if (!line) continue;
-        if (!isModelIdentifier(line)) continue;
+        if (!line) { continue; }
+        if (!isModelIdentifier(line)) { continue; }
         models.add(line);
     }
 
@@ -405,17 +405,17 @@ async function startHeadlessOpencodeRunInternal(
     let lastErrorMessage: string | undefined;
 
     const emitExit = (result: { success: boolean; error?: string }) => {
-        if (handledExit) return;
+        if (handledExit) { return; }
         handledExit = true;
         request.onExit(result);
     };
 
     const consumeLine = (rawLine: string, fromStderr: boolean) => {
         const line = fromStderr ? normalizeStderrLine(rawLine) : sanitizeLine(rawLine);
-        if (!line) return;
+        if (!line) { return; }
 
         const parsed = parseOpencodeLine(line);
-        if (!parsed || parsed.messages.length === 0) return;
+        if (!parsed || parsed.messages.length === 0) { return; }
 
         for (const messageText of parsed.messages) {
             request.onMessage(messageText);
@@ -467,7 +467,7 @@ async function startHeadlessOpencodeRunInternal(
         ok: true,
         runId: request.runId,
         stop: () => {
-            if (child.killed) return;
+            if (child.killed) { return; }
             child.kill("SIGTERM");
         },
     };
@@ -479,7 +479,7 @@ function parseVerboseModelCatalog(output: string): OpenCodeModelCatalogItem[] {
 
     for (let index = 0; index < lines.length; index += 1) {
         const model = sanitizeLine(lines[index] ?? "");
-        if (!isModelIdentifier(model)) continue;
+        if (!isModelIdentifier(model)) { continue; }
 
         const parsedObject = parseJsonObjectAfterLine(lines, index + 1);
         const variants = parsedObject ? extractVariantNames(parsedObject.value) : [];
@@ -512,7 +512,7 @@ function parseJsonObjectAfterLine(
             const char = line[charIndex] ?? "";
 
             if (!started) {
-                if (char.trim().length === 0) continue;
+                if (char.trim().length === 0) { continue; }
                 if (char !== "{") {
                     return null;
                 }
@@ -564,7 +564,7 @@ function parseJsonObjectAfterLine(
 
 function extractVariantNames(value: unknown): string[] {
     const variantsRecord = asJsonRecord(asJsonRecord(value)?.variants);
-    if (!variantsRecord) return [];
+    if (!variantsRecord) { return []; }
 
     return Object.keys(variantsRecord)
         .map((entry) => entry.trim())
@@ -573,10 +573,10 @@ function extractVariantNames(value: unknown): string[] {
 }
 
 function parseOpencodeLine(line: string): ParsedLineEvent | null {
-    if (line.startsWith("event:")) return null;
+    if (line.startsWith("event:")) { return null; }
 
     const payloadText = line.startsWith("data:") ? line.slice("data:".length).trim() : line;
-    if (!payloadText || payloadText === "[DONE]") return null;
+    if (!payloadText || payloadText === "[DONE]") { return null; }
 
     const parsed = parseJson(payloadText);
     if (parsed === JSON_PARSE_FAILED) {
@@ -592,7 +592,7 @@ function parseOpencodeLine(line: string): ParsedLineEvent | null {
 function parseJsonPayload(payload: unknown): ParsedLineEvent | null {
     if (typeof payload === "string") {
         const text = sanitizeLine(payload);
-        if (!text) return null;
+        if (!text) { return null; }
         return {
             messages: [text],
             isError: looksLikeError(text),
@@ -604,11 +604,11 @@ function parseJsonPayload(payload: unknown): ParsedLineEvent | null {
         let isError = false;
         for (const item of payload) {
             const parsedItem = parseJsonPayload(item);
-            if (!parsedItem) continue;
+            if (!parsedItem) { continue; }
             messages.push(...parsedItem.messages);
             isError = isError || parsedItem.isError;
         }
-        if (messages.length === 0) return null;
+        if (messages.length === 0) { return null; }
         return {
             messages: dedupeMessages(messages),
             isError,
@@ -616,7 +616,7 @@ function parseJsonPayload(payload: unknown): ParsedLineEvent | null {
     }
 
     const record = asJsonRecord(payload);
-    if (!record) return null;
+    if (!record) { return null; }
 
     const eventType =
     toText(record.type) ?? toText(record.event) ?? toText(record.kind) ?? "message";
@@ -712,18 +712,18 @@ function parseJsonPayload(payload: unknown): ParsedLineEvent | null {
 }
 
 function extractContentText(value: unknown): string | undefined {
-    if (typeof value === "string") return sanitizeLine(value);
-    if (!Array.isArray(value)) return undefined;
+    if (typeof value === "string") { return sanitizeLine(value); }
+    if (!Array.isArray(value)) { return undefined; }
     for (const item of value) {
         if (typeof item === "string") {
             const text = sanitizeLine(item);
-            if (text) return text;
+            if (text) { return text; }
             continue;
         }
         const record = asJsonRecord(item);
-        if (!record) continue;
+        if (!record) { continue; }
         const text = firstText(record.text, record.message, record.content);
-        if (text) return text;
+        if (text) { return text; }
     }
     return undefined;
 }
@@ -748,10 +748,10 @@ function sanitizeLine(line: string): string {
 
 function normalizeStderrLine(rawLine: string): string | null {
     const cleaned = sanitizeLine(rawLine);
-    if (!cleaned) return null;
-    if (/^(INFO|DEBUG|TRACE)\b/.test(cleaned)) return null;
-    if (/^\s*at\s+/.test(cleaned)) return null;
-    if (cleaned === "fatal") return null;
+    if (!cleaned) { return null; }
+    if (/^(INFO|DEBUG|TRACE)\b/.test(cleaned)) { return null; }
+    if (/^\s*at\s+/.test(cleaned)) { return null; }
+    if (cleaned === "fatal") { return null; }
 
     const messageField = /\bmessage=([^\r\n]+?)\s+stack=/i.exec(cleaned)?.[1]?.trim();
     if (messageField && messageField.length > 0) {
@@ -787,7 +787,7 @@ function parseJson(text: string): unknown | typeof JSON_PARSE_FAILED {
 function firstText(...values: unknown[]): string | undefined {
     for (const value of values) {
         const text = toText(value);
-        if (text) return text;
+        if (text) { return text; }
     }
     return undefined;
 }
@@ -804,8 +804,8 @@ function dedupeMessages(messages: string[]): string[] {
     const result: string[] = [];
     for (const message of messages) {
         const text = sanitizeLine(message);
-        if (!text) continue;
-        if (result[result.length - 1] === text) continue;
+        if (!text) { continue; }
+        if (result[result.length - 1] === text) { continue; }
         result.push(text);
     }
     return result;
@@ -846,9 +846,9 @@ function humanizeEventType(eventType: string): string {
 
 function compactPath(value: string): string {
     const normalized = value.replace(/\\/g, "/").replace(/\/+$/, "");
-    if (!normalized.includes("/")) return normalized;
+    if (!normalized.includes("/")) { return normalized; }
     const parts = normalized.split("/").filter(Boolean);
-    if (parts.length <= 3) return normalized;
+    if (parts.length <= 3) { return normalized; }
     return parts.slice(-3).join("/");
 }
 
@@ -897,13 +897,13 @@ async function runProcessCapture(
         });
 
         child.on("error", (error) => {
-            if (settled) return;
+            if (settled) { return; }
             settled = true;
             resolve({ stdout, stderr, code: null, error });
         });
 
         child.on("close", (code) => {
-            if (settled) return;
+            if (settled) { return; }
             settled = true;
             resolve({ stdout, stderr, code });
         });

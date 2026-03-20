@@ -77,10 +77,10 @@ export class GroupManagementController {
     public deleteSelectedGroup(): void {
         const selectedIndex = this.options.getSelectedChipIndex();
         const groupIndex = selectedIndex - this.options.getTypeChipCount();
-        if (groupIndex < 0 || groupIndex >= this.groups.length) return;
+        if (groupIndex < 0 || groupIndex >= this.groups.length) { return; }
 
         const removedGroup = this.groups[groupIndex];
-        if (!removedGroup) return;
+        if (!removedGroup) { return; }
         this.groups.splice(groupIndex, 1);
 
         if (this.pendingGroupNameGroupId === removedGroup.id) {
@@ -101,7 +101,7 @@ export class GroupManagementController {
 
     public applyGroupSnapshot(groupId: string): void {
         const group = this.getGroupById(groupId);
-        if (!group) return;
+        if (!group) { return; }
 
         this.options.applyPersistedUiState(group.snapshot);
         this.selectGroupChipById(group.id);
@@ -110,14 +110,14 @@ export class GroupManagementController {
     }
 
     public submitName(): void {
-        if (!this.groupNameModal.isVisible) return;
+        if (!this.groupNameModal.isVisible) { return; }
 
         const groupId = this.pendingGroupNameGroupId;
         this.pendingGroupNameGroupId = null;
         const requestedName = this.groupNameModal.getName();
         this.groupNameModal.close();
 
-        if (!groupId) return;
+        if (!groupId) { return; }
 
         if (requestedName.length > 0) {
             const groupIndex = this.groups.findIndex((group) => group.id === groupId);
@@ -140,7 +140,7 @@ export class GroupManagementController {
     }
 
     public cancelName(): void {
-        if (!this.groupNameModal.isVisible) return;
+        if (!this.groupNameModal.isVisible) { return; }
         this.pendingGroupNameGroupId = null;
         this.groupNameModal.close();
         this.options.renderChips();
@@ -160,7 +160,7 @@ export class GroupManagementController {
 
         for (let index = 0; index < groups.length; index += 1) {
             const source = groups[index];
-            if (!source) continue;
+            if (!source) { continue; }
 
             let id = typeof source.id === "string" ? source.id.trim() : "";
             if (id.length === 0 || seenIds.has(id)) {
@@ -196,7 +196,7 @@ export class GroupManagementController {
 
     private selectGroupChipById(groupId: string): void {
         const groupIndex = this.groups.findIndex((group) => group.id === groupId);
-        if (groupIndex < 0) return;
+        if (groupIndex < 0) { return; }
         this.options.setSelectedChipIndex(this.options.getTypeChipCount() + groupIndex);
     }
 
@@ -227,10 +227,10 @@ export class GroupManagementController {
 
     private updateGroupSnapshot(groupId: string): void {
         const groupIndex = this.groups.findIndex((group) => group.id === groupId);
-        if (groupIndex < 0) return;
+        if (groupIndex < 0) { return; }
 
         const currentGroup = this.groups[groupIndex];
-        if (!currentGroup) return;
+        if (!currentGroup) { return; }
 
         this.groups[groupIndex] = {
             ...currentGroup,
@@ -273,7 +273,7 @@ export class GroupManagementController {
     }
 
     private notifyGroupsChanged(): void {
-        if (!this.options.onPersistedGroupsChanged) return;
+        if (!this.options.onPersistedGroupsChanged) { return; }
         this.options.onPersistedGroupsChanged(this.cloneGroups(this.groups));
     }
 }

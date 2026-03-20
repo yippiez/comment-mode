@@ -349,7 +349,7 @@ export class AppRenderer {
                     nextDisplayRow = result.nextDisplayRow;
                     while (nextUpdateIndex < updatesForFile.length) {
                         const update = updatesForFile[nextUpdateIndex];
-                        if (!update) break;
+                        if (!update) { break; }
                         const agentResult = this.agentTimeline.addUpdateWithMessages(
                             update,
                             nextLineNumber,
@@ -378,7 +378,7 @@ export class AppRenderer {
                     let fileLineCursor = 1;
                     while (nextUpdateIndex < updatesForFile.length) {
                         const update = updatesForFile[nextUpdateIndex];
-                        if (!update) break;
+                        if (!update) { break; }
                         const anchorLine = clamp(update.selectionEndFileLine, 1, Math.max(1, entry.lineCount));
                         if (anchorLine >= fileLineCursor) {
                             const chunkLines = sourceLines.slice(fileLineCursor - 1, anchorLine);
@@ -422,7 +422,7 @@ export class AppRenderer {
 
                 while (nextUpdateIndex < updatesForFile.length) {
                     const update = updatesForFile[nextUpdateIndex];
-                    if (!update) break;
+                    if (!update) { break; }
                     const agentResult = this.agentTimeline.addUpdateWithMessages(
                         update,
                         nextLineNumber,
@@ -473,8 +473,8 @@ export class AppRenderer {
         const groupedEntries: CodeFileEntry[] = [];
         for (let index = startIndex; index < entries.length; index += 1) {
             const entry = entries[index];
-            if (!entry) break;
-            if (!this.fileExplorer.isCollapsed(entry.relativePath)) break;
+            if (!entry) { break; }
+            if (!this.fileExplorer.isCollapsed(entry.relativePath)) { break; }
             groupedEntries.push(entry);
         }
 
@@ -634,10 +634,10 @@ export class AppRenderer {
 
     public getAnchorDividerDisplayRow(anchor: { filePath: string; dividerRow: number }): number {
         const divider = this.dividerByFilePath.get(anchor.filePath);
-        if (!divider) return anchor.dividerRow;
+        if (!divider) { return anchor.dividerRow; }
 
         const resolved = divider.y - this.scrollbox.content.y;
-        if (!Number.isFinite(resolved)) return anchor.dividerRow;
+        if (!Number.isFinite(resolved)) { return anchor.dividerRow; }
         return Math.max(0, Math.round(resolved));
     }
 
@@ -779,9 +779,9 @@ export class AppRenderer {
     }
 
     private resolveAgentLineForRestore(reference: RestoreLineReference): number | undefined {
-        if (!reference.agentUpdateId) return undefined;
+        if (!reference.agentUpdateId) { return undefined; }
         const range = this.agentTimeline.getLineRangeForUpdateId(reference.agentUpdateId);
-        if (!range) return undefined;
+        if (!range) { return undefined; }
         const offset = reference.agentLineOffset ?? 0;
         return clamp(range.start + offset, range.start, range.end);
     }
@@ -797,11 +797,11 @@ export class AppRenderer {
         let bestScore: RestoreLineCandidateScore | undefined;
 
         for (const block of this.lineModel.blocks) {
-            if (block.filePath !== filePath) continue;
+            if (block.filePath !== filePath) { continue; }
 
             for (let offset = 0; offset < block.renderedLines.length; offset += 1) {
                 const candidateText = normalizePersistedLineText(block.renderedLines[offset] ?? null);
-                if (candidateText !== normalizedLineText) continue;
+                if (candidateText !== normalizedLineText) { continue; }
 
                 const candidateGlobalLine = block.lineStart + offset;
                 const candidateFileLine = block.fileLineStart === null ? null : block.fileLineStart + offset;
@@ -813,7 +813,7 @@ export class AppRenderer {
                     preferredFileLine,
                     preferredGlobalLine,
                 );
-                if (!this.isBetterRestoreLineCandidate(score, bestScore)) continue;
+                if (!this.isBetterRestoreLineCandidate(score, bestScore)) { continue; }
                 bestScore = score;
                 bestLine = candidateGlobalLine;
             }
@@ -832,8 +832,8 @@ export class AppRenderer {
         let bestScore: RestoreLineCandidateScore | undefined;
 
         for (const block of this.lineModel.blocks) {
-            if (block.filePath !== filePath) continue;
-            if (block.fileLineStart === null) continue;
+            if (block.filePath !== filePath) { continue; }
+            if (block.fileLineStart === null) { continue; }
 
             const blockLength = Math.max(1, block.lineEnd - block.lineStart + 1);
             for (let offset = 0; offset < blockLength; offset += 1) {
@@ -847,7 +847,7 @@ export class AppRenderer {
                     preferredFileLine,
                     preferredGlobalLine,
                 );
-                if (!this.isBetterRestoreLineCandidate(score, bestScore)) continue;
+                if (!this.isBetterRestoreLineCandidate(score, bestScore)) { continue; }
                 bestScore = score;
                 bestLine = candidateGlobalLine;
             }
@@ -881,7 +881,7 @@ export class AppRenderer {
         candidate: RestoreLineCandidateScore,
         currentBest: RestoreLineCandidateScore | undefined,
     ): boolean {
-        if (!currentBest) return true;
+        if (!currentBest) { return true; }
         if (candidate.blockKindPenalty !== currentBest.blockKindPenalty) {
             return candidate.blockKindPenalty < currentBest.blockKindPenalty;
         }

@@ -5,8 +5,9 @@ message: TypeScript if statements must use braces (no single-line if without a b
 severity: error # error, warning, info, hint
 language: TypeScript
 rule:
-  # Matches single-statement `if` consequents that end with a semicolon.
-  # Example: `if (cond) return value;`
-  pattern: if ($cond) $stmt;
-# utils: Extract repeated rule as local utility here.
-# note: Add detailed explanation for the rule.
+  pattern: if ($COND) $STMT
+constraints:
+  STMT:
+    not:
+      kind: statement_block
+fix: "if ($COND) { $STMT }"

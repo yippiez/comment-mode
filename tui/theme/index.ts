@@ -53,7 +53,7 @@ export class ThemeManager {
     public getSyntaxStyle(): SyntaxStyle {
         const themeName = this.currentTheme.name;
         const cached = this.syntaxStyleCache.get(themeName);
-        if (cached) return cached;
+        if (cached) { return cached; }
         const style = buildSyntaxStyle(this.currentTheme.syntax);
         this.syntaxStyleCache.set(themeName, style);
         return style;
@@ -78,7 +78,7 @@ export class ThemeManager {
     }
 
     public getChipTextColor(selected: boolean, enabled: boolean): string {
-        if (selected) return this.currentTheme.colors.chipSelectedFg;
+        if (selected) { return this.currentTheme.colors.chipSelectedFg; }
         return enabled ? this.currentTheme.colors.chipEnabledFg : this.currentTheme.colors.chipDisabledFg;
     }
 

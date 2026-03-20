@@ -42,7 +42,7 @@ export async function getIgnoredDirs(root: string): Promise<Set<string>> {
     const content = await readFile(gitignorePath, "utf8");
     for (const line of content.split("\n")) {
         const ignoredDir = parseIgnoredTopLevelDir(line);
-        if (!ignoredDir) continue;
+        if (!ignoredDir) { continue; }
         ignored.add(ignoredDir);
     }
 
@@ -115,14 +115,14 @@ export async function listCodeFiles(root: string, ignoredDirs: ReadonlySet<strin
         const entries = await readdir(dir, { withFileTypes: true });
         for (const entry of entries) {
             if (entry.isDirectory()) {
-                if (ignoredDirs.has(entry.name)) continue;
+                if (ignoredDirs.has(entry.name)) { continue; }
                 await walk(path.join(dir, entry.name));
                 continue;
             }
 
-            if (!entry.isFile()) continue;
+            if (!entry.isFile()) { continue; }
             const ext = path.extname(entry.name).toLowerCase();
-            if (!isCodeExtension(ext)) continue;
+            if (!isCodeExtension(ext)) { continue; }
             const relativePath = path.relative(root, path.join(dir, entry.name)).split(path.sep).join("/");
             results.push(relativePath);
         }
@@ -149,13 +149,13 @@ export async function watchWorkspace(
     let refreshAfterRebuild = false;
 
     const emitChange = () => {
-        if (isClosed) return;
+        if (isClosed) { return; }
         onChange();
     };
 
     const scheduleChange = () => {
-        if (isClosed) return;
-        if (changeTimer) clearTimeout(changeTimer);
+        if (isClosed) { return; }
+        if (changeTimer) { clearTimeout(changeTimer); }
         changeTimer = setTimeout(() => {
             changeTimer = undefined;
             emitChange();
@@ -163,11 +163,11 @@ export async function watchWorkspace(
     };
 
     const scheduleRebuild = (withRefresh = false) => {
-        if (isClosed) return;
+        if (isClosed) { return; }
         if (withRefresh) {
             refreshAfterRebuild = true;
         }
-        if (rebuildTimer) clearTimeout(rebuildTimer);
+        if (rebuildTimer) { clearTimeout(rebuildTimer); }
         rebuildTimer = setTimeout(() => {
             rebuildTimer = undefined;
             void rebuildWatchers();
@@ -175,13 +175,13 @@ export async function watchWorkspace(
     };
 
     const watchNewDirectoryFromRename = (dir: string, fileName: string | Buffer | null | undefined) => {
-        if (!fileName) return;
+        if (!fileName) { return; }
 
         const fileNameText = typeof fileName === "string" ? fileName : fileName.toString("utf8");
-        if (fileNameText.length === 0) return;
+        if (fileNameText.length === 0) { return; }
 
         const candidatePath = path.resolve(dir, fileNameText);
-        if (!isPathWithinRoot(root, candidatePath)) return;
+        if (!isPathWithinRoot(root, candidatePath)) { return; }
 
         const relativeCandidatePath = path.relative(root, candidatePath).split(path.sep).join("/");
         if (relativeCandidatePath.length > 0 && isPathInsideIgnoredDir(relativeCandidatePath, ignoredDirs)) {
@@ -190,7 +190,7 @@ export async function watchWorkspace(
 
         try {
             const stats = lstatSync(candidatePath);
-            if (!stats.isDirectory() || stats.isSymbolicLink()) return;
+            if (!stats.isDirectory() || stats.isSymbolicLink()) { return; }
             createWatcher(candidatePath);
         } catch {
             // Ignore transient rename races.
@@ -198,12 +198,12 @@ export async function watchWorkspace(
     };
 
     const createWatcher = (dir: string) => {
-        if (watchers.has(dir) || isClosed) return;
+        if (watchers.has(dir) || isClosed) { return; }
 
         try {
             const watcher = watch(dir, (eventType, fileName) => {
                 scheduleChange();
-                if (eventType !== "rename") return;
+                if (eventType !== "rename") { return; }
                 watchNewDirectoryFromRename(dir, fileName);
                 scheduleRebuild(true);
             });
@@ -220,18 +220,18 @@ export async function watchWorkspace(
     };
 
     const rebuildWatchers = async () => {
-        if (isClosed) return;
+        if (isClosed) { return; }
 
         const shouldRefreshAfterRebuild = refreshAfterRebuild;
         refreshAfterRebuild = false;
 
         const watchedDirs = await listWatchableDirs(root, ignoredDirs);
-        if (isClosed) return;
+        if (isClosed) { return; }
 
         const nextSet = new Set(watchedDirs);
 
         for (const [dir, watcher] of watchers.entries()) {
-            if (nextSet.has(dir)) continue;
+            if (nextSet.has(dir)) { continue; }
             watcher.close();
             watchers.delete(dir);
         }
@@ -250,8 +250,8 @@ export async function watchWorkspace(
     return {
         close: () => {
             isClosed = true;
-            if (changeTimer) clearTimeout(changeTimer);
-            if (rebuildTimer) clearTimeout(rebuildTimer);
+            if (changeTimer) { clearTimeout(changeTimer); }
+            if (rebuildTimer) { clearTimeout(rebuildTimer); }
             for (const watcher of watchers.values()) {
                 watcher.close();
             }
@@ -327,7 +327,7 @@ function collectUncommittedLinesByFile(
         const untrackedOutput = typeof untracked.stdout === "string" ? untracked.stdout : "";
         const untrackedFiles = new Set(untrackedOutput.split("\0").filter(Boolean));
         for (const filePath of untrackedFiles) {
-            if (!knownFiles.has(filePath)) continue;
+            if (!knownFiles.has(filePath)) { continue; }
             wholeFileUncommitted.add(filePath);
         }
     }
@@ -360,9 +360,9 @@ async function listWatchableDirs(root: string, ignoredDirs: ReadonlySet<string>)
         }
 
         for (const entry of entries) {
-            if (!entry.isDirectory()) continue;
-            if (ignoredDirs.has(entry.name)) continue;
-            if (entry.isSymbolicLink()) continue;
+            if (!entry.isDirectory()) { continue; }
+            if (ignoredDirs.has(entry.name)) { continue; }
+            if (entry.isSymbolicLink()) { continue; }
             await walk(path.join(dir, entry.name));
         }
     }
@@ -378,9 +378,9 @@ function buildWatchableDirsFromFiles(root: string, relativePaths: readonly strin
         let currentDir = path.dirname(path.join(root, relativePath));
         while (isPathWithinRoot(root, currentDir)) {
             dirs.add(currentDir);
-            if (currentDir === root) break;
+            if (currentDir === root) { break; }
             const parentDir = path.dirname(currentDir);
-            if (parentDir === currentDir) break;
+            if (parentDir === currentDir) { break; }
             currentDir = parentDir;
         }
     }

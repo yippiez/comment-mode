@@ -118,7 +118,7 @@ export class FileExplorer {
     }
 
     public setCollapsedGroupAtLine(line: number, filePaths: readonly string[]): void {
-        if (filePaths.length <= 1) return;
+        if (filePaths.length <= 1) { return; }
         this.collapsedGroupPathsByLine.set(line, [...filePaths]);
     }
 
@@ -131,7 +131,7 @@ export class FileExplorer {
     }
 
     public isCollapsedGroupExpanded(filePaths: readonly string[]): boolean {
-        if (filePaths.length <= 1) return false;
+        if (filePaths.length <= 1) { return false; }
         return this.expandedCollapsedGroupKeys.has(this.buildCollapsedGroupKey(filePaths));
     }
 
@@ -140,7 +140,7 @@ export class FileExplorer {
     // ------------------------------------------
 
     public toggleCollapsedGroupExpanded(filePaths: readonly string[]): boolean {
-        if (filePaths.length <= 1) return false;
+        if (filePaths.length <= 1) { return false; }
         const key = this.buildCollapsedGroupKey(filePaths);
         if (this.expandedCollapsedGroupKeys.has(key)) {
             this.expandedCollapsedGroupKeys.delete(key);
@@ -160,7 +160,7 @@ export class FileExplorer {
         const existing = new Set(entries.map((entry) => entry.relativePath));
         let removed = false;
         for (const filePath of this.collapsedFiles) {
-            if (existing.has(filePath)) continue;
+            if (existing.has(filePath)) { continue; }
             this.collapsedFiles.delete(filePath);
             removed = true;
         }
@@ -193,14 +193,14 @@ export class FileExplorer {
 
     public enterCurrentDirectoryAtLine(line: number): boolean {
         const row = this.fileTreeRowsByLine.get(line);
-        if (!row || row.kind !== "dir") return false;
+        if (!row || row.kind !== "dir") { return false; }
         this.directoryPath = row.path;
         return true;
     }
 
     public goToParentDirectory(): boolean {
         const parent = getParentPosixPath(this.directoryPath);
-        if (parent === this.directoryPath) return false;
+        if (parent === this.directoryPath) { return false; }
         this.directoryPath = parent;
         return true;
     }
@@ -238,7 +238,7 @@ export class FileExplorer {
     }
 
     public toggleCollapse(currentFilePath: string | undefined): boolean {
-        if (!currentFilePath) return false;
+        if (!currentFilePath) { return false; }
         if (this.collapsedFiles.has(currentFilePath)) {
             this.collapsedFiles.delete(currentFilePath);
         } else {

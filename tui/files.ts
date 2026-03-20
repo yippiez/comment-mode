@@ -25,7 +25,7 @@ export async function hydrateCodeFileEntry(
     entry: CodeFileEntry,
     rootDir = process.cwd(),
 ): Promise<void> {
-    if (entry.isContentLoaded) return;
+    if (entry.isContentLoaded) { return; }
 
     const absolutePath = path.join(rootDir, entry.relativePath);
     const content = await readFile(absolutePath, "utf8");

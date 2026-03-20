@@ -39,11 +39,11 @@ export function displayWidth(text: string): number {
  * truncateLeftLabel("Hello", 2)          // "H"
  */
 export function truncateLeftLabel(label: string, maxWidth: number): string {
-    if (displayWidth(label) <= maxWidth) return label;
+    if (displayWidth(label) <= maxWidth) { return label; }
     if (maxWidth <= 3) {
         let compact = "";
         for (const char of label) {
-            if (displayWidth(compact + char) > maxWidth) break;
+            if (displayWidth(compact + char) > maxWidth) { break; }
             compact += char;
         }
         return compact;
@@ -53,7 +53,7 @@ export function truncateLeftLabel(label: string, maxWidth: number): string {
     const target = Math.max(1, maxWidth - displayWidth(ellipsis));
     let truncated = "";
     for (const char of label) {
-        if (displayWidth(truncated + char) > target) break;
+        if (displayWidth(truncated + char) > target) { break; }
         truncated += char;
     }
     return `${truncated}${ellipsis}`;
@@ -115,7 +115,7 @@ export function wrapTextToWidth(text: string, width: number): string[] {
  * estimateWrappedLines("ab cd ef", 3)     // 3
  */
 export function estimateWrappedLines(text: string, width: number): number {
-    if (width <= 1) return 1;
+    if (width <= 1) { return 1; }
     const normalized = text.replace(/\t/g, "    ");
     const lines = normalized.length === 0 ? [""] : normalized.split("\n");
     let total = 0;
@@ -140,7 +140,7 @@ export function estimateWrappedLines(text: string, width: number): number {
  * countLogicalLines("a\nb\nc")   // 3
  */
 export function countLogicalLines(content: string): number {
-    if (content.length === 0) return 1;
+    if (content.length === 0) { return 1; }
     return content.split("\n").length;
 }
 
@@ -176,7 +176,7 @@ export function toNonEmptyTrimmedString(value: unknown): string | undefined {
  * normalizePersistedLineText("a\r\nb")  // "a\r\nb" (only trailing \r removed)
  */
 export function normalizePersistedLineText(value: string | null): string | null {
-    if (typeof value !== "string") return null;
+    if (typeof value !== "string") { return null; }
     return value.endsWith("\r") ? value.slice(0, -1) : value;
 }
 
@@ -195,7 +195,7 @@ export function normalizePersistedLineText(value: string | null): string | null 
  */
 export function formatCollapsedContentLine(label: string, width: number): string {
     const trimmed = label.trim();
-    if (trimmed.length >= width) return trimmed.slice(0, width);
+    if (trimmed.length >= width) { return trimmed.slice(0, width); }
     const remaining = width - trimmed.length;
     const left = Math.floor(remaining / 2);
     const right = remaining - left;

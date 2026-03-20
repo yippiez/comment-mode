@@ -81,7 +81,7 @@ export class PersistenceController {
 
     public save(rootDir?: string): Promise<void> {
         const targetRootDir = rootDir ?? this.rootDir;
-        if (!targetRootDir) return Promise.resolve();
+        if (!targetRootDir) { return Promise.resolve(); }
 
         this.rootDir = targetRootDir;
         const snapshot = structuredClone(this.state);
@@ -93,7 +93,7 @@ export class PersistenceController {
 
     public saveSync(rootDir?: string): void {
         const targetRootDir = rootDir ?? this.rootDir;
-        if (!targetRootDir) return;
+        if (!targetRootDir) { return; }
 
         this.rootDir = targetRootDir;
         const filePath = getPersistenceFilePath(targetRootDir);
@@ -225,13 +225,13 @@ function parsePersistedUiState(value: unknown): PersistedUiState | null {
     };
 
     const chips = parsePersistedChipsState(record.chips);
-    if (!chips) return null;
+    if (!chips) { return null; }
     const files = parsePersistedFilesState(record.files);
-    if (!files) return null;
+    if (!files) { return null; }
     const cursor = parsePersistedCursorState(record.cursor);
-    if (!cursor) return null;
+    if (!cursor) { return null; }
     const prompt = parsePersistedPromptState(record.prompt);
-    if (!prompt) return null;
+    if (!prompt) { return null; }
 
     return {
         chips,

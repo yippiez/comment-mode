@@ -33,7 +33,7 @@ export class ChipSelectionController {
 
     public moveSelection(delta: number): void {
         const chipCount = this.options.getChipCount();
-        if (chipCount === 0) return;
+        if (chipCount === 0) { return; }
 
         const nextIndex = this.options.getSelectedChipIndex() + delta;
         this.options.setSelectedChipIndex(wrapIndex(nextIndex, chipCount));
@@ -42,7 +42,7 @@ export class ChipSelectionController {
 
     public toggleSelected(): void {
         const selectedTarget = this.options.resolveSelectedTarget();
-        if (!selectedTarget) return;
+        if (!selectedTarget) { return; }
 
         if (selectedTarget.kind === "type") {
             this.options.setTypeEnabled(

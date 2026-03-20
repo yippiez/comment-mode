@@ -13,12 +13,12 @@ export type SelectionLineInfo = ModeSelectionLineInfo;
 
 export function collectSelectionLineInfos(cursor: Cursor, lineModel: LineModel): SelectionLineInfo[] {
     const { start, end } = cursor.selectionRange;
-    if (start <= 0 || end <= 0) return [];
+    if (start <= 0 || end <= 0) { return []; }
     const selection: SelectionLineInfo[] = [];
 
     for (let globalLine = start; globalLine <= end; globalLine += 1) {
         const lineInfo = lineModel.getVisibleLineInfo(globalLine);
-        if (!lineInfo) continue;
+        if (!lineInfo) { continue; }
         selection.push({
             globalLine,
             filePath: lineInfo.filePath,
@@ -38,7 +38,7 @@ export function createPromptTargetFromSelection(
     projectRootPath: string,
 ): PromptTarget | null {
     const selection = collectSelectionLineInfos(cursor, lineModel);
-    if (selection.length === 0) return null;
+    if (selection.length === 0) { return null; }
 
     const virtualRows = selection
         .map((line) => fileTreeRowsByLine.get(line.globalLine))
@@ -48,10 +48,10 @@ export function createPromptTargetFromSelection(
         const selectedPaths = dedupePreserveOrder(
             virtualRows.map((row) => normalizeSelectionPath(row.filePath, projectRootPath)),
         );
-        if (selectedPaths.length === 0) return null;
+        if (selectedPaths.length === 0) { return null; }
 
         const last = selection[selection.length - 1];
-        if (!last) return null;
+        if (!last) { return null; }
         const selectedText = [
             "Mode: VIRTUAL FILE",
             `Selected items: ${String(selectedPaths.length)}`,
@@ -74,13 +74,13 @@ export function createPromptTargetFromSelection(
     const selectedCodeLines = selection.filter(
         (line) => line.blockKind === "code" && typeof line.fileLine === "number",
     );
-    if (selectedCodeLines.length !== selection.length) return null;
+    if (selectedCodeLines.length !== selection.length) { return null; }
 
     const uniquePath = resolveSinglePath(selectedCodeLines.map((line) => line.filePath));
-    if (uniquePath === null) return null;
+    if (uniquePath === null) { return null; }
 
     const last = selectedCodeLines[selectedCodeLines.length - 1];
-    if (!last) return null;
+    if (!last) { return null; }
 
     const fileLines = selectedCodeLines.map((line) => line.fileLine as number);
     const selectionStartFileLine = Math.min(...fileLines);
@@ -122,16 +122,16 @@ export function buildClipboardSelectionText(
     const codeLines = selection.filter(
         (line) => line.blockKind === "code" && typeof line.fileLine === "number",
     );
-    if (codeLines.length !== selection.length) return "";
+    if (codeLines.length !== selection.length) { return ""; }
     const uniquePath = resolveSinglePath(codeLines.map((line) => line.filePath));
-    if (uniquePath === null) return "";
+    if (uniquePath === null) { return ""; }
 
     return codeLines.map((line) => line.text).join("\n").trimEnd();
 }
 
 function resolveSinglePath(paths: readonly string[]): string | null {
     const unique = new Set(paths);
-    if (unique.size !== 1) return null;
+    if (unique.size !== 1) { return null; }
     const [first] = unique;
     return first ?? null;
 }
@@ -140,7 +140,7 @@ function dedupePreserveOrder(values: readonly string[]): string[] {
     const seen = new Set<string>();
     const output: string[] = [];
     for (const value of values) {
-        if (seen.has(value)) continue;
+        if (seen.has(value)) { continue; }
         seen.add(value);
         output.push(value);
     }
@@ -192,7 +192,7 @@ export function resolvePromptAnchorLine(
         }
     }
 
-    if (lineModel.totalLines <= 0) return 1;
+    if (lineModel.totalLines <= 0) { return 1; }
     const fallback = fallbackAnchorLine ?? cursorLine;
     return clamp(fallback, 1, lineModel.totalLines);
 }

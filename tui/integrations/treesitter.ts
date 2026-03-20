@@ -62,7 +62,7 @@ const CUSTOM_TREE_SITTER_PARSERS: FiletypeParserOptions[] = [
 let registeredCustomParsers = false;
 
 export function registerTreeSitterParsers(): void {
-    if (registeredCustomParsers) return;
+    if (registeredCustomParsers) { return; }
     addDefaultParsers(CUSTOM_TREE_SITTER_PARSERS);
     registeredCustomParsers = true;
 }

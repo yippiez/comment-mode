@@ -12,8 +12,8 @@
  * toIsoTimestamp(123, "invalid")                     // "invalid"
  */
 export function toIsoTimestamp(value: unknown, fallback: string): string {
-    if (typeof value !== "string") return fallback;
+    if (typeof value !== "string") { return fallback; }
     const parsed = Date.parse(value);
-    if (!Number.isFinite(parsed)) return fallback;
+    if (!Number.isFinite(parsed)) { return fallback; }
     return new Date(parsed).toISOString();
 }

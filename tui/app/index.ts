@@ -355,7 +355,7 @@ export class CodeBrowserApp {
     // ------------------------------------------
 
     private registerBindings(): void {
-        if (this.bindingCleanupFns.length > 0) return;
+        if (this.bindingCleanupFns.length > 0) { return; }
 
         const resizeState: {
       pendingResizeRerender?: ReturnType<typeof setTimeout>;
@@ -898,7 +898,7 @@ export class CodeBrowserApp {
 
         const onPaste = (event: PasteEvent): void => {
             const pastedText = event.text;
-            if (!pastedText) return;
+            if (!pastedText) { return; }
 
             const state = this.getKeyboardStateSnapshot();
             if (state.groupNamePromptVisible) {
@@ -908,7 +908,7 @@ export class CodeBrowserApp {
                 return;
             }
 
-            if (!state.promptVisible) return;
+            if (!state.promptVisible) { return; }
 
             event.preventDefault?.();
             event.stopPropagation?.();
@@ -927,7 +927,7 @@ export class CodeBrowserApp {
     private registerScrollBindings(): () => void {
         const onChange = (event: { position?: number } | undefined): void => {
             const position = event?.position;
-            if (typeof position !== "number") return;
+            if (typeof position !== "number") { return; }
             SIGNALS.scrollVertical(position);
         };
 
@@ -1018,7 +1018,7 @@ export class CodeBrowserApp {
     private openFromCurrentSelection(): void {
         if (!this.cursor.isVisualModeEnabled) {
             const opened = this.openSelectedVirtualRow();
-            if (opened) return;
+            if (opened) { return; }
         }
 
         void this.openPromptFromCodeSelection();
@@ -1026,8 +1026,8 @@ export class CodeBrowserApp {
 
     private openCurrentSelectionInEditor(): void {
         const target = this.resolveEditorTarget();
-        if (!target) return;
-        if (!process.env.EDITOR?.trim()) return;
+        if (!target) { return; }
+        if (!process.env.EDITOR?.trim()) { return; }
 
         let suspended = false;
         try {
@@ -1065,8 +1065,8 @@ export class CodeBrowserApp {
         }
 
         const lineInfo = this.lineModel.getVisibleLineInfo(this.cursor.cursorLine);
-        if (!lineInfo) return null;
-        if (lineInfo.filePath.startsWith("virtual://")) return null;
+        if (!lineInfo) { return null; }
+        if (lineInfo.filePath.startsWith("virtual://")) { return null; }
         return {
             filePath: lineInfo.filePath,
             fileLine: typeof lineInfo.fileLine === "number" ? lineInfo.fileLine : 1,
@@ -1096,7 +1096,7 @@ export class CodeBrowserApp {
         }
 
         const target = this.createPromptTargetFromSelection();
-        if (!target) return;
+        if (!target) { return; }
         this.prompt.open(target);
     }
 
@@ -1131,7 +1131,7 @@ export class CodeBrowserApp {
 
     private getAgentUpdateAtCursorLine(): AgentUpdate | undefined {
         const updateId = this.agentTimeline.getUpdateIdAtLine(this.cursor.cursorLine);
-        if (!updateId) return undefined;
+        if (!updateId) { return undefined; }
         return this.agent.findById(updateId);
     }
 
@@ -1215,7 +1215,7 @@ export class CodeBrowserApp {
             this.cursor.goToLineAtMinVisibleHeight(this.cursor.cursorLine);
             return true;
         }
-        if (!result.openedFilePath) return false;
+        if (!result.openedFilePath) { return false; }
         this.openFileFromExplorer(result.openedFilePath);
         return true;
     }
@@ -1227,14 +1227,14 @@ export class CodeBrowserApp {
 
     private enterCurrentDirectory(): void {
         const changed = this.virtualCodeBlocks.enterDirectoryAtLine(this.cursor.cursorLine);
-        if (!changed) return;
+        if (!changed) { return; }
         this.renderContent({ cursorTargetFilePath: this.virtualCodeBlocks.getDefaultAnchorPath() });
         this.cursor.goToLineAtMinVisibleHeight(this.cursor.cursorLine);
     }
 
     private goToParentDirectory(): void {
         const changed = this.virtualCodeBlocks.goToParentDirectoryForLine(this.cursor.cursorLine);
-        if (!changed) return;
+        if (!changed) { return; }
         this.renderContent({ cursorTargetFilePath: this.virtualCodeBlocks.getDefaultAnchorPath() });
         this.cursor.goToLineAtMinVisibleHeight(this.cursor.cursorLine);
     }
@@ -1242,7 +1242,7 @@ export class CodeBrowserApp {
     private toggleCurrentFileCollapse(): void {
         const currentFilePath = this.lineModel.getCurrentFilePath(this.cursor.cursorLine);
         const changed = this.fileExplorer.toggleCollapse(currentFilePath);
-        if (!changed) return;
+        if (!changed) { return; }
 
         const cursorTargetFilePath =
       currentFilePath && this.fileExplorer.isCollapsed(currentFilePath) ? currentFilePath : undefined;
@@ -1307,7 +1307,7 @@ export class CodeBrowserApp {
 
     private deleteCurrentAgentPrompt(): void {
         const update = this.getAgentUpdateAtCursorLine();
-        if (!update) return;
+        if (!update) { return; }
         this.agent.remove(update.id);
     }
 
@@ -1358,17 +1358,17 @@ export class CodeBrowserApp {
     }
 
     private enableLazyContentModeIfNeeded(): void {
-        if (this.lazyContentModeEnabled) return;
-        if (this.entries.length < LAZY_CONTENT_MODE_FILE_THRESHOLD) return;
-        if (this.entries.every((entry) => entry.isContentLoaded)) return;
+        if (this.lazyContentModeEnabled) { return; }
+        if (this.entries.length < LAZY_CONTENT_MODE_FILE_THRESHOLD) { return; }
+        if (this.entries.every((entry) => entry.isContentLoaded)) { return; }
 
         this.lazyContentModeEnabled = true;
         this.fileExplorer.collapseAll(this.entries);
     }
 
     private scheduleFileContentLoad(entry: CodeFileEntry): void {
-        if (entry.isContentLoaded) return;
-        if (this.pendingEntryLoads.has(entry.relativePath)) return;
+        if (entry.isContentLoaded) { return; }
+        if (this.pendingEntryLoads.has(entry.relativePath)) { return; }
 
         this.pendingEntryLoads.add(entry.relativePath);
         void hydrateCodeFileEntry(entry, this.workspaceRootDir)
@@ -1379,12 +1379,12 @@ export class CodeBrowserApp {
             })
             .catch((error: unknown) => {
                 this.pendingEntryLoads.delete(entry.relativePath);
-                if (!isMissingCodeFileError(error)) return;
+                if (!isMissingCodeFileError(error)) { return; }
 
                 const nextEntries = this.entries.filter(
                     (candidate) => candidate.relativePath !== entry.relativePath,
                 );
-                if (nextEntries.length === this.entries.length) return;
+                if (nextEntries.length === this.entries.length) { return; }
                 this.refreshEntries(nextEntries);
             });
     }
@@ -1392,6 +1392,6 @@ export class CodeBrowserApp {
 }
 
 function toNonNegativeInteger(value: number): number {
-    if (!Number.isFinite(value)) return 0;
+    if (!Number.isFinite(value)) { return 0; }
     return Math.max(0, Math.floor(value));
 }

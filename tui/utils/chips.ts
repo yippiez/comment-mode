@@ -105,7 +105,7 @@ export function renderTypeChips(options: RenderTypeChipsOptions): number {
     for (let index = startIndex; index < endIndex; index += 1) {
         const isTypeChip = index < typeChipCount;
         const type = isTypeChip ? options.sortedTypes[index] : null;
-        if (isTypeChip && !type) continue;
+        if (isTypeChip && !type) { continue; }
 
         const enabled = isTypeChip && type ? options.isTypeEnabled(type) : true;
         const selected = index === selectedChipIndex;
@@ -163,7 +163,7 @@ type ResolveChipWindowOptions = {
 function resolveChipsViewportWidth(options: RenderTypeChipsOptions): number {
     if (typeof options.chipsRow.width === "number" && Number.isFinite(options.chipsRow.width)) {
         const rowWidth = Math.floor(options.chipsRow.width);
-        if (rowWidth > 1) return rowWidth;
+        if (rowWidth > 1) { return rowWidth; }
     }
 
     const rendererWidth = Math.floor(options.renderer.width);
@@ -234,7 +234,7 @@ export function resolveChipWindow(options: ResolveChipWindowOptions): ChipWindow
             return;
         }
         while (safeSelectedIndex >= computeWindowEnd(chipWidths, startIndex, chipsViewportWidth, gapWidth)) {
-            if (startIndex >= safeSelectedIndex) break;
+            if (startIndex >= safeSelectedIndex) { break; }
             startIndex += 1;
         }
     };
@@ -272,11 +272,11 @@ function resolveChipsViewportForWindow(viewportWidth: number, indicatorFootprint
 }
 
 function computeTotalChipWidth(chipWidths: readonly number[], gapWidth: number): number {
-    if (chipWidths.length === 0) return 0;
+    if (chipWidths.length === 0) { return 0; }
     let total = 0;
     for (let index = 0; index < chipWidths.length; index += 1) {
         total += Math.max(1, Math.floor(chipWidths[index] ?? 1));
-        if (index > 0) total += gapWidth;
+        if (index > 0) { total += gapWidth; }
     }
     return total;
 }

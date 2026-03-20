@@ -31,7 +31,7 @@ const CLIPBOARD_READ_COMMANDS: ClipboardCommand[] = [
 export async function readFromClipboard(): Promise<string | null> {
     for (const entry of CLIPBOARD_READ_COMMANDS) {
         const text = await runClipboardReadCommand(entry.command, entry.args);
-        if (text !== null) return text;
+        if (text !== null) { return text; }
     }
 
     return null;
@@ -62,7 +62,7 @@ function runClipboardReadCommand(command: string, args: string[]): Promise<strin
         });
 
         const finish = (text: string | null): void => {
-            if (settled) return;
+            if (settled) { return; }
             settled = true;
             resolve(text);
         };

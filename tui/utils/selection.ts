@@ -9,7 +9,7 @@
  */
 export function resolveSinglePath(paths: readonly string[]): string | null {
     const unique = new Set(paths);
-    if (unique.size !== 1) return null;
+    if (unique.size !== 1) { return null; }
     const [first] = unique;
     return first ?? null;
 }
@@ -26,7 +26,7 @@ export function dedupePreserveOrder(values: readonly string[]): string[] {
     const seen = new Set<string>();
     const output: string[] = [];
     for (const value of values) {
-        if (seen.has(value)) continue;
+        if (seen.has(value)) { continue; }
         seen.add(value);
         output.push(value);
     }

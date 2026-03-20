@@ -18,8 +18,8 @@ import path from "node:path";
  */
 export function parseIgnoredTopLevelDir(rawLine: string): string | null {
     const trimmed = rawLine.trim();
-    if (trimmed.length === 0) return null;
-    if (trimmed.startsWith("#") || trimmed.startsWith("!")) return null;
+    if (trimmed.length === 0) { return null; }
+    if (trimmed.startsWith("#") || trimmed.startsWith("!")) { return null; }
 
     let normalized = trimmed;
     if (normalized.startsWith("/")) {
@@ -29,10 +29,10 @@ export function parseIgnoredTopLevelDir(rawLine: string): string | null {
         normalized = normalized.slice(0, -1);
     }
 
-    if (normalized.length === 0) return null;
-    if (normalized.includes("/")) return null;
-    if (/[*?\[\\]/.test(normalized)) return null;
-    if (normalized === "." || normalized === "..") return null;
+    if (normalized.length === 0) { return null; }
+    if (normalized.includes("/")) { return null; }
+    if (/[*?\[\\]/.test(normalized)) { return null; }
+    if (normalized === "." || normalized === "..") { return null; }
     return normalized;
 }
 
@@ -80,7 +80,7 @@ export function listGitWorkspaceFiles(root: string): string[] | null {
  * filterGitIgnored("/project", ["src/index.ts", "node_modules/foo"]) // ["src/index.ts"]
  */
 export function filterGitIgnored(root: string, files: string[]): string[] {
-    if (files.length === 0) return files;
+    if (files.length === 0) { return files; }
 
     const checkIgnore = spawnSync("git", ["-C", root, "check-ignore", "--no-index", "-z", "--stdin"], {
         input: `${files.join("\0")}\0`,
@@ -149,15 +149,15 @@ export function mergePatchChangedLines(target: Map<string, Set<number>>, patch: 
             continue;
         }
 
-        if (!currentPath) continue;
-        if (!line.startsWith("@@ ")) continue;
+        if (!currentPath) { continue; }
+        if (!line.startsWith("@@ ")) { continue; }
 
         const match = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line);
-        if (!match) continue;
+        if (!match) { continue; }
 
         const start = Number.parseInt(match[1] ?? "0", 10);
         const count = Number.parseInt(match[2] ?? "1", 10);
-        if (count <= 0 || Number.isNaN(start)) continue;
+        if (count <= 0 || Number.isNaN(start)) { continue; }
 
         const fileSet = target.get(currentPath) ?? new Set<number>();
         for (let lineNo = start; lineNo < start + count; lineNo += 1) {
@@ -179,7 +179,7 @@ export function mergePatchChangedLines(target: Map<string, Set<number>>, patch: 
 export function isPathInsideIgnoredDir(relativePath: string, ignoredDirs: ReadonlySet<string>): boolean {
     const normalized = relativePath.split(path.sep).join("/");
     const firstSegment = normalized.split("/")[0]?.trim();
-    if (!firstSegment) return false;
+    if (!firstSegment) { return false; }
     return ignoredDirs.has(firstSegment);
 }
 
@@ -195,6 +195,6 @@ export function isPathInsideIgnoredDir(relativePath: string, ignoredDirs: Readon
  */
 export function isPathWithinRoot(root: string, absolutePath: string): boolean {
     const relative = path.relative(root, absolutePath);
-    if (relative.length === 0) return true;
+    if (relative.length === 0) { return true; }
     return !relative.startsWith("..") && !path.isAbsolute(relative);
 }

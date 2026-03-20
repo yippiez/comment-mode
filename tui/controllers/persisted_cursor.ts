@@ -38,9 +38,9 @@ export class PersistedCursorController {
 
     public updateLastCodeCursorSnapshot(): void {
         const lineInfo = this.options.lineModel.getVisibleLineInfo(this.options.cursor.cursorLine);
-        if (!lineInfo || lineInfo.blockKind !== "code") return;
-        if (!isPersistableFilePath(lineInfo.filePath)) return;
-        if (typeof lineInfo.fileLine !== "number") return;
+        if (!lineInfo || lineInfo.blockKind !== "code") { return; }
+        if (!isPersistableFilePath(lineInfo.filePath)) { return; }
+        if (typeof lineInfo.fileLine !== "number") { return; }
 
         this.lastCodeCursorSnapshot = {
             filePath: lineInfo.filePath,
@@ -98,14 +98,14 @@ export class PersistedCursorController {
         } catch {
             return;
         }
-        if (renderer.isDestroyed) return;
+        if (renderer.isDestroyed) { return; }
         this.restore();
     }
 
     public restore(): void {
         const persistedCursorState = this.pendingPersistedCursorState;
-        if (!persistedCursorState) return;
-        if (this.options.lineModel.totalLines <= 0) return;
+        if (!persistedCursorState) { return; }
+        if (this.options.lineModel.totalLines <= 0) { return; }
 
         const restoreTarget = this.resolvePersistedCursorLine(persistedCursorState);
         this.options.cursor.goToLine(restoreTarget.line, "auto");
@@ -120,7 +120,7 @@ export class PersistedCursorController {
 
     private ensurePersistedCursorVisibility(cursor: PersistedCursorState): void {
         const filePath = cursor.filePath;
-        if (!filePath) return;
+        if (!filePath) { return; }
 
         if (filePath === "." || filePath.startsWith(FileExplorer.FILE_PAGE_ANCHOR_PATH)) {
             this.options.fileExplorer.setFilePageCollapsed(false);
@@ -226,12 +226,12 @@ export class PersistedCursorController {
         let bestDistance = Number.POSITIVE_INFINITY;
 
         for (const block of this.options.lineModel.blocks) {
-            if (block.filePath !== filePath || block.blockKind !== "code") continue;
-            if (block.fileLineStart === null) continue;
+            if (block.filePath !== filePath || block.blockKind !== "code") { continue; }
+            if (block.fileLineStart === null) { continue; }
 
             for (let offset = 0; offset < block.renderedLines.length; offset += 1) {
                 const candidateText = normalizePersistedLineText(block.renderedLines[offset] ?? null);
-                if (candidateText !== persistedText) continue;
+                if (candidateText !== persistedText) { continue; }
 
                 const candidateGlobalLine = block.lineStart + offset;
                 const candidateFileLine = block.fileLineStart + offset;
@@ -259,8 +259,8 @@ export class PersistedCursorController {
         let bestDistance = Number.POSITIVE_INFINITY;
 
         for (const block of this.options.lineModel.blocks) {
-            if (block.filePath !== filePath || block.blockKind !== "code") continue;
-            if (block.fileLineStart === null) continue;
+            if (block.filePath !== filePath || block.blockKind !== "code") { continue; }
+            if (block.fileLineStart === null) { continue; }
 
             const blockLength = Math.max(1, block.lineEnd - block.lineStart + 1);
             for (let offset = 0; offset < blockLength; offset += 1) {

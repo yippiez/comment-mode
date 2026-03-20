@@ -43,7 +43,7 @@ export function recomputeTypeState(
     }
 
     for (const supplemental of supplementalTypes) {
-        if (!supplemental.typeLabel) continue;
+        if (!supplemental.typeLabel) { continue; }
         typeCounts.set(supplemental.typeLabel, (typeCounts.get(supplemental.typeLabel) ?? 0) + supplemental.count);
         const existingPriority = typePriorities.get(supplemental.typeLabel);
         if (existingPriority === undefined || supplemental.typePriority < existingPriority) {
@@ -54,7 +54,7 @@ export function recomputeTypeState(
     const sortedTypes = [...typeCounts.keys()].sort((a, b) => {
         const pa = typePriorities.get(a) ?? 2;
         const pb = typePriorities.get(b) ?? 2;
-        if (pa !== pb) return pa - pb;
+        if (pa !== pb) { return pa - pb; }
         return a.localeCompare(b);
     });
 
@@ -78,7 +78,7 @@ export function ensureExplorerDirectoryVisible(
     let directory = directoryPath;
     while (directory.length > 0) {
         const hasVisibleChild = entries.some((entry) => entry.relativePath.startsWith(`${directory}/`));
-        if (hasVisibleChild) break;
+        if (hasVisibleChild) { break; }
         directory = getParentPosixPath(directory);
     }
     return directory;

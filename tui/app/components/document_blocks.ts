@@ -73,18 +73,18 @@ export class DocumentBlocks {
     public endRender(): void {
         const staleThreshold = this.renderPass - CACHED_BLOCK_STALE_RENDER_PASSES;
         for (const [key, block] of this.cachedCodeBlocks.entries()) {
-            if (this.activeCodeBlockKeys.has(key)) continue;
-            if (block.lastUsedRenderPass > staleThreshold) continue;
+            if (this.activeCodeBlockKeys.has(key)) { continue; }
+            if (block.lastUsedRenderPass > staleThreshold) { continue; }
             block.lineView.destroyRecursively();
             this.cachedCodeBlocks.delete(key);
         }
 
-        if (this.cachedCodeBlocks.size <= MAX_CACHED_CODE_BLOCKS) return;
+        if (this.cachedCodeBlocks.size <= MAX_CACHED_CODE_BLOCKS) { return; }
         for (const [key, block] of this.cachedCodeBlocks.entries()) {
-            if (this.activeCodeBlockKeys.has(key)) continue;
+            if (this.activeCodeBlockKeys.has(key)) { continue; }
             block.lineView.destroyRecursively();
             this.cachedCodeBlocks.delete(key);
-            if (this.cachedCodeBlocks.size <= MAX_CACHED_CODE_BLOCKS) break;
+            if (this.cachedCodeBlocks.size <= MAX_CACHED_CODE_BLOCKS) { break; }
         }
     }
 
@@ -375,7 +375,7 @@ export class DocumentBlocks {
         const signs = new Map<number, LineSign>();
         for (let lineOffset = 0; lineOffset < renderedLineCount; lineOffset += 1) {
             const fileLine = fileLineStart + lineOffset;
-            if (!entry.markAllLinesUncommitted && !entry.uncommittedLines.has(fileLine)) continue;
+            if (!entry.markAllLinesUncommitted && !entry.uncommittedLines.has(fileLine)) { continue; }
             signs.set(lineOffset, {
                 before: "▌",
                 beforeColor: theme.getUncommittedLineSignColor(),

@@ -160,7 +160,7 @@ function isFileTypeExtension(ext: string): boolean {
  */
 export function resolveFileType(relativePath: string): FileType | undefined {
     const ext = path.extname(relativePath).toLowerCase();
-    if (!isFileTypeExtension(ext)) return undefined;
+    if (!isFileTypeExtension(ext)) { return undefined; }
     return resolveFileTypeByExtension(ext);
 }
 
@@ -169,7 +169,7 @@ export function resolveFileType(relativePath: string): FileType | undefined {
  */
 export function resolveTypeLabel(relativePath: string): string {
     const ext = path.extname(relativePath);
-    if (!ext) return "NOEXT";
+    if (!ext) { return "NOEXT"; }
     return ext.slice(1).toUpperCase();
 }
 
@@ -179,7 +179,7 @@ export function resolveTypeLabel(relativePath: string): string {
 export function resolveTypePriority(typeLabel: string): FileTypePriority {
     const lower = typeLabel.toLowerCase();
     const priority = PRIORITY_EXTENSIONS[lower];
-    if (priority !== undefined) return priority;
+    if (priority !== undefined) { return priority; }
     return FileTypePriority.LOW;
 }
 

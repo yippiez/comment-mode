@@ -218,14 +218,14 @@ export class ShortcutsModal {
     }
 
     public scrollByLines(delta: number): void {
-        if (!this.overlay.visible) return;
+        if (!this.overlay.visible) { return; }
         const nextTop = Math.max(0, this.content.scrollTop + delta);
         this.content.scrollTo(nextTop);
         this.overlay.requestRender();
     }
 
     public scrollByPage(delta: number): void {
-        if (!this.overlay.visible) return;
+        if (!this.overlay.visible) { return; }
         const step = Math.max(1, this.content.viewport.height || this.content.height || 1);
         this.scrollByLines(step * delta);
     }

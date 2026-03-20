@@ -48,9 +48,9 @@ export function buildFileTreeRows(
     const childFiles: Array<{ path: string; name: string; lineCount: number }> = [];
 
     for (const entry of entries) {
-        if (prefix.length > 0 && !entry.relativePath.startsWith(prefix)) continue;
+        if (prefix.length > 0 && !entry.relativePath.startsWith(prefix)) { continue; }
         const relative = prefix.length > 0 ? entry.relativePath.slice(prefix.length) : entry.relativePath;
-        if (!relative) continue;
+        if (!relative) { continue; }
 
         const slashIndex = relative.indexOf("/");
         if (slashIndex >= 0) {

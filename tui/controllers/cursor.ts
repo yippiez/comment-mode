@@ -31,8 +31,8 @@ export class Cursor {
     }
 
     public get selectionRange(): { start: number; end: number } {
-        if (this.totalLines <= 0) return { start: 0, end: 0 };
-        if (!this.visualMode) return { start: this.line, end: this.line };
+        if (this.totalLines <= 0) { return { start: 0, end: 0 }; }
+        if (!this.visualMode) { return { start: this.line, end: this.line }; }
         return {
             start: Math.min(this.visualAnchorLine, this.line),
             end: Math.max(this.visualAnchorLine, this.line),
@@ -78,7 +78,7 @@ export class Cursor {
     }
 
     public moveBy(delta: number): void {
-        if (this.totalLines <= 0) return;
+        if (this.totalLines <= 0) { return; }
         this.line = clamp(this.line + delta, 1, this.totalLines);
         SIGNALS.cursorChanged();
         this.bindings.camera.onCursorMoved(this.line, this.totalLines, delta);
@@ -88,16 +88,16 @@ export class Cursor {
         targetLine: number,
         positionMode: "auto" | "top" | "bottom" | "keep" = "auto",
     ): void {
-        if (this.totalLines <= 0) return;
+        if (this.totalLines <= 0) { return; }
         const previous = this.line;
         this.line = clamp(targetLine, 1, this.totalLines);
         SIGNALS.cursorChanged();
-        if (positionMode === "keep") return;
+        if (positionMode === "keep") { return; }
         this.bindings.camera.onCursorSet(this.line, this.totalLines, previous, positionMode);
     }
 
     public goToLineAtMinVisibleHeight(targetLine: number): void {
-        if (this.totalLines <= 0) return;
+        if (this.totalLines <= 0) { return; }
         this.line = clamp(targetLine, 1, this.totalLines);
         SIGNALS.cursorChanged();
         this.bindings.camera.placeLineAtMinVisibleHeight(this.line, this.totalLines);
@@ -112,7 +112,7 @@ export class Cursor {
     }
 
     public toggleVisualMode(): void {
-        if (this.totalLines <= 0) return;
+        if (this.totalLines <= 0) { return; }
         this.visualMode = !this.visualMode;
         this.visualAnchorLine = this.line;
         SIGNALS.cursorChanged();
@@ -120,7 +120,7 @@ export class Cursor {
     }
 
     public disableVisualMode(): void {
-        if (!this.visualMode) return;
+        if (!this.visualMode) { return; }
         this.visualMode = false;
         this.visualAnchorLine = this.line;
         SIGNALS.cursorChanged();
@@ -129,7 +129,7 @@ export class Cursor {
 
     public handleExternalScroll(nextTop: number): void {
         const nextLine = this.bindings.camera.handleExternalScroll(nextTop, this.totalLines, this.line);
-        if (nextLine === undefined) return;
+        if (nextLine === undefined) { return; }
         this.line = nextLine;
         SIGNALS.cursorChanged();
     }

@@ -52,13 +52,13 @@ let refreshRetryTimer: ReturnType<typeof setTimeout> | undefined;
 let refreshRetryArmed = true;
 
 const clearRefreshRetryTimer = () => {
-    if (!refreshRetryTimer) return;
+    if (!refreshRetryTimer) { return; }
     clearTimeout(refreshRetryTimer);
     refreshRetryTimer = undefined;
 };
 
 const scheduleRefreshRetry = () => {
-    if (!refreshRetryArmed || refreshRetryTimer) return;
+    if (!refreshRetryArmed || refreshRetryTimer) { return; }
 
     refreshRetryArmed = false;
     refreshRetryTimer = setTimeout(() => {

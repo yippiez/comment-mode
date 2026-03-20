@@ -153,7 +153,7 @@ export class GroupNameModal {
     }
 
     public handleInputKey(key: AppKeyInput): boolean {
-        if (!this.overlay.visible || this.isInputDestroyed()) return false;
+        if (!this.overlay.visible || this.isInputDestroyed()) { return false; }
 
         if (this.isClipboardPasteKey(key)) {
             void this.pasteClipboardIntoInput();
@@ -161,14 +161,14 @@ export class GroupNameModal {
         }
 
         const handled = this.input.handleKeyPress(new KeyEvent(key));
-        if (!handled) return false;
+        if (!handled) { return false; }
         this.overlay.requestRender();
         return true;
     }
 
     public handlePasteText(text: string): void {
-        if (!this.overlay.visible || this.isInputDestroyed()) return;
-        if (!text) return;
+        if (!this.overlay.visible || this.isInputDestroyed()) { return; }
+        if (!text) { return; }
         this.insertTextIntoInput(text);
     }
 
@@ -208,14 +208,14 @@ export class GroupNameModal {
     }
 
     private isClipboardPasteKey(key: AppKeyInput): boolean {
-        if (key.repeated) return false;
+        if (key.repeated) { return false; }
         return key.ctrl && (key.name ?? "").toLowerCase() === "v";
     }
 
     private async pasteClipboardIntoInput(): Promise<void> {
         const clipboardText = await readFromClipboard();
-        if (clipboardText === null || clipboardText.length === 0) return;
-        if (!this.overlay.visible || this.isInputDestroyed()) return;
+        if (clipboardText === null || clipboardText.length === 0) { return; }
+        if (!this.overlay.visible || this.isInputDestroyed()) { return; }
         this.insertTextIntoInput(clipboardText);
     }
 
@@ -223,7 +223,7 @@ export class GroupNameModal {
         try {
             this.input.insertText(text);
         } catch (error) {
-            if (this.isDestroyedError(error)) return;
+            if (this.isDestroyedError(error)) { return; }
             throw error;
         }
 
