@@ -68,7 +68,12 @@ class MyHomePage extends StatelessWidget {
           ];
           return Padding(
             padding: const EdgeInsets.all(16.0),
-            child: Wrap(spacing: 16.0, runSpacing: 16.0, children: cards),
+            child: Wrap(
+              spacing: 16.0,
+              runSpacing: 16.0,
+              alignment: WrapAlignment.center,
+              children: cards,
+            ),
           );
         },
       ),
