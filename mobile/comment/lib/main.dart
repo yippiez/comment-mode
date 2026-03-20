@@ -1,4 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:comment/shared/theme.dart';
+import 'package:comment/screens/code_view.dart';
+import 'package:comment/screens/file_tree.dart';
+
+import 'package:comment/screens/ssh_connection.dart';
+import 'package:comment/providers/ssh_config_provider.dart';
+import 'package:comment/components/bottom_bar.dart';
 
 void main() {
   runApp(const MyApp());
@@ -9,12 +17,13 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Comment',
-      theme: ThemeData(
-        colorScheme: .fromSeed(seedColor: Colors.deepPurple),
+    return ChangeNotifierProvider(
+      create: (context) => SshConfigProvider(),
+      child: MaterialApp(
+        title: 'Comment',
+        theme: ReadToolTheme.darkOrangeTheme,
+        home: const MyHomePage(title: 'Comment'),
       ),
-      home: const MyHomePage(title: 'Comment'),
     );
   }
 }
@@ -29,37 +38,65 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
-
-  void _incrementCounter() {
-    setState(() {
-      _counter++;
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: Text(widget.title),
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: .center,
-          children: [
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-          ],
+      bottomNavigationBar: const BottomBar(),
+      body: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Center(
+          child: Column(
+            children: [
+              Container(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const CodeViewScreen(),
+                      ),
+                    );
+                  },
+                  child: const Text('Code View'),
+                ),
+              ),
+              const SizedBox(height: 32),
+              Container(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const FileTreeScreen(),
+                      ),
+                    );
+                  },
+                  child: const Text('File Tree'),
+                ),
+              ),
+              const SizedBox(height: 32),
+              Container(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const SshConnectionScreen(),
+                      ),
+                    );
+                  },
+                  child: const Text('SSH Connection'),
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
       ),
     );
   }
