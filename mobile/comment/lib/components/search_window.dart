@@ -146,7 +146,7 @@ class _SearchWindowState extends State<SearchWindow>
                           children: [
                             const Icon(
                               Icons.search,
-                              size: 20,
+                              size: 33,
                               color: Colors.white70,
                             ),
                             const SizedBox(width: 6),
@@ -191,14 +191,23 @@ class _SearchWindowState extends State<SearchWindow>
                                 ),
                               ),
                             ),
-                            IconButton(
-                              style: IconButton.styleFrom(
-                                foregroundColor: Colors.white70,
-                                overlayColor: Colors.white24,
+                            const SizedBox(width: 6),
+                            SizedBox(
+                              width: 42,
+                              height: 42,
+                              child: IconButton(
+                                style: IconButton.styleFrom(
+                                  foregroundColor: Colors.white70,
+                                  overlayColor: Colors.white24,
+                                  padding: EdgeInsets.zero,
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                iconSize: 33,
+                                visualDensity: VisualDensity.compact,
+                                icon: const Icon(Icons.delete_outline),
+                                onPressed: widget.onClose,
                               ),
-                              visualDensity: VisualDensity.compact,
-                              icon: const Icon(Icons.close),
-                              onPressed: widget.onClose,
                             ),
                           ],
                         ),

@@ -53,7 +53,7 @@ class CardsProvider extends ChangeNotifier {
 
   void filterCards(String query) {
     final normalizedQuery = _normalize(query);
-    _searchQuery = normalizedQuery;
+    _searchQuery = query;
 
     if (normalizedQuery.isEmpty) {
       _cards = List<CardData>.from(_allCards);
