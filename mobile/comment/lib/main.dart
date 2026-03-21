@@ -5,7 +5,6 @@ import 'package:comment/shared/theme.dart';
 import 'package:comment/components/card.dart';
 import 'package:comment/components/card_container.dart';
 import 'package:comment/components/bottom_bar.dart';
-import 'package:comment/components/search_window.dart';
 import 'package:comment/components/selection_app_bar.dart';
 import 'package:comment/providers.dart';
 import 'package:comment/screens/archived_cards.dart';
@@ -97,11 +96,19 @@ class MyHomePage extends StatelessWidget {
 
     return Scaffold(
       extendBody: true,
+      resizeToAvoidBottomInset: false,
       appBar: isSelectionMode ? const SelectionAppBar() : null,
       bottomNavigationBar: isSelectionMode
           ? null
           : BottomBar(
-              onSearch: () => context.read<CardsProvider>().openSearch(),
+              isSearchOpen: cardsProvider.isSearchOpen,
+              searchQuery: cardsProvider.searchQuery,
+              onSearchOpen: () => context.read<CardsProvider>().openSearch(),
+              onSearchChanged: (query) =>
+                  context.read<CardsProvider>().filterCards(query),
+              onSearchClose: () => context.read<CardsProvider>().closeSearch(),
+              onSearchSubmit: () =>
+                  context.read<CardsProvider>().closeSearchKeepingFilters(),
               onExtensions: closeSearchIfOpen,
               onArchive: () {
                 closeSearchIfOpen();
@@ -132,16 +139,13 @@ class MyHomePage extends StatelessWidget {
             padding: EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 16.0),
             children: cards,
           ),
-          if (!isSelectionMode)
-            SearchWindow(
-              isOpen: cardsProvider.isSearchOpen,
-              initialQuery: cardsProvider.searchQuery,
-              resultCount: cardsProvider.cards.length,
-              onChanged: (query) =>
-                  context.read<CardsProvider>().filterCards(query),
-              onClose: () => context.read<CardsProvider>().closeSearch(),
-              onSubmit: () =>
-                  context.read<CardsProvider>().closeSearchKeepingFilters(),
+          if (!isSelectionMode && cardsProvider.isSearchOpen)
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => context.read<CardsProvider>().closeSearch(),
+                child: ColoredBox(color: Colors.black.withValues(alpha: 0.16)),
+              ),
             ),
         ],
       ),
