@@ -38,12 +38,19 @@ class CardsProvider extends ChangeNotifier {
   String _lastQuery = '';
   bool _isSearchOpen = false;
 
+  bool _isSelectionMode = false;
+  final Set<String> _selectedIds = {};
+
   List<CardData> get cards => List<CardData>.unmodifiable(_cards);
   List<CardData> get allCards => List<CardData>.unmodifiable(_allCards);
   List<CardData> get archivedCards =>
       List<CardData>.unmodifiable(_allCards.where((card) => card.isArchived));
   String get searchQuery => _searchQuery;
   bool get isSearchOpen => _isSearchOpen;
+
+  bool get isSelectionMode => _isSelectionMode;
+  Set<String> get selectedIds => Set<String>.unmodifiable(_selectedIds);
+  int get selectedCount => _selectedIds.length;
 
   void initializeCards(List<CardData> initialCards) {
     _allCards
@@ -70,29 +77,52 @@ class CardsProvider extends ChangeNotifier {
   }
 
   void setCardArchived(String cardId, bool isArchived) {
-    final cardIndex = _allCards.indexWhere((card) => card.id == cardId);
-    if (cardIndex == -1) {
+    setCardsArchived([cardId], isArchived);
+  }
+
+  void setCardsArchived(Iterable<String> cardIds, bool isArchived) {
+    final ids = cardIds.toSet();
+    if (ids.isEmpty) {
       return;
     }
 
-    final card = _allCards[cardIndex];
-    if (card.isArchived == isArchived) {
+    var hasChanges = false;
+    for (var i = 0; i < _allCards.length; i++) {
+      final card = _allCards[i];
+      if (!ids.contains(card.id) || card.isArchived == isArchived) {
+        continue;
+      }
+      _allCards[i] = card.copyWith(isArchived: isArchived);
+      hasChanges = true;
+    }
+
+    if (!hasChanges) {
       return;
     }
 
-    _allCards[cardIndex] = card.copyWith(isArchived: isArchived);
+    _refreshCardsAfterMutation();
+  }
 
-    if (_searchQuery.isEmpty) {
-      _cards = _visibleCards();
-      _lastQuery = '';
-      _lastResults = List<CardData>.from(_cards);
-      notifyListeners();
+  void deleteCards(Iterable<String> cardIds) {
+    final ids = cardIds.toSet();
+    if (ids.isEmpty) {
       return;
     }
 
-    _lastQuery = '';
-    _lastResults = _visibleCards();
-    filterCards(_searchQuery);
+    final previousLength = _allCards.length;
+    _allCards.removeWhere((card) {
+      final shouldDelete = ids.contains(card.id);
+      if (shouldDelete) {
+        _searchBlobsById.remove(card.id);
+      }
+      return shouldDelete;
+    });
+
+    if (previousLength == _allCards.length) {
+      return;
+    }
+
+    _refreshCardsAfterMutation();
   }
 
   void filterCards(String query) {
@@ -156,6 +186,9 @@ class CardsProvider extends ChangeNotifier {
     if (_isSearchOpen) {
       return;
     }
+    if (_isSelectionMode) {
+      exitSelectionMode();
+    }
     _isSearchOpen = true;
     notifyListeners();
   }
@@ -180,6 +213,59 @@ class CardsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void enterSelectionMode(String cardId) {
+    _isSelectionMode = true;
+    _selectedIds.clear();
+    _selectedIds.add(cardId);
+    notifyListeners();
+  }
+
+  void exitSelectionMode() {
+    _isSelectionMode = false;
+    _selectedIds.clear();
+    notifyListeners();
+  }
+
+  void toggleSelection(String cardId) {
+    if (!_isSelectionMode) {
+      return;
+    }
+    if (_selectedIds.contains(cardId)) {
+      _selectedIds.remove(cardId);
+    } else {
+      _selectedIds.add(cardId);
+    }
+    notifyListeners();
+  }
+
+  bool isSelected(String cardId) {
+    return _selectedIds.contains(cardId);
+  }
+
+  void archiveSelected() {
+    if (_selectedIds.isEmpty) {
+      return;
+    }
+    setCardsArchived(_selectedIds, true);
+    exitSelectionMode();
+  }
+
+  void unarchiveSelected() {
+    if (_selectedIds.isEmpty) {
+      return;
+    }
+    setCardsArchived(_selectedIds, false);
+    exitSelectionMode();
+  }
+
+  void deleteSelected() {
+    if (_selectedIds.isEmpty) {
+      return;
+    }
+    deleteCards(_selectedIds);
+    exitSelectionMode();
+  }
+
   void _rebuildSearchIndex() {
     _searchBlobsById
       ..clear()
@@ -190,6 +276,20 @@ class CardsProvider extends ChangeNotifier {
 
   List<CardData> _visibleCards() {
     return _allCards.where((card) => !card.isArchived).toList(growable: false);
+  }
+
+  void _refreshCardsAfterMutation() {
+    if (_searchQuery.isEmpty) {
+      _cards = _visibleCards();
+      _lastQuery = '';
+      _lastResults = List<CardData>.from(_cards);
+      notifyListeners();
+      return;
+    }
+
+    _lastQuery = '';
+    _lastResults = _visibleCards();
+    filterCards(_searchQuery);
   }
 
   String _buildSearchBlob(CardData card) {

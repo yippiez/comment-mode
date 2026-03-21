@@ -6,6 +6,7 @@ import 'package:comment/components/card.dart';
 import 'package:comment/components/card_container.dart';
 import 'package:comment/components/bottom_bar.dart';
 import 'package:comment/components/search_window.dart';
+import 'package:comment/components/selection_app_bar.dart';
 import 'package:comment/providers.dart';
 import 'package:comment/screens/archived_cards.dart';
 
@@ -60,6 +61,8 @@ class MyHomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cardsProvider = context.watch<CardsProvider>();
+    final isSelectionMode = cardsProvider.isSelectionMode;
+
     void closeSearchIfOpen() {
       final provider = context.read<CardsProvider>();
       if (provider.isSearchOpen) {
@@ -71,6 +74,13 @@ class MyHomePage extends StatelessWidget {
         .map(
           (cardData) => Card(
             title: cardData.title,
+            isSelected: cardsProvider.isSelected(cardData.id),
+            onTap: isSelectionMode
+                ? () => cardsProvider.toggleSelection(cardData.id)
+                : null,
+            onLongPress: isSelectionMode
+                ? null
+                : () => cardsProvider.enterSelectionMode(cardData.id),
             child: Padding(
               padding: const EdgeInsets.symmetric(
                 horizontal: 12.0,
@@ -87,43 +97,52 @@ class MyHomePage extends StatelessWidget {
 
     return Scaffold(
       extendBody: true,
-      bottomNavigationBar: BottomBar(
-        onSearch: () => context.read<CardsProvider>().openSearch(),
-        onExtensions: closeSearchIfOpen,
-        onArchive: () {
-          closeSearchIfOpen();
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const ArchivedCardsScreen()),
-          );
-        },
-        onNew: () {
-          closeSearchIfOpen();
-          final provider = context.read<CardsProvider>();
-          final nextIndex = provider.allCards.length + 1;
-          final now = DateTime.now().millisecondsSinceEpoch;
-          provider.addCard(
-            CardData(
-              id: 'card-$now',
-              title: 'Card $nextIndex',
-              content:
-                  'New card content for item $nextIndex. Add your own text here to test fuzzy search quickly.',
+      appBar: isSelectionMode ? const SelectionAppBar() : null,
+      bottomNavigationBar: isSelectionMode
+          ? null
+          : BottomBar(
+              onSearch: () => context.read<CardsProvider>().openSearch(),
+              onExtensions: closeSearchIfOpen,
+              onArchive: () {
+                closeSearchIfOpen();
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const ArchivedCardsScreen(),
+                  ),
+                );
+              },
+              onNew: () {
+                closeSearchIfOpen();
+                final provider = context.read<CardsProvider>();
+                final nextIndex = provider.allCards.length + 1;
+                final now = DateTime.now().millisecondsSinceEpoch;
+                provider.addCard(
+                  CardData(
+                    id: 'card-$now',
+                    title: 'Card $nextIndex',
+                    content:
+                        'New card content for item $nextIndex. Add your own text here to test fuzzy search quickly.',
+                  ),
+                );
+              },
             ),
-          );
-        },
-      ),
       body: Stack(
         children: [
-          CardContainer(children: cards),
-          SearchWindow(
-            isOpen: cardsProvider.isSearchOpen,
-            initialQuery: cardsProvider.searchQuery,
-            resultCount: cardsProvider.cards.length,
-            onChanged: (query) =>
-                context.read<CardsProvider>().filterCards(query),
-            onClose: () => context.read<CardsProvider>().closeSearch(),
-            onSubmit: () =>
-                context.read<CardsProvider>().closeSearchKeepingFilters(),
+          CardContainer(
+            padding: EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 16.0),
+            children: cards,
           ),
+          if (!isSelectionMode)
+            SearchWindow(
+              isOpen: cardsProvider.isSearchOpen,
+              initialQuery: cardsProvider.searchQuery,
+              resultCount: cardsProvider.cards.length,
+              onChanged: (query) =>
+                  context.read<CardsProvider>().filterCards(query),
+              onClose: () => context.read<CardsProvider>().closeSearch(),
+              onSubmit: () =>
+                  context.read<CardsProvider>().closeSearchKeepingFilters(),
+            ),
         ],
       ),
     );

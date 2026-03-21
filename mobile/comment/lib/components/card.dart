@@ -5,7 +5,8 @@ class Card extends StatelessWidget {
   final double? maxWidthPercentage;
   final Widget child;
   final VoidCallback? onTap;
-  final VoidCallback? onDelete;
+  final VoidCallback? onLongPress;
+  final bool isSelected;
 
   const Card({
     super.key,
@@ -13,7 +14,8 @@ class Card extends StatelessWidget {
     this.maxWidthPercentage,
     required this.child,
     this.onTap,
-    this.onDelete,
+    this.onLongPress,
+    this.isSelected = false,
   });
 
   @override
@@ -30,23 +32,26 @@ class Card extends StatelessWidget {
     final constraints = maxWidth == null
         ? BoxConstraints(maxHeight: maxCardHeight)
         : BoxConstraints(maxWidth: maxWidth, maxHeight: maxCardHeight);
+    final borderColor = isSelected ? Colors.white : Colors.grey[800]!;
+
     return GestureDetector(
       onTap: onTap,
+      onLongPress: onLongPress,
       child: Container(
         width: maxWidth,
         constraints: constraints,
         decoration: BoxDecoration(
           color: Colors.grey[850],
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey[800]!, width: 0.5),
+          border: Border.all(color: borderColor, width: 1),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 8, 8),
-              child: Row(children: [Text(title)]),
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+              child: Text(title),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
