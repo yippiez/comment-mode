@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:provider/provider.dart';
 import 'package:comment/providers.dart';
 
@@ -70,8 +71,8 @@ class _SelectionAppBarState extends State<SelectionAppBar>
               ),
               onPressed: selectedCount > 0
                   ? () => widget.isArchivedScreen
-                        ? _showUnarchiveConfirmation(context)
-                        : _showArchiveConfirmation(context)
+                        ? provider.unarchiveSelected()
+                        : provider.archiveSelected()
                   : null,
               tooltip: widget.isArchivedScreen ? 'Unarchive' : 'Archive',
             ),
@@ -91,78 +92,84 @@ class _SelectionAppBarState extends State<SelectionAppBar>
     );
   }
 
-  void _showArchiveConfirmation(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Archive Cards'),
-        content: Text(
-          'Are you sure you want to archive ${context.read<CardsProvider>().selectedCount} card(s)?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              context.read<CardsProvider>().archiveSelected();
-            },
-            child: const Text('Archive'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showUnarchiveConfirmation(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Unarchive Cards'),
-        content: Text(
-          'Are you sure you want to unarchive ${context.read<CardsProvider>().selectedCount} card(s)?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              context.read<CardsProvider>().unarchiveSelected();
-            },
-            child: const Text('Unarchive'),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _showDeleteConfirmation(BuildContext context) {
+    final provider = context.read<CardsProvider>();
+    final selectedCount = provider.selectedCount;
+    final cardWord = selectedCount == 1 ? 'card' : 'cards';
+
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete Cards'),
-        content: Text(
-          'Are you sure you want to delete ${context.read<CardsProvider>().selectedCount} card(s)? This action cannot be undone.',
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 40),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 300),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              GlassCard(
+                useOwnLayer: true,
+                quality: GlassQuality.standard,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 20,
+                ),
+                child: Text(
+                  'Are you sure you want to delete $selectedCount $cardWord?',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: GlassButton.custom(
+                      onTap: () => Navigator.of(ctx).pop(),
+                      height: 54,
+                      useOwnLayer: true,
+                      shape: const LiquidRoundedSuperellipse(borderRadius: 20),
+                      child: const Text(
+                        'Cancel',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: GlassButton.custom(
+                      onTap: () {
+                        Navigator.of(ctx).pop();
+                        provider.deleteSelected();
+                      },
+                      height: 54,
+                      useOwnLayer: true,
+                      shape: const LiquidRoundedSuperellipse(borderRadius: 20),
+                      glowColor: const Color(0x4DFF0000),
+                      child: const Text(
+                        'Delete',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.red,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              context.read<CardsProvider>().deleteSelected();
-            },
-            style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
-            child: const Text('Delete'),
-          ),
-        ],
       ),
     );
   }
