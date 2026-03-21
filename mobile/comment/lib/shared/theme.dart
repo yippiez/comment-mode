@@ -1,23 +1,22 @@
 import 'package:flutter/material.dart';
 
-final darkOrangeTheme = ThemeData(
+final darkNeutralTheme = ThemeData(
   brightness: Brightness.dark,
-  primarySwatch: Colors.orange,
-  primaryColor: Color(0xFFE65100),
+  primaryColor: Colors.white,
   scaffoldBackgroundColor: Color(0xFF212121),
   appBarTheme: AppBarTheme(
     backgroundColor: Color(0xFF303030),
     elevation: 0,
     titleTextStyle: TextStyle(
-      color: Colors.orange,
+      color: Colors.white,
       fontSize: 20,
       fontWeight: FontWeight.w500,
     ),
-    iconTheme: IconThemeData(color: Color(0xFFE65100)),
+    iconTheme: IconThemeData(color: Colors.white),
   ),
   colorScheme: ColorScheme.dark(
-    primary: Color(0xFFE65100),
-    secondary: Color(0xFFFFAB40),
+    primary: Colors.white,
+    secondary: Color(0xFFE0E0E0),
     surface: Color(0xFF303030),
     error: Colors.redAccent,
   ),
@@ -28,14 +27,14 @@ final darkOrangeTheme = ThemeData(
   ),
   elevatedButtonTheme: ElevatedButtonThemeData(
     style: ElevatedButton.styleFrom(
-      backgroundColor: Color(0xFFE65100),
+      backgroundColor: Color(0xFF424242),
       foregroundColor: Colors.white,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
     ),
   ),
   textButtonTheme: TextButtonThemeData(
-    style: TextButton.styleFrom(foregroundColor: Colors.orange),
+    style: TextButton.styleFrom(foregroundColor: Colors.white),
   ),
   inputDecorationTheme: InputDecorationTheme(
     filled: true,
@@ -50,12 +49,12 @@ final darkOrangeTheme = ThemeData(
     ),
     focusedBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(8),
-      borderSide: BorderSide(color: Colors.orange),
+      borderSide: BorderSide(color: Colors.white70),
     ),
-    labelStyle: TextStyle(color: Color(0xFFE65100)),
+    labelStyle: TextStyle(color: Colors.white70),
     hintStyle: TextStyle(color: Color(0xFF9E9E9E)),
   ),
-  iconTheme: IconThemeData(color: Color(0xFFE65100)),
+  iconTheme: IconThemeData(color: Colors.white),
   textTheme: TextTheme(
     headlineLarge: TextStyle(color: Colors.white),
     headlineMedium: TextStyle(color: Colors.white),

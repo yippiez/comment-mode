@@ -5,14 +5,14 @@ class BottomBar extends StatelessWidget {
   final VoidCallback? onExtensions;
   final VoidCallback? onNew;
   final VoidCallback? onSearch;
-  final VoidCallback? onFiles;
+  final VoidCallback? onArchive;
 
   const BottomBar({
     super.key,
     this.onExtensions,
     this.onNew,
     this.onSearch,
-    this.onFiles,
+    this.onArchive,
   });
 
   @override
@@ -35,8 +35,8 @@ class BottomBar extends StatelessWidget {
                 size: 31,
                 color: Colors.white,
               ),
-              label: 'Files',
-              onTap: onFiles,
+              label: 'Archive',
+              onTap: onArchive,
             ),
             _BottomActionButton(
               icon: const Icon(Icons.search, size: 31, color: Colors.white),

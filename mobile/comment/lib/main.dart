@@ -7,6 +7,7 @@ import 'package:comment/components/card_container.dart';
 import 'package:comment/components/bottom_bar.dart';
 import 'package:comment/components/search_window.dart';
 import 'package:comment/providers.dart';
+import 'package:comment/screens/archived_cards.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -34,6 +35,7 @@ List<CardData> _buildInitialCards() {
       id: 'card-${index + 1}',
       title: 'Card ${index + 1}',
       content: text,
+      isArchived: index == 1,
     );
   });
 }
@@ -46,7 +48,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Comment',
       debugShowCheckedModeBanner: false,
-      theme: darkOrangeTheme,
+      theme: darkNeutralTheme,
       home: const MyHomePage(),
     );
   }
@@ -88,7 +90,12 @@ class MyHomePage extends StatelessWidget {
       bottomNavigationBar: BottomBar(
         onSearch: () => context.read<CardsProvider>().openSearch(),
         onExtensions: closeSearchIfOpen,
-        onFiles: closeSearchIfOpen,
+        onArchive: () {
+          closeSearchIfOpen();
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const ArchivedCardsScreen()),
+          );
+        },
         onNew: () {
           closeSearchIfOpen();
           final provider = context.read<CardsProvider>();

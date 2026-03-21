@@ -4,12 +4,28 @@ class CardData {
   final String id;
   final String title;
   final String content;
+  final bool isArchived;
 
   const CardData({
     required this.id,
     required this.title,
     required this.content,
+    this.isArchived = false,
   });
+
+  CardData copyWith({
+    String? id,
+    String? title,
+    String? content,
+    bool? isArchived,
+  }) {
+    return CardData(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      content: content ?? this.content,
+      isArchived: isArchived ?? this.isArchived,
+    );
+  }
 }
 
 class CardsProvider extends ChangeNotifier {
@@ -24,6 +40,8 @@ class CardsProvider extends ChangeNotifier {
 
   List<CardData> get cards => List<CardData>.unmodifiable(_cards);
   List<CardData> get allCards => List<CardData>.unmodifiable(_allCards);
+  List<CardData> get archivedCards =>
+      List<CardData>.unmodifiable(_allCards.where((card) => card.isArchived));
   String get searchQuery => _searchQuery;
   bool get isSearchOpen => _isSearchOpen;
 
@@ -34,7 +52,7 @@ class CardsProvider extends ChangeNotifier {
     _rebuildSearchIndex();
     _searchQuery = '';
     _lastQuery = '';
-    _cards = List<CardData>.from(_allCards);
+    _cards = _visibleCards();
     _lastResults = List<CardData>.from(_cards);
     notifyListeners();
   }
@@ -43,11 +61,37 @@ class CardsProvider extends ChangeNotifier {
     _allCards.add(card);
     _searchBlobsById[card.id] = _buildSearchBlob(card);
     if (_searchQuery.isEmpty) {
-      _cards = List<CardData>.from(_allCards);
+      _cards = _visibleCards();
       _lastResults = List<CardData>.from(_cards);
       notifyListeners();
       return;
     }
+    filterCards(_searchQuery);
+  }
+
+  void setCardArchived(String cardId, bool isArchived) {
+    final cardIndex = _allCards.indexWhere((card) => card.id == cardId);
+    if (cardIndex == -1) {
+      return;
+    }
+
+    final card = _allCards[cardIndex];
+    if (card.isArchived == isArchived) {
+      return;
+    }
+
+    _allCards[cardIndex] = card.copyWith(isArchived: isArchived);
+
+    if (_searchQuery.isEmpty) {
+      _cards = _visibleCards();
+      _lastQuery = '';
+      _lastResults = List<CardData>.from(_cards);
+      notifyListeners();
+      return;
+    }
+
+    _lastQuery = '';
+    _lastResults = _visibleCards();
     filterCards(_searchQuery);
   }
 
@@ -56,7 +100,7 @@ class CardsProvider extends ChangeNotifier {
     _searchQuery = query;
 
     if (normalizedQuery.isEmpty) {
-      _cards = List<CardData>.from(_allCards);
+      _cards = _visibleCards();
       _lastQuery = '';
       _lastResults = List<CardData>.from(_cards);
       notifyListeners();
@@ -66,7 +110,7 @@ class CardsProvider extends ChangeNotifier {
     final List<CardData> source =
         _lastQuery.isNotEmpty && normalizedQuery.startsWith(_lastQuery)
         ? _lastResults
-        : _allCards;
+        : _visibleCards();
 
     final tokens = normalizedQuery
         .split(RegExp(r'\s+'))
@@ -97,12 +141,13 @@ class CardsProvider extends ChangeNotifier {
   }
 
   void clearSearch() {
-    if (_searchQuery.isEmpty && _cards.length == _allCards.length) {
+    final visibleCards = _visibleCards();
+    if (_searchQuery.isEmpty && _cards.length == visibleCards.length) {
       return;
     }
     _searchQuery = '';
     _lastQuery = '';
-    _cards = List<CardData>.from(_allCards);
+    _cards = visibleCards;
     _lastResults = List<CardData>.from(_cards);
     notifyListeners();
   }
@@ -122,7 +167,7 @@ class CardsProvider extends ChangeNotifier {
     _isSearchOpen = false;
     _searchQuery = '';
     _lastQuery = '';
-    _cards = List<CardData>.from(_allCards);
+    _cards = _visibleCards();
     _lastResults = List<CardData>.from(_cards);
     notifyListeners();
   }
@@ -141,6 +186,10 @@ class CardsProvider extends ChangeNotifier {
       ..addEntries(
         _allCards.map((card) => MapEntry(card.id, _buildSearchBlob(card))),
       );
+  }
+
+  List<CardData> _visibleCards() {
+    return _allCards.where((card) => !card.isArchived).toList(growable: false);
   }
 
   String _buildSearchBlob(CardData card) {
