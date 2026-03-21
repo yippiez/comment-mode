@@ -44,43 +44,27 @@ class BottomBar extends StatelessWidget {
         ),
         child: SizedBox(
           height: _bottomBarButtonSize,
-          child: AnimatedSwitcher(
-            duration: _bottomBarTransitionDuration,
-            switchInCurve: Curves.easeOutCubic,
-            switchOutCurve: Curves.easeInCubic,
-            layoutBuilder: (currentChild, previousChildren) {
-              return Stack(
-                alignment: Alignment.center,
-                children: [...previousChildren, ?currentChild],
-              );
-            },
-            transitionBuilder: (child, animation) {
-              return FadeTransition(
-                opacity: animation,
-                child: ScaleTransition(
-                  scale: Tween<double>(
-                    begin: 0.98,
-                    end: 1.0,
-                  ).animate(animation),
-                  child: child,
-                ),
-              );
-            },
-            child: isSearchOpen
-                ? _ExpandedSearchBar(
-                    key: const ValueKey('bottom-bar-open-search'),
-                    searchQuery: searchQuery,
-                    onChanged: onSearchChanged,
-                    onClose: onSearchClose,
-                    onSubmit: onSearchSubmit,
-                  )
-                : _ClosedActionsRow(
-                    key: const ValueKey('bottom-bar-closed-actions'),
-                    onExtensions: onExtensions,
-                    onArchive: onArchive,
-                    onSearch: onSearchOpen,
-                    onNew: onNew,
-                  ),
+          // WARNING: Do not replace this IndexedStack with AnimatedOpacity/
+          // AnimatedSwitcher; crossfading separate liquid glass branches on web
+          // can trigger a transparent -> frosted shader flash during search toggle.
+          child: IndexedStack(
+            index: isSearchOpen ? 1 : 0,
+            sizing: StackFit.expand,
+            children: [
+              _ClosedActionsRow(
+                onExtensions: onExtensions,
+                onArchive: onArchive,
+                onSearch: onSearchOpen,
+                onNew: onNew,
+              ),
+              _ExpandedSearchBar(
+                isOpen: isSearchOpen,
+                searchQuery: searchQuery,
+                onChanged: onSearchChanged,
+                onClose: onSearchClose,
+                onSubmit: onSearchSubmit,
+              ),
+            ],
           ),
         ),
       ),
@@ -95,7 +79,6 @@ class _ClosedActionsRow extends StatelessWidget {
   final VoidCallback? onNew;
 
   const _ClosedActionsRow({
-    super.key,
     this.onExtensions,
     this.onArchive,
     this.onSearch,
@@ -137,13 +120,14 @@ class _ClosedActionsRow extends StatelessWidget {
 }
 
 class _ExpandedSearchBar extends StatefulWidget {
+  final bool isOpen;
   final String searchQuery;
   final ValueChanged<String>? onChanged;
   final VoidCallback? onClose;
   final VoidCallback? onSubmit;
 
   const _ExpandedSearchBar({
-    super.key,
+    required this.isOpen,
     required this.searchQuery,
     this.onChanged,
     this.onClose,
@@ -163,11 +147,13 @@ class _ExpandedSearchBarState extends State<_ExpandedSearchBar> {
     super.initState();
     _controller = TextEditingController(text: widget.searchQuery);
     _focusNode = FocusNode();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _focusNode.requestFocus();
-      }
-    });
+    if (widget.isOpen) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && widget.isOpen) {
+          _focusNode.requestFocus();
+        }
+      });
+    }
   }
 
   @override
@@ -179,6 +165,16 @@ class _ExpandedSearchBarState extends State<_ExpandedSearchBar> {
         text: widget.searchQuery,
         selection: TextSelection.collapsed(offset: widget.searchQuery.length),
       );
+    }
+
+    if (widget.isOpen && !oldWidget.isOpen) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && widget.isOpen) {
+          _focusNode.requestFocus();
+        }
+      });
+    } else if (!widget.isOpen && oldWidget.isOpen) {
+      _focusNode.unfocus();
     }
   }
 
