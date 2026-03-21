@@ -58,6 +58,13 @@ class MyHomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cardsProvider = context.watch<CardsProvider>();
+    void closeSearchIfOpen() {
+      final provider = context.read<CardsProvider>();
+      if (provider.isSearchOpen) {
+        provider.closeSearch();
+      }
+    }
+
     final cards = cardsProvider.cards
         .map(
           (cardData) => Card(
@@ -80,7 +87,10 @@ class MyHomePage extends StatelessWidget {
       extendBody: true,
       bottomNavigationBar: BottomBar(
         onSearch: () => context.read<CardsProvider>().openSearch(),
+        onExtensions: closeSearchIfOpen,
+        onFiles: closeSearchIfOpen,
         onNew: () {
+          closeSearchIfOpen();
           final provider = context.read<CardsProvider>();
           final nextIndex = provider.allCards.length + 1;
           final now = DateTime.now().millisecondsSinceEpoch;
