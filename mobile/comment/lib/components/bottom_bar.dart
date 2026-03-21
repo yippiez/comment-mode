@@ -5,7 +5,7 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 const _bottomBarButtonSize = 70.0;
 const _expandedSearchHeight = 50.0;
-const _searchMorphDuration = Duration(milliseconds: 280);
+const _searchMorphDuration = Duration(milliseconds: 100);
 
 class BottomBar extends StatefulWidget {
   final VoidCallback? onExtensions;
@@ -52,8 +52,8 @@ class _BottomBarState extends State<BottomBar>
     );
     _morphProgress = CurvedAnimation(
       parent: _morphController,
-      curve: Curves.easeOutCubic,
-      reverseCurve: Curves.easeInCubic,
+      curve: Curves.easeOut,
+      reverseCurve: Curves.easeIn,
     );
     _searchController = TextEditingController(text: widget.searchQuery);
     _searchFocusNode = FocusNode();
@@ -80,7 +80,7 @@ class _BottomBarState extends State<BottomBar>
 
     if (widget.isSearchOpen && !oldWidget.isSearchOpen) {
       _morphController.forward();
-      Future<void>.delayed(const Duration(milliseconds: 110), () {
+      Future<void>.delayed(const Duration(milliseconds: 60), () {
         if (mounted && widget.isSearchOpen) {
           _searchFocusNode.requestFocus();
         }
@@ -299,7 +299,7 @@ class _MorphingSearchSurfaceState extends State<_MorphingSearchSurface>
   void initState() {
     super.initState();
     _saturationController = AnimationController(
-      duration: const Duration(milliseconds: 50),
+      duration: const Duration(milliseconds: 30),
       vsync: this,
     );
     _saturationAnimation = CurvedAnimation(
