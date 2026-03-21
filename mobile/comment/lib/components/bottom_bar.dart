@@ -5,7 +5,6 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 const _bottomBarButtonSize = 70.0;
 const _expandedSearchHeight = 50.0;
-const _bottomBarTransitionDuration = Duration(milliseconds: 220);
 const _searchMorphDuration = Duration(milliseconds: 280);
 
 class BottomBar extends StatefulWidget {
@@ -104,93 +103,102 @@ class _BottomBarState extends State<BottomBar>
   Widget build(BuildContext context) {
     final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
 
-    return SafeArea(
-      top: false,
-      child: AnimatedPadding(
-        duration: _bottomBarTransitionDuration,
-        curve: Curves.easeOutCubic,
-        padding: EdgeInsets.only(
-          left: 16,
-          right: 16,
-          bottom: 32 + (widget.isSearchOpen ? keyboardInset : 0),
-        ),
-        child: SizedBox(
-          height: _bottomBarButtonSize,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final maxWidth = constraints.maxWidth;
-              final slotWidth = maxWidth / 4;
-              final collapsedWidth = _bottomBarButtonSize;
-              final collapsedLeft = (slotWidth * 2.5) - (collapsedWidth / 2);
+    return AnimatedBuilder(
+      animation: _morphProgress,
+      builder: (context, child) {
+        final paddingProgress = _morphProgress.value;
+        final bottomPadding =
+            (ui.lerpDouble(32, 0, paddingProgress) ?? 0) +
+            (keyboardInset * paddingProgress);
 
-              return AnimatedBuilder(
-                animation: _morphProgress,
-                builder: (context, child) {
-                  final t = _morphProgress.value;
-                  final searchLeft = ui.lerpDouble(collapsedLeft, 0, t) ?? 0;
-                  final searchWidth =
-                      ui.lerpDouble(collapsedWidth, maxWidth, t) ?? maxWidth;
-                  final searchHeight =
-                      ui.lerpDouble(
-                        _bottomBarButtonSize,
-                        _expandedSearchHeight,
-                        t,
-                      ) ??
-                      _expandedSearchHeight;
-                  final searchTop = (_bottomBarButtonSize - searchHeight) / 2;
-                  final searchRadius = ui.lerpDouble(36, 24, t) ?? 24;
-                  final actionsFade =
-                      1 - Curves.easeOut.transform((t / 0.35).clamp(0.0, 1.0));
-                  final actionsScale =
-                      ui.lerpDouble(0.94, 1.0, actionsFade) ?? 1.0;
-                  final fieldReveal = Curves.easeInOut.transform(
-                    ((t - 0.2) / 0.8).clamp(0, 1),
-                  );
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              bottom: bottomPadding,
+            ),
+            child: child,
+          ),
+        );
+      },
+      child: SizedBox(
+        height: _bottomBarButtonSize,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final maxWidth = constraints.maxWidth;
+            final slotWidth = maxWidth / 4;
+            final collapsedWidth = _bottomBarButtonSize;
+            final collapsedLeft = (slotWidth * 2.5) - (collapsedWidth / 2);
 
-                  return Stack(
-                    children: [
-                      IgnorePointer(
-                        ignoring: widget.isSearchOpen || actionsFade <= 0.01,
-                        child: Opacity(
-                          opacity: actionsFade,
-                          child: Transform.scale(
-                            scale: actionsScale,
-                            child: _ActionSlotsRow(
-                              onExtensions: widget.onExtensions,
-                              onArchive: widget.onArchive,
-                              onNew: widget.onNew,
-                              searchSlot: const SizedBox(
-                                width: _bottomBarButtonSize,
-                                height: _bottomBarButtonSize,
-                              ),
+            return AnimatedBuilder(
+              animation: _morphProgress,
+              builder: (context, child) {
+                final t = _morphProgress.value;
+                final searchLeft = ui.lerpDouble(collapsedLeft, 0, t) ?? 0;
+                final searchWidth =
+                    ui.lerpDouble(collapsedWidth, maxWidth, t) ?? maxWidth;
+                final searchHeight =
+                    ui.lerpDouble(
+                      _bottomBarButtonSize,
+                      _expandedSearchHeight,
+                      t,
+                    ) ??
+                    _expandedSearchHeight;
+                final searchTop = (_bottomBarButtonSize - searchHeight) / 2;
+                final searchRadius = ui.lerpDouble(36, 24, t) ?? 24;
+                final actionsFade =
+                    1 - Curves.easeOut.transform((t / 0.35).clamp(0.0, 1.0));
+                final actionsScale =
+                    ui.lerpDouble(0.94, 1.0, actionsFade) ?? 1.0;
+                final fieldReveal = Curves.easeInOut.transform(
+                  ((t - 0.2) / 0.8).clamp(0, 1),
+                );
+
+                return Stack(
+                  children: [
+                    IgnorePointer(
+                      ignoring: widget.isSearchOpen || actionsFade <= 0.01,
+                      child: Opacity(
+                        opacity: actionsFade,
+                        child: Transform.scale(
+                          scale: actionsScale,
+                          child: _ActionSlotsRow(
+                            onExtensions: widget.onExtensions,
+                            onArchive: widget.onArchive,
+                            onNew: widget.onNew,
+                            searchSlot: const SizedBox(
+                              width: _bottomBarButtonSize,
+                              height: _bottomBarButtonSize,
                             ),
                           ),
                         ),
                       ),
-                      Positioned(
-                        top: searchTop,
-                        left: searchLeft,
-                        width: searchWidth,
-                        height: searchHeight,
-                        child: _MorphingSearchSurface(
-                          isOpen: widget.isSearchOpen,
-                          progress: t,
-                          borderRadius: searchRadius,
-                          controller: _searchController,
-                          focusNode: _searchFocusNode,
-                          onOpen: widget.onSearchOpen,
-                          onChanged: widget.onSearchChanged,
-                          onClose: widget.onSearchClose,
-                          onSubmit: widget.onSearchSubmit,
-                          fieldReveal: fieldReveal,
-                        ),
+                    ),
+                    Positioned(
+                      top: searchTop,
+                      left: searchLeft,
+                      width: searchWidth,
+                      height: searchHeight,
+                      child: _MorphingSearchSurface(
+                        isOpen: widget.isSearchOpen,
+                        progress: t,
+                        borderRadius: searchRadius,
+                        controller: _searchController,
+                        focusNode: _searchFocusNode,
+                        onOpen: widget.onSearchOpen,
+                        onChanged: widget.onSearchChanged,
+                        onClose: widget.onSearchClose,
+                        onSubmit: widget.onSearchSubmit,
+                        fieldReveal: fieldReveal,
                       ),
-                    ],
-                  );
-                },
-              );
-            },
-          ),
+                    ),
+                  ],
+                );
+              },
+            );
+          },
         ),
       ),
     );
