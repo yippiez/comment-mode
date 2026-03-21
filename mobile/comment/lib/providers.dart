@@ -232,6 +232,10 @@ class CardsProvider extends ChangeNotifier {
     }
     if (_selectedIds.contains(cardId)) {
       _selectedIds.remove(cardId);
+      if (_selectedIds.isEmpty) {
+        exitSelectionMode();
+        return;
+      }
     } else {
       _selectedIds.add(cardId);
     }
