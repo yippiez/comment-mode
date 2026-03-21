@@ -149,24 +149,45 @@ class _SearchWindowState extends State<SearchWindow>
                               size: 20,
                               color: Colors.white70,
                             ),
-                            const SizedBox(width: 10),
+                            const SizedBox(width: 6),
                             Expanded(
-                              child: TextField(
-                                controller: _controller,
-                                focusNode: _focusNode,
-                                onChanged: widget.onChanged,
-                                onSubmitted: (_) => widget.onSubmit(),
-                                textInputAction: TextInputAction.search,
-                                cursorColor: Colors.white,
-                                decoration: const InputDecoration(
-                                  isDense: true,
-                                  border: InputBorder.none,
-                                  hintText: 'Fuzzy search title/content...',
-                                  hintStyle: TextStyle(color: Colors.white54),
+                              child: Theme(
+                                data: Theme.of(context).copyWith(
+                                  textSelectionTheme:
+                                      const TextSelectionThemeData(
+                                        cursorColor: Colors.white,
+                                        selectionColor: Colors.white30,
+                                        selectionHandleColor: Colors.white,
+                                      ),
+                                  colorScheme: Theme.of(
+                                    context,
+                                  ).colorScheme.copyWith(primary: Colors.white),
                                 ),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 16,
+                                child: TextField(
+                                  controller: _controller,
+                                  focusNode: _focusNode,
+                                  onChanged: widget.onChanged,
+                                  onSubmitted: (_) => widget.onSubmit(),
+                                  textInputAction: TextInputAction.search,
+                                  cursorColor: Colors.white,
+                                  decoration: const InputDecoration(
+                                    isDense: true,
+                                    filled: false,
+                                    fillColor: Colors.transparent,
+                                    border: InputBorder.none,
+                                    enabledBorder: InputBorder.none,
+                                    focusedBorder: InputBorder.none,
+                                    contentPadding: EdgeInsets.zero,
+                                    hintText: 'Search',
+                                    hintStyle: TextStyle(
+                                      color: Colors.white54,
+                                      fontSize: 18,
+                                    ),
+                                  ),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 18,
+                                  ),
                                 ),
                               ),
                             ),
