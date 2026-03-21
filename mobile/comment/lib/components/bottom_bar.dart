@@ -251,7 +251,7 @@ class _ActionSlotsRow extends StatelessWidget {
   }
 }
 
-class _MorphingSearchSurface extends StatelessWidget {
+class _MorphingSearchSurface extends StatefulWidget {
   final bool isOpen;
   final double progress;
   final double borderRadius;
@@ -277,128 +277,228 @@ class _MorphingSearchSurface extends StatelessWidget {
   });
 
   @override
+  State<_MorphingSearchSurface> createState() => _MorphingSearchSurfaceState();
+}
+
+class _MorphingSearchSurfaceState extends State<_MorphingSearchSurface>
+    with SingleTickerProviderStateMixin {
+  static const _jellyFadeOutProgress = 0.68;
+
+  late final AnimationController _saturationController;
+  late final Animation<double> _saturationAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _saturationController = AnimationController(
+      duration: const Duration(milliseconds: 50),
+      vsync: this,
+    );
+    _saturationAnimation = CurvedAnimation(
+      parent: _saturationController,
+      curve: Curves.easeOut,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _MorphingSearchSurface oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.progress >= _jellyFadeOutProgress &&
+        oldWidget.progress < _jellyFadeOutProgress) {
+      _saturationController.value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _saturationController.dispose();
+    super.dispose();
+  }
+
+  bool get _isJellyInteractive => widget.progress < _jellyFadeOutProgress;
+
+  void _handleTapDown(TapDownDetails details) {
+    if (!_isJellyInteractive) {
+      return;
+    }
+    _saturationController.forward();
+  }
+
+  void _handleTapUp(TapUpDetails details) {
+    _saturationController.reverse();
+  }
+
+  void _handleTapCancel() {
+    _saturationController.reverse();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final iconFade =
-        1 - Curves.easeOut.transform((progress / 0.45).clamp(0, 1));
+        1 - Curves.easeOut.transform((widget.progress / 0.45).clamp(0, 1));
     final horizontalPadding =
-        ui.lerpDouble(0, 12, Curves.easeOut.transform(progress)) ?? 12;
+        ui.lerpDouble(0, 12, Curves.easeOut.transform(widget.progress)) ?? 12;
     final closeReveal = Curves.easeOut.transform(
-      ((progress - 0.45) / 0.55).clamp(0, 1),
+      ((widget.progress - 0.45) / 0.55).clamp(0, 1),
     );
+    final jellyProgress =
+        1 - (widget.progress / _jellyFadeOutProgress).clamp(0.0, 1.0);
+    final jellyFactor = Curves.easeOut.transform(jellyProgress);
+    final interactionScale = ui.lerpDouble(1.0, 1.05, jellyFactor) ?? 1.0;
+    final stretch = ui.lerpDouble(0.0, 0.5, jellyFactor) ?? 0.0;
+    final resistance = ui.lerpDouble(0.0, 0.08, jellyFactor) ?? 0.08;
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: isOpen ? focusNode.requestFocus : onOpen,
-      child: GlassContainer(
-        useOwnLayer: true,
-        quality: GlassQuality.standard,
-        shape: LiquidRoundedSuperellipse(borderRadius: borderRadius),
-        clipBehavior: Clip.antiAlias,
-        width: double.infinity,
-        height: double.infinity,
-        padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            IgnorePointer(
-              ignoring: isOpen,
-              child: Opacity(
-                opacity: iconFade,
-                child: const Center(
-                  child: Icon(Icons.search, size: 31, color: Colors.white),
+      onTap: widget.isOpen ? widget.focusNode.requestFocus : widget.onOpen,
+      onTapDown: _isJellyInteractive ? _handleTapDown : null,
+      onTapUp: _isJellyInteractive ? _handleTapUp : null,
+      onTapCancel: _handleTapCancel,
+      child: RepaintBoundary(
+        child: LiquidStretch(
+          interactionScale: interactionScale,
+          stretch: stretch,
+          resistance: resistance,
+          hitTestBehavior: HitTestBehavior.opaque,
+          child: AnimatedBuilder(
+            animation: _saturationAnimation,
+            builder: (context, child) {
+              final glowIntensity = (_saturationAnimation.value * jellyFactor)
+                  .clamp(0.0, 1.0);
+              return AdaptiveGlass(
+                shape: LiquidRoundedSuperellipse(
+                  borderRadius: widget.borderRadius,
+                ),
+                settings: InheritedLiquidGlass.ofOrDefault(context),
+                quality: GlassQuality.standard,
+                useOwnLayer: true,
+                clipBehavior: Clip.antiAlias,
+                glowIntensity: glowIntensity,
+                child: child!,
+              );
+            },
+            child: SizedBox.expand(
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    IgnorePointer(
+                      ignoring: widget.isOpen,
+                      child: Opacity(
+                        opacity: iconFade,
+                        child: const Center(
+                          child: Icon(
+                            Icons.search,
+                            size: 31,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (widget.fieldReveal > 0.001)
+                      IgnorePointer(
+                        ignoring: !widget.isOpen || widget.fieldReveal < 0.75,
+                        child: Opacity(
+                          opacity: widget.fieldReveal,
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              const Icon(
+                                Icons.search,
+                                size: 24,
+                                color: Colors.white70,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Center(
+                                  child: Theme(
+                                    data: Theme.of(context).copyWith(
+                                      textSelectionTheme:
+                                          const TextSelectionThemeData(
+                                            cursorColor: Colors.white,
+                                            selectionColor: Colors.white30,
+                                            selectionHandleColor: Colors.white,
+                                          ),
+                                      colorScheme: Theme.of(context).colorScheme
+                                          .copyWith(primary: Colors.white),
+                                    ),
+                                    child: TextField(
+                                      controller: widget.controller,
+                                      focusNode: widget.focusNode,
+                                      onChanged: widget.onChanged,
+                                      onSubmitted: (_) =>
+                                          widget.onSubmit?.call(),
+                                      textInputAction: TextInputAction.search,
+                                      maxLines: 1,
+                                      expands: false,
+                                      textAlignVertical:
+                                          TextAlignVertical.center,
+                                      cursorColor: Colors.white,
+                                      decoration: const InputDecoration(
+                                        filled: false,
+                                        fillColor: Colors.transparent,
+                                        isDense: true,
+                                        isCollapsed: true,
+                                        border: InputBorder.none,
+                                        enabledBorder: InputBorder.none,
+                                        focusedBorder: InputBorder.none,
+                                        disabledBorder: InputBorder.none,
+                                        errorBorder: InputBorder.none,
+                                        focusedErrorBorder: InputBorder.none,
+                                        contentPadding: EdgeInsets.symmetric(
+                                          vertical: 8,
+                                        ),
+                                        hintText: 'Search',
+                                        hintStyle: TextStyle(
+                                          color: Colors.white54,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Opacity(
+                                opacity: closeReveal,
+                                child: SizedBox(
+                                  width: 38,
+                                  height: 38,
+                                  child: IconButton(
+                                    style: IconButton.styleFrom(
+                                      foregroundColor: Colors.white70,
+                                      overlayColor: Colors.white24,
+                                      padding: EdgeInsets.zero,
+                                      tapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                    iconSize: 20,
+                                    visualDensity: VisualDensity.compact,
+                                    icon: const Icon(Icons.close_rounded),
+                                    onPressed: widget.isOpen
+                                        ? widget.onClose
+                                        : null,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    // WARNING: Keep this as one always-mounted AdaptiveGlass.
+                    // Replacing this with separate closed/open glass trees (including
+                    // AnimatedSwitcher/IndexedStack branch swaps) can re-create web
+                    // shader instances and cause the transparent -> frosted flash.
+                  ],
                 ),
               ),
             ),
-            if (fieldReveal > 0.001)
-              IgnorePointer(
-                ignoring: !isOpen || fieldReveal < 0.75,
-                child: Opacity(
-                  opacity: fieldReveal,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.search, size: 24, color: Colors.white70),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Center(
-                          child: Theme(
-                            data: Theme.of(context).copyWith(
-                              textSelectionTheme: const TextSelectionThemeData(
-                                cursorColor: Colors.white,
-                                selectionColor: Colors.white30,
-                                selectionHandleColor: Colors.white,
-                              ),
-                              colorScheme: Theme.of(
-                                context,
-                              ).colorScheme.copyWith(primary: Colors.white),
-                            ),
-                            child: TextField(
-                              controller: controller,
-                              focusNode: focusNode,
-                              onChanged: onChanged,
-                              onSubmitted: (_) => onSubmit?.call(),
-                              textInputAction: TextInputAction.search,
-                              maxLines: 1,
-                              expands: false,
-                              textAlignVertical: TextAlignVertical.center,
-                              cursorColor: Colors.white,
-                              decoration: const InputDecoration(
-                                filled: false,
-                                fillColor: Colors.transparent,
-                                isDense: true,
-                                isCollapsed: true,
-                                border: InputBorder.none,
-                                enabledBorder: InputBorder.none,
-                                focusedBorder: InputBorder.none,
-                                disabledBorder: InputBorder.none,
-                                errorBorder: InputBorder.none,
-                                focusedErrorBorder: InputBorder.none,
-                                contentPadding: EdgeInsets.symmetric(
-                                  vertical: 8,
-                                ),
-                                hintText: 'Search',
-                                hintStyle: TextStyle(
-                                  color: Colors.white54,
-                                  fontSize: 16,
-                                ),
-                              ),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Opacity(
-                        opacity: closeReveal,
-                        child: SizedBox(
-                          width: 38,
-                          height: 38,
-                          child: IconButton(
-                            style: IconButton.styleFrom(
-                              foregroundColor: Colors.white70,
-                              overlayColor: Colors.white24,
-                              padding: EdgeInsets.zero,
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            ),
-                            iconSize: 20,
-                            visualDensity: VisualDensity.compact,
-                            icon: const Icon(Icons.close_rounded),
-                            onPressed: isOpen ? onClose : null,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            // WARNING: Keep this as one always-mounted GlassContainer.
-            // Replacing this with separate closed/open glass trees (including
-            // AnimatedSwitcher/IndexedStack branch swaps) can re-create web
-            // shader instances and cause the transparent -> frosted flash.
-          ],
+          ),
         ),
       ),
     );
