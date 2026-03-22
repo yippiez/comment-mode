@@ -235,7 +235,7 @@ class _ActionSlotsRow extends StatelessWidget {
           child: Center(
             child: _BottomActionButton(
               icon: const Icon(
-                Icons.folder_open_outlined,
+                Icons.archive_outlined,
                 size: 31,
                 color: Colors.white,
               ),

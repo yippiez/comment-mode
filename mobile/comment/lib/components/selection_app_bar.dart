@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:provider/provider.dart';
+import 'package:comment/components/confirmation_dialog.dart';
 import 'package:comment/providers.dart';
 
 class SelectionAppBar extends StatefulWidget implements PreferredSizeWidget {
@@ -97,80 +97,13 @@ class _SelectionAppBarState extends State<SelectionAppBar>
     final selectedCount = provider.selectedCount;
     final cardWord = selectedCount == 1 ? 'card' : 'cards';
 
-    showDialog(
-      context: context,
-      builder: (ctx) => Dialog(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 40),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 300),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              GlassCard(
-                useOwnLayer: true,
-                quality: GlassQuality.standard,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 20,
-                ),
-                child: Text(
-                  'Are you sure you want to delete $selectedCount $cardWord?',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: GlassButton.custom(
-                      onTap: () => Navigator.of(ctx).pop(),
-                      height: 54,
-                      useOwnLayer: true,
-                      shape: const LiquidRoundedSuperellipse(borderRadius: 20),
-                      child: const Text(
-                        'Cancel',
-                        style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: GlassButton.custom(
-                      onTap: () {
-                        Navigator.of(ctx).pop();
-                        provider.deleteSelected();
-                      },
-                      height: 54,
-                      useOwnLayer: true,
-                      shape: const LiquidRoundedSuperellipse(borderRadius: 20),
-                      glowColor: const Color(0x4DFF0000),
-                      child: const Text(
-                        'Delete',
-                        style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.red,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
+    showGlassConfirmationDialog(
+      context,
+      title: 'Are you sure you want to delete $selectedCount $cardWord?',
+      confirmLabel: 'Delete',
+      confirmTextColor: Colors.red,
+      confirmGlowColor: const Color(0x4DFF0000),
+      onConfirm: provider.deleteSelected,
     );
   }
 }

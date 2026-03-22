@@ -7,14 +7,21 @@ import 'package:comment/components/bottom_bar.dart';
 import 'package:comment/components/selection_app_bar.dart';
 import 'package:comment/draggable_masonry_layout.dart';
 import 'package:comment/providers.dart';
+import 'package:comment/providers/extensions_provider.dart';
 import 'package:comment/screens/archived_cards.dart';
+import 'package:comment/screens/extensions_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await LiquidGlassWidgets.initialize();
   runApp(
-    ChangeNotifierProvider(
-      create: (_) => CardsProvider()..initializeCards(_buildInitialCards()),
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(
+          create: (_) => CardsProvider()..initializeCards(_buildInitialCards()),
+        ),
+        ChangeNotifierProvider(create: (_) => ExtensionsProvider()),
+      ],
       child: const MyApp(),
     ),
   );
@@ -109,7 +116,12 @@ class MyHomePage extends StatelessWidget {
               onSearchClose: () => context.read<CardsProvider>().closeSearch(),
               onSearchSubmit: () =>
                   context.read<CardsProvider>().closeSearchKeepingFilters(),
-              onExtensions: closeSearchIfOpen,
+              onExtensions: () {
+                closeSearchIfOpen();
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const ExtensionsScreen()),
+                );
+              },
               onArchive: () {
                 closeSearchIfOpen();
                 Navigator.of(context).push(
