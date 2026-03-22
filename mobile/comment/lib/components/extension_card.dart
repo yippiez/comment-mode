@@ -15,28 +15,17 @@ class ExtensionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final showInstall = extension.state == ExtensionState.uninstalled;
-    final showUninstall = extension.state == ExtensionState.installed;
-
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        gradient: extension.gradient,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      padding: const EdgeInsets.all(20),
-      child: Stack(
-        children: [
-          Positioned(
-            right: 0,
-            bottom: 0,
-            child: showInstall
-                ? _InstallButton(onPressed: onInstall)
-                : showUninstall
-                ? _UninstallButton(onPressed: onUninstall)
-                : const SizedBox.shrink(),
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            gradient: extension.gradient,
+            borderRadius: BorderRadius.circular(16),
           ),
-          Column(
+          padding: const EdgeInsets.all(20),
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
@@ -75,7 +64,7 @@ class ExtensionCard extends StatelessWidget {
               const SizedBox(height: 10),
               Padding(
                 padding: EdgeInsets.only(
-                  right: showInstall || showUninstall ? 40 : 0,
+                  right: (onInstall != null || onUninstall != null) ? 52 : 0,
                 ),
                 child: Text(
                   extension.description,
@@ -88,8 +77,16 @@ class ExtensionCard extends StatelessWidget {
               ),
             ],
           ),
-        ],
-      ),
+        ),
+        if (onInstall != null || onUninstall != null)
+          Positioned(
+            right: 8,
+            bottom: 8,
+            child: onInstall != null
+                ? _InstallButton(onPressed: onInstall)
+                : _UninstallButton(onPressed: onUninstall),
+          ),
+      ],
     );
   }
 }
@@ -101,10 +98,7 @@ class _InstallButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onPressed,
-      child: const Icon(Icons.download_rounded, size: 28, color: Colors.white),
-    );
+    return _TapButton(icon: Icons.download_rounded, onPressed: onPressed);
   }
 }
 
@@ -115,9 +109,24 @@ class _UninstallButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onPressed,
-      child: const Icon(Icons.delete_outline, size: 28, color: Colors.white),
+    return _TapButton(icon: Icons.delete_outline, onPressed: onPressed);
+  }
+}
+
+class _TapButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback? onPressed;
+
+  const _TapButton({required this.icon, this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 36, color: Colors.white),
+      splashRadius: 30,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints.tightFor(width: 56, height: 56),
     );
   }
 }
