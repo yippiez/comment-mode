@@ -2,6 +2,7 @@ import 'package:flutter/material.dart' hide Card;
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:provider/provider.dart';
 import 'package:comment/shared/theme.dart';
+import 'package:comment/shared/uuid.dart';
 import 'package:comment/components/card.dart';
 import 'package:comment/components/bottom_bar.dart';
 import 'package:comment/components/selection_app_bar.dart';
@@ -32,14 +33,19 @@ List<CardData> _buildInitialCards() {
       'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. ';
   final repeatedLorem = loremIpsum * 3;
   final lengths = [50, 120, 250, 400, 600, 800];
+  final generatedIds = <String>{};
   return List<CardData>.generate(lengths.length, (index) {
     final length = lengths[index];
     final text = repeatedLorem.substring(
       0,
       length > repeatedLorem.length ? repeatedLorem.length : length,
     );
+    final id = generateUniqueUuid(
+      (candidate) => generatedIds.contains(candidate),
+    );
+    generatedIds.add(id);
     return CardData(
-      id: 'card-${index + 1}',
+      id: id,
       title: 'Card ${index + 1}',
       content: text,
       isArchived: index == 1,
@@ -134,10 +140,13 @@ class MyHomePage extends StatelessWidget {
                 closeSearchIfOpen();
                 final provider = context.read<CardsProvider>();
                 final nextIndex = provider.allCards.length + 1;
-                final now = DateTime.now().millisecondsSinceEpoch;
+                final id = generateUniqueUuid(
+                  (candidate) =>
+                      provider.allCards.any((card) => card.id == candidate),
+                );
                 provider.addCard(
                   CardData(
-                    id: 'card-$now',
+                    id: id,
                     title: 'Card $nextIndex',
                     content:
                         'New card content for item $nextIndex. Add your own text here to test fuzzy search quickly.',
