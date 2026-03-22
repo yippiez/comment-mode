@@ -10,6 +10,7 @@ import 'package:comment/draggable_masonry_layout.dart';
 import 'package:comment/providers.dart';
 import 'package:comment/providers/extensions_provider.dart';
 import 'package:comment/screens/archived_cards.dart';
+import 'package:comment/screens/card_renderer.dart';
 import 'package:comment/screens/extensions_screen.dart';
 
 void main() async {
@@ -88,19 +89,25 @@ class MyHomePage extends StatelessWidget {
             id: cardData.id,
             child: Card(
               title: cardData.title,
+              color: cardData.color,
               isSelected: cardsProvider.isSelected(cardData.id),
-              onTap: isSelectionMode
-                  ? () => cardsProvider.toggleSelection(cardData.id)
-                  : null,
+              onTap: () {
+                if (isSelectionMode) {
+                  cardsProvider.toggleSelection(cardData.id);
+                  return;
+                }
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => CardRendererScreen(cardId: cardData.id),
+                  ),
+                );
+              },
               child: Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 12.0,
                   vertical: 8.0,
                 ),
-                child: Text(
-                  cardData.content,
-                  style: TextStyle(color: Colors.grey[400]),
-                ),
+                child: Text(cardData.content),
               ),
             ),
           );
