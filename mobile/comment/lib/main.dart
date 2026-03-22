@@ -68,13 +68,62 @@ class MyApp extends StatelessWidget {
   }
 }
 
-class MyHomePage extends StatelessWidget {
+class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key});
+
+  @override
+  State<MyHomePage> createState() => _MyHomePageState();
+}
+
+class _MyHomePageState extends State<MyHomePage> {
+  bool _isNewCardPopupOpen = false;
+
+  void _setNewCardPopupOpen(bool isOpen) {
+    if (_isNewCardPopupOpen == isOpen) {
+      return;
+    }
+    setState(() {
+      _isNewCardPopupOpen = isOpen;
+    });
+  }
+
+  void _closeNewCardPopup() {
+    _setNewCardPopupOpen(false);
+  }
+
+  void _toggleNewCardPopup() {
+    _setNewCardPopupOpen(!_isNewCardPopupOpen);
+  }
+
+  void _createNewCard() {
+    _closeNewCardPopup();
+    final provider = context.read<CardsProvider>();
+    final nextIndex = provider.allCards.length + 1;
+    final id = generateUniqueUuid(
+      (candidate) => provider.allCards.any((card) => card.id == candidate),
+    );
+    provider.addCard(
+      CardData(
+        id: id,
+        title: 'Card $nextIndex',
+        content:
+            'New card content for item $nextIndex. Add your own text here to test fuzzy search quickly.',
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final cardsProvider = context.watch<CardsProvider>();
     final isSelectionMode = cardsProvider.isSelectionMode;
+
+    if (isSelectionMode && _isNewCardPopupOpen) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _closeNewCardPopup();
+        }
+      });
+    }
 
     void closeSearchIfOpen() {
       final provider = context.read<CardsProvider>();
@@ -123,7 +172,17 @@ class MyHomePage extends StatelessWidget {
           : BottomBar(
               isSearchOpen: cardsProvider.isSearchOpen,
               searchQuery: cardsProvider.searchQuery,
-              onSearchOpen: () => context.read<CardsProvider>().openSearch(),
+              isNewCardPopupOpen: _isNewCardPopupOpen,
+              onNewCardPopupOpen: () {
+                closeSearchIfOpen();
+                _toggleNewCardPopup();
+              },
+              onNewCardPopupClose: _closeNewCardPopup,
+              onNewCard: _createNewCard,
+              onSearchOpen: () {
+                _closeNewCardPopup();
+                context.read<CardsProvider>().openSearch();
+              },
               onSearchChanged: (query) =>
                   context.read<CardsProvider>().filterCards(query),
               onSearchClose: () => context.read<CardsProvider>().closeSearch(),
@@ -131,32 +190,17 @@ class MyHomePage extends StatelessWidget {
                   context.read<CardsProvider>().closeSearchKeepingFilters(),
               onExtensions: () {
                 closeSearchIfOpen();
+                _closeNewCardPopup();
                 Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const ExtensionsScreen()),
                 );
               },
               onArchive: () {
                 closeSearchIfOpen();
+                _closeNewCardPopup();
                 Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) => const ArchivedCardsScreen(),
-                  ),
-                );
-              },
-              onNew: () {
-                closeSearchIfOpen();
-                final provider = context.read<CardsProvider>();
-                final nextIndex = provider.allCards.length + 1;
-                final id = generateUniqueUuid(
-                  (candidate) =>
-                      provider.allCards.any((card) => card.id == candidate),
-                );
-                provider.addCard(
-                  CardData(
-                    id: id,
-                    title: 'Card $nextIndex',
-                    content:
-                        'New card content for item $nextIndex. Add your own text here to test fuzzy search quickly.',
                   ),
                 );
               },
@@ -179,11 +223,19 @@ class MyHomePage extends StatelessWidget {
             },
             items: cards,
           ),
-          if (!isSelectionMode && cardsProvider.isSearchOpen)
+          if (!isSelectionMode &&
+              (cardsProvider.isSearchOpen || _isNewCardPopupOpen))
             Positioned.fill(
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: () => context.read<CardsProvider>().closeSearch(),
+                onTap: () {
+                  if (cardsProvider.isSearchOpen) {
+                    context.read<CardsProvider>().closeSearch();
+                  }
+                  if (_isNewCardPopupOpen) {
+                    _closeNewCardPopup();
+                  }
+                },
                 child: ColoredBox(color: Colors.black.withValues(alpha: 0.16)),
               ),
             ),

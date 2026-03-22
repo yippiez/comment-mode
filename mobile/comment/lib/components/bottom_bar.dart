@@ -6,10 +6,29 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 const _bottomBarButtonSize = 70.0;
 const _expandedSearchHeight = 50.0;
 const _searchMorphDuration = Duration(milliseconds: 100);
+const _newCardPopupDuration = Duration(milliseconds: 130);
+const _popupWidth = 250.0;
+const _popupGap = 12.0;
+const _primaryPopupButtonHeight = 54.0;
+const _sessionButtonHeight = 54.0;
+const _visibleSessionCount = 3;
+const _mockSessionCount = 5;
+const _popupTopPadding = 12.0;
+const _popupBottomPadding = 8.0;
+const _popupButtonDividerSpacing = 6.0;
+const _popupDividerListSpacing = 4.0;
+const _popupHeight =
+    _popupTopPadding +
+    _primaryPopupButtonHeight +
+    _popupButtonDividerSpacing +
+    1.0 +
+    _popupDividerListSpacing +
+    (_sessionButtonHeight * _visibleSessionCount) +
+    _popupBottomPadding;
 
 class BottomBar extends StatefulWidget {
   final VoidCallback? onExtensions;
-  final VoidCallback? onNew;
+  final VoidCallback? onNewCard;
   final VoidCallback? onSearchOpen;
   final ValueChanged<String>? onSearchChanged;
   final VoidCallback? onSearchClose;
@@ -17,11 +36,14 @@ class BottomBar extends StatefulWidget {
   final VoidCallback? onArchive;
   final bool isSearchOpen;
   final String searchQuery;
+  final bool isNewCardPopupOpen;
+  final VoidCallback? onNewCardPopupOpen;
+  final VoidCallback? onNewCardPopupClose;
 
   const BottomBar({
     super.key,
     this.onExtensions,
-    this.onNew,
+    this.onNewCard,
     this.onSearchOpen,
     this.onSearchChanged,
     this.onSearchClose,
@@ -29,29 +51,43 @@ class BottomBar extends StatefulWidget {
     this.onArchive,
     required this.isSearchOpen,
     required this.searchQuery,
+    this.isNewCardPopupOpen = false,
+    this.onNewCardPopupOpen,
+    this.onNewCardPopupClose,
   });
 
   @override
   State<BottomBar> createState() => _BottomBarState();
 }
 
-class _BottomBarState extends State<BottomBar>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _morphController;
-  late final Animation<double> _morphProgress;
+class _BottomBarState extends State<BottomBar> with TickerProviderStateMixin {
+  late final AnimationController _searchMorphController;
+  late final Animation<double> _searchMorphProgress;
+  late final AnimationController _popupController;
+  late final Animation<double> _popupProgress;
   late final TextEditingController _searchController;
   late final FocusNode _searchFocusNode;
 
   @override
   void initState() {
     super.initState();
-    _morphController = AnimationController(
+    _searchMorphController = AnimationController(
       vsync: this,
       duration: _searchMorphDuration,
       value: widget.isSearchOpen ? 1.0 : 0.0,
     );
-    _morphProgress = CurvedAnimation(
-      parent: _morphController,
+    _searchMorphProgress = CurvedAnimation(
+      parent: _searchMorphController,
+      curve: Curves.easeOut,
+      reverseCurve: Curves.easeIn,
+    );
+    _popupController = AnimationController(
+      vsync: this,
+      duration: _newCardPopupDuration,
+      value: widget.isNewCardPopupOpen ? 1.0 : 0.0,
+    );
+    _popupProgress = CurvedAnimation(
+      parent: _popupController,
       curve: Curves.easeOut,
       reverseCurve: Curves.easeIn,
     );
@@ -79,7 +115,7 @@ class _BottomBarState extends State<BottomBar>
     }
 
     if (widget.isSearchOpen && !oldWidget.isSearchOpen) {
-      _morphController.forward();
+      _searchMorphController.forward();
       Future<void>.delayed(const Duration(milliseconds: 60), () {
         if (mounted && widget.isSearchOpen) {
           _searchFocusNode.requestFocus();
@@ -87,13 +123,20 @@ class _BottomBarState extends State<BottomBar>
       });
     } else if (!widget.isSearchOpen && oldWidget.isSearchOpen) {
       _searchFocusNode.unfocus();
-      _morphController.reverse();
+      _searchMorphController.reverse();
+    }
+
+    if (widget.isNewCardPopupOpen && !oldWidget.isNewCardPopupOpen) {
+      _popupController.forward();
+    } else if (!widget.isNewCardPopupOpen && oldWidget.isNewCardPopupOpen) {
+      _popupController.reverse();
     }
   }
 
   @override
   void dispose() {
-    _morphController.dispose();
+    _searchMorphController.dispose();
+    _popupController.dispose();
     _searchController.dispose();
     _searchFocusNode.dispose();
     super.dispose();
@@ -104,9 +147,14 @@ class _BottomBarState extends State<BottomBar>
     final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
 
     return AnimatedBuilder(
-      animation: _morphProgress,
-      builder: (context, child) {
-        final paddingProgress = _morphProgress.value;
+      animation: Listenable.merge([_searchMorphProgress, _popupProgress]),
+      builder: (context, _) {
+        final paddingProgress = _searchMorphProgress.value;
+        final shouldReservePopupSpace =
+            widget.isNewCardPopupOpen || _popupProgress.value > 0.001;
+        final popupExtent = shouldReservePopupSpace
+            ? (_popupHeight + _popupGap)
+            : 0.0;
         final bottomPadding =
             (ui.lerpDouble(32, 0, paddingProgress) ?? 0) +
             (keyboardInset * paddingProgress);
@@ -119,90 +167,173 @@ class _BottomBarState extends State<BottomBar>
               right: 16,
               bottom: bottomPadding,
             ),
-            child: child,
+            child: SizedBox(
+              height: _bottomBarButtonSize + popupExtent,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final maxWidth = constraints.maxWidth;
+                  final slotWidth = maxWidth / 4;
+                  final collapsedWidth = _bottomBarButtonSize;
+                  final searchCollapsedLeft =
+                      (slotWidth * 2.5) - (collapsedWidth / 2);
+
+                  // Popup origin: centered on the + New button slot
+                  final newCardSlotCenter = slotWidth * 3.5;
+                  final popupW = maxWidth < _popupWidth
+                      ? maxWidth
+                      : _popupWidth;
+
+                  return AnimatedBuilder(
+                    animation: Listenable.merge([
+                      _searchMorphProgress,
+                      _popupProgress,
+                    ]),
+                    builder: (context, child) {
+                      final st = _searchMorphProgress.value;
+                      final pt = _popupProgress.value;
+                      final rowTop =
+                          constraints.maxHeight - _bottomBarButtonSize;
+
+                      // --- Search morph calculations (unchanged) ---
+                      final searchLeft =
+                          ui.lerpDouble(searchCollapsedLeft, 0, st) ?? 0;
+                      final searchWidth =
+                          ui.lerpDouble(collapsedWidth, maxWidth, st) ??
+                          maxWidth;
+                      final searchHeight =
+                          ui.lerpDouble(
+                            _bottomBarButtonSize,
+                            _expandedSearchHeight,
+                            st,
+                          ) ??
+                          _expandedSearchHeight;
+                      final searchTop =
+                          rowTop + ((_bottomBarButtonSize - searchHeight) / 2);
+                      final searchRadius = ui.lerpDouble(36, 24, st) ?? 24;
+                      final searchActionsFade =
+                          1 -
+                          Curves.easeOut.transform((st / 0.35).clamp(0.0, 1.0));
+                      final searchActionsScale =
+                          ui.lerpDouble(0.94, 1.0, searchActionsFade) ?? 1.0;
+                      final fieldReveal = Curves.easeInOut.transform(
+                        ((st - 0.2) / 0.8).clamp(0, 1),
+                      );
+
+                      // --- Popup calculations ---
+                      // Scale from 0 → 1, anchored at bottom-center of the + button
+                      final popupEased = Curves.easeOutCubic.transform(pt);
+                      final popupScale = popupEased;
+                      final popupOpacity = popupEased.clamp(0.0, 1.0);
+                      // Position: right-aligned with the bar, sitting above the row
+                      final popupLeft = maxWidth - popupW;
+                      final popupTop = rowTop - _popupGap - _popupHeight;
+
+                      // Transform origin relative to the popup box: the + button
+                      // center mapped into popup-local coords.
+                      final popupOriginX = newCardSlotCenter - popupLeft;
+                      final popupOriginY =
+                          _popupHeight + _popupGap + (_bottomBarButtonSize / 2);
+
+                      return Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          // --- Popup (rendered first so it sits behind the bar) ---
+                          if (pt > 0.001)
+                            Positioned(
+                              left: popupLeft,
+                              top: popupTop,
+                              width: popupW,
+                              height: _popupHeight,
+                              child: IgnorePointer(
+                                ignoring: pt < 0.5,
+                                child: Opacity(
+                                  opacity: popupOpacity,
+                                  child: Transform(
+                                    alignment: FractionalDirectionalAlignment(
+                                      popupOriginX / popupW,
+                                      popupOriginY / _popupHeight,
+                                    ),
+                                    transform: Matrix4.identity()
+                                      ..scaleByDouble(
+                                        popupScale,
+                                        popupScale,
+                                        1.0,
+                                        1.0,
+                                      ),
+                                    child: _NewCardPopupContent(
+                                      onNewCard: widget.onNewCard,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                          // --- Action buttons row (fades when search opens) ---
+                          Positioned(
+                            left: 0,
+                            right: 0,
+                            top: rowTop,
+                            height: _bottomBarButtonSize,
+                            child: IgnorePointer(
+                              ignoring:
+                                  widget.isSearchOpen ||
+                                  searchActionsFade <= 0.01,
+                              child: Opacity(
+                                opacity: searchActionsFade,
+                                child: Transform.scale(
+                                  scale: searchActionsScale,
+                                  child: _ActionSlotsRow(
+                                    onExtensions: widget.onExtensions,
+                                    onArchive: widget.onArchive,
+                                    onNew: widget.onNewCardPopupOpen,
+                                    searchSlot: const SizedBox(
+                                      width: _bottomBarButtonSize,
+                                      height: _bottomBarButtonSize,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+
+                          // --- Search morphing surface ---
+                          Positioned(
+                            top: searchTop,
+                            left: searchLeft,
+                            width: searchWidth,
+                            height: searchHeight,
+                            child: _MorphingSearchSurface(
+                              isOpen: widget.isSearchOpen,
+                              progress: st,
+                              borderRadius: searchRadius,
+                              controller: _searchController,
+                              focusNode: _searchFocusNode,
+                              onOpen: widget.onSearchOpen,
+                              onChanged: widget.onSearchChanged,
+                              onClose: widget.onSearchClose,
+                              onSubmit: widget.onSearchSubmit,
+                              fieldReveal: fieldReveal,
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
           ),
         );
       },
-      child: SizedBox(
-        height: _bottomBarButtonSize,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final maxWidth = constraints.maxWidth;
-            final slotWidth = maxWidth / 4;
-            final collapsedWidth = _bottomBarButtonSize;
-            final collapsedLeft = (slotWidth * 2.5) - (collapsedWidth / 2);
-
-            return AnimatedBuilder(
-              animation: _morphProgress,
-              builder: (context, child) {
-                final t = _morphProgress.value;
-                final searchLeft = ui.lerpDouble(collapsedLeft, 0, t) ?? 0;
-                final searchWidth =
-                    ui.lerpDouble(collapsedWidth, maxWidth, t) ?? maxWidth;
-                final searchHeight =
-                    ui.lerpDouble(
-                      _bottomBarButtonSize,
-                      _expandedSearchHeight,
-                      t,
-                    ) ??
-                    _expandedSearchHeight;
-                final searchTop = (_bottomBarButtonSize - searchHeight) / 2;
-                final searchRadius = ui.lerpDouble(36, 24, t) ?? 24;
-                final actionsFade =
-                    1 - Curves.easeOut.transform((t / 0.35).clamp(0.0, 1.0));
-                final actionsScale =
-                    ui.lerpDouble(0.94, 1.0, actionsFade) ?? 1.0;
-                final fieldReveal = Curves.easeInOut.transform(
-                  ((t - 0.2) / 0.8).clamp(0, 1),
-                );
-
-                return Stack(
-                  children: [
-                    IgnorePointer(
-                      ignoring: widget.isSearchOpen || actionsFade <= 0.01,
-                      child: Opacity(
-                        opacity: actionsFade,
-                        child: Transform.scale(
-                          scale: actionsScale,
-                          child: _ActionSlotsRow(
-                            onExtensions: widget.onExtensions,
-                            onArchive: widget.onArchive,
-                            onNew: widget.onNew,
-                            searchSlot: const SizedBox(
-                              width: _bottomBarButtonSize,
-                              height: _bottomBarButtonSize,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      top: searchTop,
-                      left: searchLeft,
-                      width: searchWidth,
-                      height: searchHeight,
-                      child: _MorphingSearchSurface(
-                        isOpen: widget.isSearchOpen,
-                        progress: t,
-                        borderRadius: searchRadius,
-                        controller: _searchController,
-                        focusNode: _searchFocusNode,
-                        onOpen: widget.onSearchOpen,
-                        onChanged: widget.onSearchChanged,
-                        onClose: widget.onSearchClose,
-                        onSubmit: widget.onSearchSubmit,
-                        fieldReveal: fieldReveal,
-                      ),
-                    ),
-                  ],
-                );
-              },
-            );
-          },
-        ),
-      ),
     );
   }
+}
+
+/// The alignment helper that converts pixel-based origins into fractional
+/// coordinates usable by [Transform.alignment].
+class FractionalDirectionalAlignment extends Alignment {
+  const FractionalDirectionalAlignment(double fractionX, double fractionY)
+    : super(fractionX * 2 - 1, fractionY * 2 - 1);
 }
 
 class _ActionSlotsRow extends StatelessWidget {
@@ -255,6 +386,100 @@ class _ActionSlotsRow extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Popup content rendered as its own glass card, separate from the + button.
+class _NewCardPopupContent extends StatelessWidget {
+  final VoidCallback? onNewCard;
+
+  const _NewCardPopupContent({this.onNewCard});
+
+  @override
+  Widget build(BuildContext context) {
+    final mockSessions = List<String>.generate(
+      _mockSessionCount,
+      (index) => 'Mock Session ${index + 1}',
+    );
+
+    return RepaintBoundary(
+      child: AdaptiveGlass(
+        shape: const LiquidRoundedSuperellipse(borderRadius: 24),
+        settings: InheritedLiquidGlass.ofOrDefault(context),
+        quality: GlassQuality.standard,
+        useOwnLayer: true,
+        clipBehavior: Clip.antiAlias,
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: _popupTopPadding),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: _primaryPopupButtonHeight,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: onNewCard,
+                      borderRadius: BorderRadius.circular(18),
+                      splashColor: Colors.white24,
+                      highlightColor: Colors.white10,
+                      child: const Center(
+                        child: Text(
+                          '+ New Card',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: _popupButtonDividerSpacing),
+              FractionallySizedBox(
+                widthFactor: 0.8,
+                child: Container(height: 1, color: Colors.white24),
+              ),
+              const SizedBox(height: _popupDividerListSpacing),
+              for (final sessionName in mockSessions)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: _sessionButtonHeight,
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () {},
+                        borderRadius: BorderRadius.circular(18),
+                        splashColor: Colors.white24,
+                        highlightColor: Colors.white10,
+                        child: Center(
+                          child: Text(
+                            sessionName,
+                            style: const TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              const SizedBox(height: _popupBottomPadding),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
