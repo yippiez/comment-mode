@@ -1,6 +1,6 @@
 import 'package:comment/components/card.dart';
-import 'package:comment/components/card_container.dart';
 import 'package:comment/components/selection_app_bar.dart';
+import 'package:comment/draggable_masonry_layout.dart';
 import 'package:comment/providers.dart';
 import 'package:flutter/material.dart' hide Card;
 import 'package:provider/provider.dart';
@@ -15,37 +15,48 @@ class ArchivedCardsScreen extends StatelessWidget {
     final isSelectionMode = cardsProvider.isSelectionMode;
 
     final cards = archivedCards
-        .map(
-          (cardData) => Card(
-            title: cardData.title,
-            isSelected: cardsProvider.isSelected(cardData.id),
-            onTap: isSelectionMode
-                ? () => cardsProvider.toggleSelection(cardData.id)
-                : null,
-            onLongPress: isSelectionMode
-                ? null
-                : () => cardsProvider.enterSelectionMode(cardData.id),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 12.0,
-                vertical: 8.0,
-              ),
-              child: Text(
-                cardData.content,
-                style: TextStyle(color: Colors.grey[400]),
+        .map((cardData) {
+          return DraggableMasonryItem(
+            id: cardData.id,
+            child: Card(
+              title: cardData.title,
+              isSelected: cardsProvider.isSelected(cardData.id),
+              onTap: isSelectionMode
+                  ? () => cardsProvider.toggleSelection(cardData.id)
+                  : null,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12.0,
+                  vertical: 8.0,
+                ),
+                child: Text(
+                  cardData.content,
+                  style: TextStyle(color: Colors.grey[400]),
+                ),
               ),
             ),
-          ),
-        )
+          );
+        })
         .toList(growable: false);
 
     return Scaffold(
       appBar: isSelectionMode
           ? const SelectionAppBar(isArchivedScreen: true)
           : AppBar(title: const Text('Archived Cards')),
-      body: CardContainer(
+      body: DraggableMasonryLayout(
         padding: EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 16.0),
-        children: cards,
+        enableDrag: !isSelectionMode,
+        onReorder: (draggedId, targetId) {
+          context.read<CardsProvider>().reorderCardsById(
+            draggedId: draggedId,
+            targetId: targetId,
+            archivedOnly: true,
+          );
+        },
+        onSamePlaceDrop: (cardId) {
+          context.read<CardsProvider>().enterSelectionMode(cardId);
+        },
+        items: cards,
       ),
     );
   }

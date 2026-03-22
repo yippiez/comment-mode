@@ -3,9 +3,9 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:provider/provider.dart';
 import 'package:comment/shared/theme.dart';
 import 'package:comment/components/card.dart';
-import 'package:comment/components/card_container.dart';
 import 'package:comment/components/bottom_bar.dart';
 import 'package:comment/components/selection_app_bar.dart';
+import 'package:comment/draggable_masonry_layout.dart';
 import 'package:comment/providers.dart';
 import 'package:comment/screens/archived_cards.dart';
 
@@ -70,28 +70,28 @@ class MyHomePage extends StatelessWidget {
     }
 
     final cards = cardsProvider.cards
-        .map(
-          (cardData) => Card(
-            title: cardData.title,
-            isSelected: cardsProvider.isSelected(cardData.id),
-            onTap: isSelectionMode
-                ? () => cardsProvider.toggleSelection(cardData.id)
-                : null,
-            onLongPress: isSelectionMode
-                ? null
-                : () => cardsProvider.enterSelectionMode(cardData.id),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 12.0,
-                vertical: 8.0,
-              ),
-              child: Text(
-                cardData.content,
-                style: TextStyle(color: Colors.grey[400]),
+        .map((cardData) {
+          return DraggableMasonryItem(
+            id: cardData.id,
+            child: Card(
+              title: cardData.title,
+              isSelected: cardsProvider.isSelected(cardData.id),
+              onTap: isSelectionMode
+                  ? () => cardsProvider.toggleSelection(cardData.id)
+                  : null,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12.0,
+                  vertical: 8.0,
+                ),
+                child: Text(
+                  cardData.content,
+                  style: TextStyle(color: Colors.grey[400]),
+                ),
               ),
             ),
-          ),
-        )
+          );
+        })
         .toList(growable: false);
 
     return Scaffold(
@@ -135,9 +135,21 @@ class MyHomePage extends StatelessWidget {
             ),
       body: Stack(
         children: [
-          CardContainer(
+          DraggableMasonryLayout(
             padding: EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 16.0),
-            children: cards,
+            enableDrag: !isSelectionMode,
+            onReorder: (draggedId, targetId) {
+              context.read<CardsProvider>().reorderCardsById(
+                draggedId: draggedId,
+                targetId: targetId,
+                archivedOnly: false,
+              );
+            },
+            onSamePlaceDrop: (cardId) {
+              final provider = context.read<CardsProvider>();
+              provider.enterSelectionMode(cardId);
+            },
+            items: cards,
           ),
           if (!isSelectionMode && cardsProvider.isSearchOpen)
             Positioned.fill(

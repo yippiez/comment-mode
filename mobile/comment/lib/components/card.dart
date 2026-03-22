@@ -5,7 +5,6 @@ class Card extends StatelessWidget {
   final double? maxWidthPercentage;
   final Widget child;
   final VoidCallback? onTap;
-  final VoidCallback? onLongPress;
   final bool isSelected;
 
   const Card({
@@ -14,7 +13,6 @@ class Card extends StatelessWidget {
     this.maxWidthPercentage,
     required this.child,
     this.onTap,
-    this.onLongPress,
     this.isSelected = false,
   });
 
@@ -36,7 +34,6 @@ class Card extends StatelessWidget {
 
     return GestureDetector(
       onTap: onTap,
-      onLongPress: onLongPress,
       child: Container(
         width: maxWidth,
         constraints: constraints,

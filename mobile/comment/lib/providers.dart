@@ -270,6 +270,47 @@ class CardsProvider extends ChangeNotifier {
     exitSelectionMode();
   }
 
+  void reorderCardsById({
+    required String draggedId,
+    required String targetId,
+    required bool archivedOnly,
+  }) {
+    if (draggedId == targetId) {
+      return;
+    }
+
+    bool isInScope(CardData card) {
+      return archivedOnly ? card.isArchived : !card.isArchived;
+    }
+
+    final scopedCards = _allCards.where(isInScope).toList(growable: true);
+    final fromIndex = scopedCards.indexWhere((card) => card.id == draggedId);
+    final toIndex = scopedCards.indexWhere((card) => card.id == targetId);
+    if (fromIndex < 0 || toIndex < 0) {
+      return;
+    }
+
+    final dragged = scopedCards.removeAt(fromIndex);
+    scopedCards.insert(toIndex, dragged);
+
+    final reorderedAll = <CardData>[];
+    var scopedIndex = 0;
+    for (final card in _allCards) {
+      if (isInScope(card)) {
+        reorderedAll.add(scopedCards[scopedIndex]);
+        scopedIndex++;
+      } else {
+        reorderedAll.add(card);
+      }
+    }
+
+    _allCards
+      ..clear()
+      ..addAll(reorderedAll);
+    _rebuildSearchIndex();
+    _refreshCardsAfterMutation();
+  }
+
   void _rebuildSearchIndex() {
     _searchBlobsById
       ..clear()
