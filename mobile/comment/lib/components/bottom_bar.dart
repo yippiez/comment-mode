@@ -1,5 +1,6 @@
 import 'dart:ui' as ui;
 
+import 'package:comment/components/new_card_popup.dart';
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
@@ -7,24 +8,6 @@ const _bottomBarButtonSize = 70.0;
 const _expandedSearchHeight = 50.0;
 const _searchMorphDuration = Duration(milliseconds: 100);
 const _newCardPopupDuration = Duration(milliseconds: 130);
-const _popupWidth = 250.0;
-const _popupGap = 12.0;
-const _primaryPopupButtonHeight = 54.0;
-const _sessionButtonHeight = 54.0;
-const _visibleSessionCount = 3;
-const _mockSessionCount = 5;
-const _popupTopPadding = 12.0;
-const _popupBottomPadding = 8.0;
-const _popupButtonDividerSpacing = 6.0;
-const _popupDividerListSpacing = 4.0;
-const _popupHeight =
-    _popupTopPadding +
-    _primaryPopupButtonHeight +
-    _popupButtonDividerSpacing +
-    1.0 +
-    _popupDividerListSpacing +
-    (_sessionButtonHeight * _visibleSessionCount) +
-    _popupBottomPadding;
 
 class BottomBar extends StatefulWidget {
   final VoidCallback? onExtensions;
@@ -153,7 +136,7 @@ class _BottomBarState extends State<BottomBar> with TickerProviderStateMixin {
         final shouldReservePopupSpace =
             widget.isNewCardPopupOpen || _popupProgress.value > 0.001;
         final popupExtent = shouldReservePopupSpace
-            ? (_popupHeight + _popupGap)
+            ? (NewCardPopupLayout.height + NewCardPopupLayout.gap)
             : 0.0;
         final bottomPadding =
             (ui.lerpDouble(32, 0, paddingProgress) ?? 0) +
@@ -179,16 +162,16 @@ class _BottomBarState extends State<BottomBar> with TickerProviderStateMixin {
 
                   // Popup origin: centered on the + New button slot
                   final newCardSlotCenter = slotWidth * 3.5;
-                  final popupW = maxWidth < _popupWidth
+                  final popupW = maxWidth < NewCardPopupLayout.width
                       ? maxWidth
-                      : _popupWidth;
+                      : NewCardPopupLayout.width;
 
                   return AnimatedBuilder(
                     animation: Listenable.merge([
                       _searchMorphProgress,
                       _popupProgress,
                     ]),
-                    builder: (context, child) {
+                    builder: (context, _) {
                       final st = _searchMorphProgress.value;
                       final pt = _popupProgress.value;
                       final rowTop =
@@ -226,13 +209,18 @@ class _BottomBarState extends State<BottomBar> with TickerProviderStateMixin {
                       final popupOpacity = popupEased.clamp(0.0, 1.0);
                       // Position: right-aligned with the bar, sitting above the row
                       final popupLeft = maxWidth - popupW;
-                      final popupTop = rowTop - _popupGap - _popupHeight;
+                      final popupTop =
+                          rowTop -
+                          NewCardPopupLayout.gap -
+                          NewCardPopupLayout.height;
 
                       // Transform origin relative to the popup box: the + button
                       // center mapped into popup-local coords.
                       final popupOriginX = newCardSlotCenter - popupLeft;
                       final popupOriginY =
-                          _popupHeight + _popupGap + (_bottomBarButtonSize / 2);
+                          NewCardPopupLayout.height +
+                          NewCardPopupLayout.gap +
+                          (_bottomBarButtonSize / 2);
 
                       return Stack(
                         clipBehavior: Clip.none,
@@ -243,15 +231,15 @@ class _BottomBarState extends State<BottomBar> with TickerProviderStateMixin {
                               left: popupLeft,
                               top: popupTop,
                               width: popupW,
-                              height: _popupHeight,
+                              height: NewCardPopupLayout.height,
                               child: IgnorePointer(
                                 ignoring: pt < 0.5,
                                 child: Opacity(
                                   opacity: popupOpacity,
                                   child: Transform(
-                                    alignment: FractionalDirectionalAlignment(
+                                    alignment: FractionalOriginAlignment(
                                       popupOriginX / popupW,
-                                      popupOriginY / _popupHeight,
+                                      popupOriginY / NewCardPopupLayout.height,
                                     ),
                                     transform: Matrix4.identity()
                                       ..scaleByDouble(
@@ -260,7 +248,7 @@ class _BottomBarState extends State<BottomBar> with TickerProviderStateMixin {
                                         1.0,
                                         1.0,
                                       ),
-                                    child: _NewCardPopupContent(
+                                    child: NewCardPopupContent(
                                       onNewCard: widget.onNewCard,
                                     ),
                                   ),
@@ -329,13 +317,6 @@ class _BottomBarState extends State<BottomBar> with TickerProviderStateMixin {
   }
 }
 
-/// The alignment helper that converts pixel-based origins into fractional
-/// coordinates usable by [Transform.alignment].
-class FractionalDirectionalAlignment extends Alignment {
-  const FractionalDirectionalAlignment(double fractionX, double fractionY)
-    : super(fractionX * 2 - 1, fractionY * 2 - 1);
-}
-
 class _ActionSlotsRow extends StatelessWidget {
   final VoidCallback? onExtensions;
   final VoidCallback? onArchive;
@@ -386,100 +367,6 @@ class _ActionSlotsRow extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-/// Popup content rendered as its own glass card, separate from the + button.
-class _NewCardPopupContent extends StatelessWidget {
-  final VoidCallback? onNewCard;
-
-  const _NewCardPopupContent({this.onNewCard});
-
-  @override
-  Widget build(BuildContext context) {
-    final mockSessions = List<String>.generate(
-      _mockSessionCount,
-      (index) => 'Mock Session ${index + 1}',
-    );
-
-    return RepaintBoundary(
-      child: AdaptiveGlass(
-        shape: const LiquidRoundedSuperellipse(borderRadius: 24),
-        settings: InheritedLiquidGlass.ofOrDefault(context),
-        quality: GlassQuality.standard,
-        useOwnLayer: true,
-        clipBehavior: Clip.antiAlias,
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: _popupTopPadding),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: SizedBox(
-                  width: double.infinity,
-                  height: _primaryPopupButtonHeight,
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: onNewCard,
-                      borderRadius: BorderRadius.circular(18),
-                      splashColor: Colors.white24,
-                      highlightColor: Colors.white10,
-                      child: const Center(
-                        child: Text(
-                          '+ New Card',
-                          style: TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: _popupButtonDividerSpacing),
-              FractionallySizedBox(
-                widthFactor: 0.8,
-                child: Container(height: 1, color: Colors.white24),
-              ),
-              const SizedBox(height: _popupDividerListSpacing),
-              for (final sessionName in mockSessions)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: SizedBox(
-                    width: double.infinity,
-                    height: _sessionButtonHeight,
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: () {},
-                        borderRadius: BorderRadius.circular(18),
-                        splashColor: Colors.white24,
-                        highlightColor: Colors.white10,
-                        child: Center(
-                          child: Text(
-                            sessionName,
-                            style: const TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              const SizedBox(height: _popupBottomPadding),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
