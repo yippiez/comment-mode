@@ -1,4 +1,5 @@
 import 'package:comment/models/card_colors.dart';
+import 'package:comment/components/confirmation_dialog.dart';
 import 'package:comment/providers.dart';
 import 'package:comment/shared/card_color_palette.dart';
 import 'package:flutter/material.dart';
@@ -36,9 +37,47 @@ class CardRendererScreen extends StatelessWidget {
                 ? null
                 : () => _showColorPalette(context, card),
           ),
+          IconButton(
+            icon: Icon(
+              card?.isArchived == true
+                  ? Icons.unarchive_outlined
+                  : Icons.archive_outlined,
+            ),
+            tooltip: card?.isArchived == true ? 'Unarchive' : 'Archive',
+            onPressed: card == null
+                ? null
+                : () => _toggleArchive(context, card),
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+            tooltip: 'Delete card',
+            onPressed: card == null
+                ? null
+                : () => _confirmDelete(context, card),
+          ),
         ],
       ),
       body: const SizedBox.expand(),
+    );
+  }
+
+  void _toggleArchive(BuildContext context, CardData card) {
+    context.read<CardsProvider>().setCardArchived(card.id, !card.isArchived);
+    Navigator.of(context).maybePop();
+  }
+
+  void _confirmDelete(BuildContext context, CardData card) {
+    showGlassConfirmationDialog(
+      context,
+      title: 'Delete ${card.title}?',
+      description: 'This card will be permanently deleted.',
+      confirmLabel: 'Delete',
+      confirmTextColor: Colors.red,
+      confirmGlowColor: const Color(0x4DFF0000),
+      onConfirm: () {
+        context.read<CardsProvider>().deleteCards([card.id]);
+        Navigator.of(context).maybePop();
+      },
     );
   }
 
