@@ -242,8 +242,33 @@ class CardsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void toggleSelectAll() {
+    if (!_isSelectionMode) {
+      return;
+    }
+
+    final visibleCardIds = _cards.map((card) => card.id).toSet();
+    final allSelected =
+        visibleCardIds.length == _selectedIds.length &&
+        visibleCardIds.every((id) => _selectedIds.contains(id));
+
+    if (allSelected) {
+      _selectedIds.clear();
+    } else {
+      _selectedIds.addAll(visibleCardIds);
+    }
+    notifyListeners();
+  }
+
   bool isSelected(String cardId) {
     return _selectedIds.contains(cardId);
+  }
+
+  bool get isAllSelected {
+    final visibleCardIds = _cards.map((card) => card.id).toSet();
+    return visibleCardIds.isNotEmpty &&
+        visibleCardIds.length == _selectedIds.length &&
+        visibleCardIds.every((id) => _selectedIds.contains(id));
   }
 
   void archiveSelected() {

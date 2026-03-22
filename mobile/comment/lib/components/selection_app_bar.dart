@@ -46,6 +46,9 @@ class _SelectionAppBarState extends State<SelectionAppBar>
     final selectedCount = context.select<CardsProvider, int>(
       (cardsProvider) => cardsProvider.selectedCount,
     );
+    final isAllSelected = context.select<CardsProvider, bool>(
+      (cardsProvider) => cardsProvider.isAllSelected,
+    );
 
     return ClipRect(
       child: SlideTransition(
@@ -63,6 +66,11 @@ class _SelectionAppBarState extends State<SelectionAppBar>
             style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
           ),
           actions: [
+            IconButton(
+              icon: Icon(isAllSelected ? Icons.deselect : Icons.select_all),
+              onPressed: () => provider.toggleSelectAll(),
+              tooltip: isAllSelected ? 'Deselect all' : 'Select all',
+            ),
             IconButton(
               icon: Icon(
                 widget.isArchivedScreen
