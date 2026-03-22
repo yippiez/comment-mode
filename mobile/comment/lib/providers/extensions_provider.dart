@@ -66,7 +66,7 @@ class ExtensionsProvider extends ChangeNotifier {
         id: 'default-chat',
         title: 'Chat',
         description:
-            'Built-in chat functionality for real-time conversations and messaging within your cards.',
+            'Chat interface for Pi. Provides core interface for edits, tool calls, errors and prompting the agent.',
         gradient: LinearGradient(
           colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
           begin: Alignment.topLeft,
@@ -95,6 +95,18 @@ class ExtensionsProvider extends ChangeNotifier {
             'Browse and manage file hierarchies with an intuitive tree view directly in your workspace.',
         gradient: LinearGradient(
           colors: [Color(0xFF10B981), Color(0xFF059669)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        source: ExtensionSource.official,
+        state: ExtensionState.uninstalled,
+      ),
+      const ExtensionData(
+        id: 'official-doom',
+        title: 'Doom',
+        description: '1993 first-person shooter classic.',
+        gradient: LinearGradient(
+          colors: [Color(0xFF000000), Color(0xFFE11D48)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
