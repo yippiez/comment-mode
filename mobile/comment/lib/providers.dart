@@ -1,16 +1,19 @@
 import 'package:flutter/foundation.dart';
+import 'package:comment/models/card_colors.dart';
 
 class CardData {
   final String id;
   final String title;
   final String content;
   final bool isArchived;
+  final CardColors color;
 
   const CardData({
     required this.id,
     required this.title,
     required this.content,
     this.isArchived = false,
+    this.color = CardColors.gray,
   });
 
   CardData copyWith({
@@ -18,12 +21,14 @@ class CardData {
     String? title,
     String? content,
     bool? isArchived,
+    CardColors? color,
   }) {
     return CardData(
       id: id ?? this.id,
       title: title ?? this.title,
       content: content ?? this.content,
       isArchived: isArchived ?? this.isArchived,
+      color: color ?? this.color,
     );
   }
 }
@@ -101,6 +106,30 @@ class CardsProvider extends ChangeNotifier {
     }
 
     _refreshCardsAfterMutation();
+  }
+
+  void setCardColor(String cardId, CardColors color) {
+    for (var i = 0; i < _allCards.length; i++) {
+      final card = _allCards[i];
+      if (card.id != cardId) {
+        continue;
+      }
+      if (card.color == color) {
+        return;
+      }
+      _allCards[i] = card.copyWith(color: color);
+      _refreshCardsAfterMutation();
+      return;
+    }
+  }
+
+  CardData? getCardById(String cardId) {
+    for (final card in _allCards) {
+      if (card.id == cardId) {
+        return card;
+      }
+    }
+    return null;
   }
 
   void deleteCards(Iterable<String> cardIds) {

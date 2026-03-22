@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:comment/models/card_colors.dart';
+import 'package:comment/shared/card_color_palette.dart';
 
 class Card extends StatelessWidget {
   final String title;
@@ -6,6 +8,7 @@ class Card extends StatelessWidget {
   final Widget child;
   final VoidCallback? onTap;
   final bool isSelected;
+  final CardColors color;
 
   const Card({
     super.key,
@@ -14,6 +17,7 @@ class Card extends StatelessWidget {
     required this.child,
     this.onTap,
     this.isSelected = false,
+    this.color = CardColors.gray,
   });
 
   @override
@@ -31,6 +35,8 @@ class Card extends StatelessWidget {
         ? BoxConstraints(maxHeight: maxCardHeight)
         : BoxConstraints(maxWidth: maxWidth, maxHeight: maxCardHeight);
     final borderColor = isSelected ? Colors.white : Colors.grey[800]!;
+    final cardColor = color.backgroundColor;
+    final foregroundColor = color.foregroundColor;
 
     return GestureDetector(
       onTap: onTap,
@@ -38,7 +44,7 @@ class Card extends StatelessWidget {
         width: maxWidth,
         constraints: constraints,
         decoration: BoxDecoration(
-          color: Colors.grey[850],
+          color: cardColor,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: borderColor, width: 1),
         ),
@@ -48,7 +54,7 @@ class Card extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-              child: Text(title),
+              child: Text(title, style: TextStyle(color: foregroundColor)),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
@@ -69,7 +75,15 @@ class Card extends StatelessWidget {
                       ).createShader(bounds);
                     },
                     blendMode: BlendMode.dstIn,
-                    child: child,
+                    child: DefaultTextStyle.merge(
+                      style: TextStyle(
+                        color: foregroundColor.withValues(alpha: 0.9),
+                      ),
+                      child: IconTheme.merge(
+                        data: IconThemeData(color: foregroundColor),
+                        child: child,
+                      ),
+                    ),
                   ),
                 ),
               ),
