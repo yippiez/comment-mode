@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:comment/models/card_colors.dart';
+import 'package:comment/models/card.dart';
 import 'package:comment/shared/card_color_palette.dart';
 
 class Card extends StatelessWidget {
@@ -9,6 +9,7 @@ class Card extends StatelessWidget {
   final VoidCallback? onTap;
   final bool isSelected;
   final CardColors color;
+  final CardStatus status;
 
   const Card({
     super.key,
@@ -18,6 +19,7 @@ class Card extends StatelessWidget {
     this.onTap,
     this.isSelected = false,
     this.color = CardColors.gray,
+    this.status = CardStatus.normal,
   });
 
   @override
@@ -35,6 +37,11 @@ class Card extends StatelessWidget {
         ? BoxConstraints(maxHeight: maxCardHeight)
         : BoxConstraints(maxWidth: maxWidth, maxHeight: maxCardHeight);
     final borderColor = isSelected ? Colors.white : Colors.grey[800]!;
+    final statusEmoji = switch (status) {
+      CardStatus.hasUpdate => '🥶',
+      CardStatus.stale => '🫠',
+      CardStatus.normal => null,
+    };
     final cardColor = color.backgroundColor;
     final foregroundColor = color.foregroundColor;
 
@@ -54,7 +61,14 @@ class Card extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-              child: Text(title, style: TextStyle(color: foregroundColor)),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(title, style: TextStyle(color: foregroundColor)),
+                  if (statusEmoji != null)
+                    Text(statusEmoji, style: const TextStyle(fontSize: 16)),
+                ],
+              ),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),

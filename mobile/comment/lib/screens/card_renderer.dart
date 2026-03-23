@@ -1,4 +1,4 @@
-import 'package:comment/models/card_colors.dart';
+import 'package:comment/models/card.dart';
 import 'package:comment/components/confirmation_dialog.dart';
 import 'package:comment/providers/card_providers.dart';
 import 'package:comment/shared/card_color_palette.dart';

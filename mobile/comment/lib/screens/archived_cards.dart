@@ -22,6 +22,7 @@ class ArchivedCardsScreen extends StatelessWidget {
             child: Card(
               title: cardData.title,
               color: cardData.color,
+              status: cardData.status,
               isSelected: cardsProvider.isSelected(cardData.id),
               onTap: () {
                 if (isSelectionMode) {

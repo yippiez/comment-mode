@@ -1,3 +1,4 @@
+import 'package:comment/models/card.dart';
 import 'package:flutter/material.dart' hide Card;
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:provider/provider.dart';
@@ -37,6 +38,14 @@ List<CardData> _buildInitialCards() {
       'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. ';
   final repeatedLorem = loremIpsum * 3;
   final lengths = [50, 120, 250, 400, 600, 800];
+  final statuses = [
+    CardStatus.normal,
+    CardStatus.hasUpdate,
+    CardStatus.normal,
+    CardStatus.stale,
+    CardStatus.normal,
+    CardStatus.normal,
+  ];
   final generatedIds = <String>{};
   return List<CardData>.generate(lengths.length, (index) {
     final length = lengths[index];
@@ -53,6 +62,7 @@ List<CardData> _buildInitialCards() {
       title: 'Card ${index + 1}',
       content: text,
       isArchived: index == 1,
+      status: statuses[index],
     );
   });
 }
@@ -129,6 +139,7 @@ class _MyHomePageState extends State<MyHomePage> {
         title: 'Card $nextIndex',
         content:
             'New card content for item $nextIndex. Add your own text here to test fuzzy search quickly.',
+        status: CardStatus.stale,
       ),
     );
   }
@@ -161,6 +172,7 @@ class _MyHomePageState extends State<MyHomePage> {
             child: Card(
               title: cardData.title,
               color: cardData.color,
+              status: cardData.status,
               isSelected: cardsProvider.isSelected(cardData.id),
               onTap: () {
                 if (isSelectionMode) {

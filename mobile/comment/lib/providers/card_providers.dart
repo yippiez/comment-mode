@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart';
-import 'package:comment/models/card_colors.dart';
+import 'package:comment/models/card.dart';
 
 class CardData {
   final String id;
@@ -7,6 +7,7 @@ class CardData {
   final String content;
   final bool isArchived;
   final CardColors color;
+  final CardStatus status;
 
   const CardData({
     required this.id,
@@ -14,6 +15,7 @@ class CardData {
     required this.content,
     this.isArchived = false,
     this.color = CardColors.gray,
+    this.status = CardStatus.normal,
   });
 
   CardData copyWith({
@@ -22,6 +24,7 @@ class CardData {
     String? content,
     bool? isArchived,
     CardColors? color,
+    CardStatus? status,
   }) {
     return CardData(
       id: id ?? this.id,
@@ -29,6 +32,7 @@ class CardData {
       content: content ?? this.content,
       isArchived: isArchived ?? this.isArchived,
       color: color ?? this.color,
+      status: status ?? this.status,
     );
   }
 }
@@ -79,6 +83,33 @@ class CardsProvider extends ChangeNotifier {
       return;
     }
     filterCards(_searchQuery);
+  }
+
+  void setCardStatus(String cardId, CardStatus status) {
+    setCardsStatus([cardId], status);
+  }
+
+  void setCardsStatus(Iterable<String> cardIds, CardStatus status) {
+    final ids = cardIds.toSet();
+    if (ids.isEmpty) {
+      return;
+    }
+
+    var hasChanges = false;
+    for (var i = 0; i < _allCards.length; i++) {
+      final card = _allCards[i];
+      if (!ids.contains(card.id) || card.status == status) {
+        continue;
+      }
+      _allCards[i] = card.copyWith(status: status);
+      hasChanges = true;
+    }
+
+    if (!hasChanges) {
+      return;
+    }
+
+    _refreshCardsAfterMutation();
   }
 
   void setCardArchived(String cardId, bool isArchived) {
