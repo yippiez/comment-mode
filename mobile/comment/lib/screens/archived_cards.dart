@@ -1,7 +1,7 @@
 import 'package:comment/components/card.dart';
 import 'package:comment/components/selection_app_bar.dart';
 import 'package:comment/draggable_masonry_layout.dart';
-import 'package:comment/providers.dart';
+import 'package:comment/providers/card_providers.dart';
 import 'package:comment/screens/card_renderer.dart';
 import 'package:flutter/material.dart' hide Card;
 import 'package:provider/provider.dart';

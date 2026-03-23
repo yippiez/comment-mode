@@ -7,7 +7,7 @@ import 'package:comment/components/card.dart';
 import 'package:comment/components/bottom_bar.dart';
 import 'package:comment/components/selection_app_bar.dart';
 import 'package:comment/draggable_masonry_layout.dart';
-import 'package:comment/providers.dart';
+import 'package:comment/providers/card_providers.dart';
 import 'package:comment/providers/connection_settings_provider.dart';
 import 'package:comment/providers/extensions_provider.dart';
 import 'package:comment/screens/archived_cards.dart';
