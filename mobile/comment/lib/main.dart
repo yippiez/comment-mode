@@ -8,9 +8,11 @@ import 'package:comment/components/bottom_bar.dart';
 import 'package:comment/components/selection_app_bar.dart';
 import 'package:comment/draggable_masonry_layout.dart';
 import 'package:comment/providers.dart';
+import 'package:comment/providers/connection_settings_provider.dart';
 import 'package:comment/providers/extensions_provider.dart';
 import 'package:comment/screens/archived_cards.dart';
 import 'package:comment/screens/card_renderer.dart';
+import 'package:comment/screens/connections_screen.dart';
 import 'package:comment/screens/extensions_screen.dart';
 
 void main() async {
@@ -23,6 +25,7 @@ void main() async {
           create: (_) => CardsProvider()..initializeCards(_buildInitialCards()),
         ),
         ChangeNotifierProvider(create: (_) => ExtensionsProvider()),
+        ChangeNotifierProvider(create: (_) => ConnectionSettingsProvider()),
       ],
       child: const MyApp(),
     ),
@@ -76,7 +79,25 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
+  bool _isSettingsPopupOpen = false;
   bool _isNewCardPopupOpen = false;
+
+  void _setSettingsPopupOpen(bool isOpen) {
+    if (_isSettingsPopupOpen == isOpen) {
+      return;
+    }
+    setState(() {
+      _isSettingsPopupOpen = isOpen;
+    });
+  }
+
+  void _closeSettingsPopup() {
+    _setSettingsPopupOpen(false);
+  }
+
+  void _toggleSettingsPopup() {
+    _setSettingsPopupOpen(!_isSettingsPopupOpen);
+  }
 
   void _setNewCardPopupOpen(bool isOpen) {
     if (_isNewCardPopupOpen == isOpen) {
@@ -117,9 +138,10 @@ class _MyHomePageState extends State<MyHomePage> {
     final cardsProvider = context.watch<CardsProvider>();
     final isSelectionMode = cardsProvider.isSelectionMode;
 
-    if (isSelectionMode && _isNewCardPopupOpen) {
+    if (isSelectionMode && (_isSettingsPopupOpen || _isNewCardPopupOpen)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
+          _closeSettingsPopup();
           _closeNewCardPopup();
         }
       });
@@ -170,16 +192,24 @@ class _MyHomePageState extends State<MyHomePage> {
       bottomNavigationBar: isSelectionMode
           ? null
           : BottomBar(
+              isSettingsPopupOpen: _isSettingsPopupOpen,
               isSearchOpen: cardsProvider.isSearchOpen,
               searchQuery: cardsProvider.searchQuery,
               isNewCardPopupOpen: _isNewCardPopupOpen,
+              onSettingsPopupOpen: () {
+                closeSearchIfOpen();
+                _closeNewCardPopup();
+                _toggleSettingsPopup();
+              },
               onNewCardPopupOpen: () {
                 closeSearchIfOpen();
+                _closeSettingsPopup();
                 _toggleNewCardPopup();
               },
               onNewCardPopupClose: _closeNewCardPopup,
               onNewCard: _createNewCard,
               onSearchOpen: () {
+                _closeSettingsPopup();
                 _closeNewCardPopup();
                 context.read<CardsProvider>().openSearch();
               },
@@ -190,13 +220,23 @@ class _MyHomePageState extends State<MyHomePage> {
                   context.read<CardsProvider>().closeSearchKeepingFilters(),
               onExtensions: () {
                 closeSearchIfOpen();
+                _closeSettingsPopup();
                 _closeNewCardPopup();
                 Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const ExtensionsScreen()),
                 );
               },
+              onConnections: () {
+                closeSearchIfOpen();
+                _closeSettingsPopup();
+                _closeNewCardPopup();
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const ConnectionsScreen()),
+                );
+              },
               onArchive: () {
                 closeSearchIfOpen();
+                _closeSettingsPopup();
                 _closeNewCardPopup();
                 Navigator.of(context).push(
                   MaterialPageRoute(
@@ -224,13 +264,18 @@ class _MyHomePageState extends State<MyHomePage> {
             items: cards,
           ),
           if (!isSelectionMode &&
-              (cardsProvider.isSearchOpen || _isNewCardPopupOpen))
+              (cardsProvider.isSearchOpen ||
+                  _isSettingsPopupOpen ||
+                  _isNewCardPopupOpen))
             Positioned.fill(
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () {
                   if (cardsProvider.isSearchOpen) {
                     context.read<CardsProvider>().closeSearch();
+                  }
+                  if (_isSettingsPopupOpen) {
+                    _closeSettingsPopup();
                   }
                   if (_isNewCardPopupOpen) {
                     _closeNewCardPopup();
