@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:comment/components/new_card_popup.dart';
+import 'package:comment/components/settings_popup.dart';
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
@@ -11,30 +12,36 @@ const _newCardPopupDuration = Duration(milliseconds: 130);
 
 class BottomBar extends StatefulWidget {
   final VoidCallback? onExtensions;
+  final VoidCallback? onConnections;
   final VoidCallback? onNewCard;
   final VoidCallback? onSearchOpen;
   final ValueChanged<String>? onSearchChanged;
   final VoidCallback? onSearchClose;
   final VoidCallback? onSearchSubmit;
   final VoidCallback? onArchive;
+  final bool isSettingsPopupOpen;
   final bool isSearchOpen;
   final String searchQuery;
   final bool isNewCardPopupOpen;
+  final VoidCallback? onSettingsPopupOpen;
   final VoidCallback? onNewCardPopupOpen;
   final VoidCallback? onNewCardPopupClose;
 
   const BottomBar({
     super.key,
     this.onExtensions,
+    this.onConnections,
     this.onNewCard,
     this.onSearchOpen,
     this.onSearchChanged,
     this.onSearchClose,
     this.onSearchSubmit,
     this.onArchive,
+    required this.isSettingsPopupOpen,
     required this.isSearchOpen,
     required this.searchQuery,
     this.isNewCardPopupOpen = false,
+    this.onSettingsPopupOpen,
     this.onNewCardPopupOpen,
     this.onNewCardPopupClose,
   });
@@ -46,6 +53,8 @@ class BottomBar extends StatefulWidget {
 class _BottomBarState extends State<BottomBar> with TickerProviderStateMixin {
   late final AnimationController _searchMorphController;
   late final Animation<double> _searchMorphProgress;
+  late final AnimationController _settingsPopupController;
+  late final Animation<double> _settingsPopupProgress;
   late final AnimationController _popupController;
   late final Animation<double> _popupProgress;
   late final TextEditingController _searchController;
@@ -61,6 +70,16 @@ class _BottomBarState extends State<BottomBar> with TickerProviderStateMixin {
     );
     _searchMorphProgress = CurvedAnimation(
       parent: _searchMorphController,
+      curve: Curves.easeOut,
+      reverseCurve: Curves.easeIn,
+    );
+    _settingsPopupController = AnimationController(
+      vsync: this,
+      duration: _newCardPopupDuration,
+      value: widget.isSettingsPopupOpen ? 1.0 : 0.0,
+    );
+    _settingsPopupProgress = CurvedAnimation(
+      parent: _settingsPopupController,
       curve: Curves.easeOut,
       reverseCurve: Curves.easeIn,
     );
@@ -109,6 +128,12 @@ class _BottomBarState extends State<BottomBar> with TickerProviderStateMixin {
       _searchMorphController.reverse();
     }
 
+    if (widget.isSettingsPopupOpen && !oldWidget.isSettingsPopupOpen) {
+      _settingsPopupController.forward();
+    } else if (!widget.isSettingsPopupOpen && oldWidget.isSettingsPopupOpen) {
+      _settingsPopupController.reverse();
+    }
+
     if (widget.isNewCardPopupOpen && !oldWidget.isNewCardPopupOpen) {
       _popupController.forward();
     } else if (!widget.isNewCardPopupOpen && oldWidget.isNewCardPopupOpen) {
@@ -119,6 +144,7 @@ class _BottomBarState extends State<BottomBar> with TickerProviderStateMixin {
   @override
   void dispose() {
     _searchMorphController.dispose();
+    _settingsPopupController.dispose();
     _popupController.dispose();
     _searchController.dispose();
     _searchFocusNode.dispose();
@@ -130,14 +156,24 @@ class _BottomBarState extends State<BottomBar> with TickerProviderStateMixin {
     final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
 
     return AnimatedBuilder(
-      animation: Listenable.merge([_searchMorphProgress, _popupProgress]),
+      animation: Listenable.merge([
+        _searchMorphProgress,
+        _settingsPopupProgress,
+        _popupProgress,
+      ]),
       builder: (context, _) {
         final paddingProgress = _searchMorphProgress.value;
-        final shouldReservePopupSpace =
-            widget.isNewCardPopupOpen || _popupProgress.value > 0.001;
-        final popupExtent = shouldReservePopupSpace
+        final settingsPopupExtent =
+            widget.isSettingsPopupOpen || _settingsPopupProgress.value > 0.001
+            ? (SettingsPopupLayout.height + SettingsPopupLayout.gap)
+            : 0.0;
+        final newCardPopupExtent =
+            widget.isNewCardPopupOpen || _popupProgress.value > 0.001
             ? (NewCardPopupLayout.height + NewCardPopupLayout.gap)
             : 0.0;
+        final popupExtent = settingsPopupExtent > newCardPopupExtent
+            ? settingsPopupExtent
+            : newCardPopupExtent;
         final bottomPadding =
             (ui.lerpDouble(32, 0, paddingProgress) ?? 0) +
             (keyboardInset * paddingProgress);
@@ -160,20 +196,26 @@ class _BottomBarState extends State<BottomBar> with TickerProviderStateMixin {
                   final searchCollapsedLeft =
                       (slotWidth * 2.5) - (collapsedWidth / 2);
 
-                  // Popup origin: centered on the + New button slot
+                  final settingsSlotCenter = slotWidth * 0.5;
                   final newCardSlotCenter = slotWidth * 3.5;
-                  final popupW = maxWidth < NewCardPopupLayout.width
+                  final settingsPopupWidth =
+                      maxWidth < SettingsPopupLayout.width
+                      ? maxWidth
+                      : SettingsPopupLayout.width;
+                  final newCardPopupWidth = maxWidth < NewCardPopupLayout.width
                       ? maxWidth
                       : NewCardPopupLayout.width;
 
                   return AnimatedBuilder(
                     animation: Listenable.merge([
                       _searchMorphProgress,
+                      _settingsPopupProgress,
                       _popupProgress,
                     ]),
                     builder: (context, _) {
                       final st = _searchMorphProgress.value;
-                      final pt = _popupProgress.value;
+                      final settingsPt = _settingsPopupProgress.value;
+                      final newCardPt = _popupProgress.value;
                       final rowTop =
                           constraints.maxHeight - _bottomBarButtonSize;
 
@@ -202,22 +244,42 @@ class _BottomBarState extends State<BottomBar> with TickerProviderStateMixin {
                         ((st - 0.2) / 0.8).clamp(0, 1),
                       );
 
-                      // --- Popup calculations ---
-                      // Scale from 0 → 1, anchored at bottom-center of the + button
-                      final popupEased = Curves.easeOutCubic.transform(pt);
-                      final popupScale = popupEased;
-                      final popupOpacity = popupEased.clamp(0.0, 1.0);
-                      // Position: right-aligned with the bar, sitting above the row
-                      final popupLeft = maxWidth - popupW;
-                      final popupTop =
+                      final settingsPopupEased = Curves.easeOutCubic.transform(
+                        settingsPt,
+                      );
+                      final settingsPopupScale = settingsPopupEased;
+                      final settingsPopupOpacity = settingsPopupEased.clamp(
+                        0.0,
+                        1.0,
+                      );
+                      final settingsPopupLeft = 0.0;
+                      final settingsPopupTop =
+                          rowTop -
+                          SettingsPopupLayout.gap -
+                          SettingsPopupLayout.height;
+                      final settingsPopupOriginX =
+                          settingsSlotCenter - settingsPopupLeft;
+                      final settingsPopupOriginY =
+                          SettingsPopupLayout.height +
+                          SettingsPopupLayout.gap +
+                          (_bottomBarButtonSize / 2);
+
+                      final newCardPopupEased = Curves.easeOutCubic.transform(
+                        newCardPt,
+                      );
+                      final newCardPopupScale = newCardPopupEased;
+                      final newCardPopupOpacity = newCardPopupEased.clamp(
+                        0.0,
+                        1.0,
+                      );
+                      final newCardPopupLeft = maxWidth - newCardPopupWidth;
+                      final newCardPopupTop =
                           rowTop -
                           NewCardPopupLayout.gap -
                           NewCardPopupLayout.height;
-
-                      // Transform origin relative to the popup box: the + button
-                      // center mapped into popup-local coords.
-                      final popupOriginX = newCardSlotCenter - popupLeft;
-                      final popupOriginY =
+                      final newCardPopupOriginX =
+                          newCardSlotCenter - newCardPopupLeft;
+                      final newCardPopupOriginY =
                           NewCardPopupLayout.height +
                           NewCardPopupLayout.gap +
                           (_bottomBarButtonSize / 2);
@@ -225,26 +287,58 @@ class _BottomBarState extends State<BottomBar> with TickerProviderStateMixin {
                       return Stack(
                         clipBehavior: Clip.none,
                         children: [
-                          // --- Popup (rendered first so it sits behind the bar) ---
-                          if (pt > 0.001)
+                          if (settingsPt > 0.001)
                             Positioned(
-                              left: popupLeft,
-                              top: popupTop,
-                              width: popupW,
-                              height: NewCardPopupLayout.height,
+                              left: settingsPopupLeft,
+                              top: settingsPopupTop,
+                              width: settingsPopupWidth,
+                              height: SettingsPopupLayout.height,
                               child: IgnorePointer(
-                                ignoring: pt < 0.5,
+                                ignoring: settingsPt < 0.5,
                                 child: Opacity(
-                                  opacity: popupOpacity,
+                                  opacity: settingsPopupOpacity,
                                   child: Transform(
                                     alignment: FractionalOriginAlignment(
-                                      popupOriginX / popupW,
-                                      popupOriginY / NewCardPopupLayout.height,
+                                      settingsPopupOriginX / settingsPopupWidth,
+                                      settingsPopupOriginY /
+                                          SettingsPopupLayout.height,
                                     ),
                                     transform: Matrix4.identity()
                                       ..scaleByDouble(
-                                        popupScale,
-                                        popupScale,
+                                        settingsPopupScale,
+                                        settingsPopupScale,
+                                        1.0,
+                                        1.0,
+                                      ),
+                                    child: SettingsPopupContent(
+                                      onExtensions: widget.onExtensions,
+                                      onConnections: widget.onConnections,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                          if (newCardPt > 0.001)
+                            Positioned(
+                              left: newCardPopupLeft,
+                              top: newCardPopupTop,
+                              width: newCardPopupWidth,
+                              height: NewCardPopupLayout.height,
+                              child: IgnorePointer(
+                                ignoring: newCardPt < 0.5,
+                                child: Opacity(
+                                  opacity: newCardPopupOpacity,
+                                  child: Transform(
+                                    alignment: FractionalOriginAlignment(
+                                      newCardPopupOriginX / newCardPopupWidth,
+                                      newCardPopupOriginY /
+                                          NewCardPopupLayout.height,
+                                    ),
+                                    transform: Matrix4.identity()
+                                      ..scaleByDouble(
+                                        newCardPopupScale,
+                                        newCardPopupScale,
                                         1.0,
                                         1.0,
                                       ),
@@ -271,7 +365,7 @@ class _BottomBarState extends State<BottomBar> with TickerProviderStateMixin {
                                 child: Transform.scale(
                                   scale: searchActionsScale,
                                   child: _ActionSlotsRow(
-                                    onExtensions: widget.onExtensions,
+                                    onSettings: widget.onSettingsPopupOpen,
                                     onArchive: widget.onArchive,
                                     onNew: widget.onNewCardPopupOpen,
                                     searchSlot: const SizedBox(
@@ -318,13 +412,13 @@ class _BottomBarState extends State<BottomBar> with TickerProviderStateMixin {
 }
 
 class _ActionSlotsRow extends StatelessWidget {
-  final VoidCallback? onExtensions;
+  final VoidCallback? onSettings;
   final VoidCallback? onArchive;
   final VoidCallback? onNew;
   final Widget searchSlot;
 
   const _ActionSlotsRow({
-    this.onExtensions,
+    this.onSettings,
     this.onArchive,
     this.onNew,
     required this.searchSlot,
@@ -337,9 +431,9 @@ class _ActionSlotsRow extends StatelessWidget {
         Expanded(
           child: Center(
             child: _BottomActionButton(
-              icon: const _ExtensionsIcon(),
-              label: 'Extensions',
-              onTap: onExtensions,
+              icon: const Icon(Icons.settings, size: 31, color: Colors.white),
+              label: 'Settings',
+              onTap: onSettings,
             ),
           ),
         ),
@@ -648,53 +742,6 @@ class _BottomActionButton extends StatelessWidget {
       quality: GlassQuality.standard,
       glowRadius: 1.1,
       child: Center(child: icon),
-    );
-  }
-}
-
-class _ExtensionsIcon extends StatelessWidget {
-  const _ExtensionsIcon();
-
-  @override
-  Widget build(BuildContext context) {
-    const pieceSize = 11.0;
-    const gap = 4.0;
-    return const SizedBox(
-      width: pieceSize * 2 + gap,
-      height: pieceSize * 2 + gap,
-      child: Stack(
-        children: [
-          Positioned(left: 0, top: 0, child: _ExtensionsPiece(size: pieceSize)),
-          Positioned(
-            left: 0,
-            top: pieceSize + gap,
-            child: _ExtensionsPiece(size: pieceSize),
-          ),
-          Positioned(
-            left: pieceSize + gap,
-            top: pieceSize + gap,
-            child: _ExtensionsPiece(size: pieceSize),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ExtensionsPiece extends StatelessWidget {
-  final double size;
-
-  const _ExtensionsPiece({required this.size});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.white, width: 1.8),
-        borderRadius: BorderRadius.circular(2),
-      ),
     );
   }
 }
