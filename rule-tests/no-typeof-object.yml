@@ -1,0 +1,5 @@
+id: no-typeof-object
+valid:
+  - "if (typeof x === 'string') { console.log('string'); }"
+invalid:
+  - "typeof x === 'object'"

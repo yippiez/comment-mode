@@ -1,0 +1,8 @@
+id: no-as-object
+snapshots:
+  asObject(x):
+    labels:
+    - source: asObject(x)
+      style: primary
+      start: 0
+      end: 11

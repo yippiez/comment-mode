@@ -1,0 +1,8 @@
+id: no-is-record
+snapshots:
+  isRecord(x):
+    labels:
+    - source: isRecord(x)
+      style: primary
+      start: 0
+      end: 11

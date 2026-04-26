@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/ast-grep/ast-grep/main/schemas/rule.json
+
+id: no-typeof-object
+message: "Do not use inline typeof value === 'object' guard"
+severity: error
+language: TypeScript
+rule:
+  any:
+    - pattern: "typeof $V === 'object'"
+    - pattern: "typeof $V !== 'object'"

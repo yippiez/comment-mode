@@ -1,0 +1,8 @@
+id: no-typeof-object
+snapshots:
+  typeof x === 'object':
+    labels:
+    - source: typeof x === 'object'
+      style: primary
+      start: 0
+      end: 21

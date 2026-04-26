@@ -1,0 +1,5 @@
+id: no-as-object
+valid:
+  - "function parseUser(x: unknown) { return true; }"
+invalid:
+  - "asObject(x)"

@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/ast-grep/ast-grep/main/schemas/rule.json
+
+id: no-undefined-pipe
+message: "Disallow pipe with undefined"
+severity: error
+language: TypeScript
+rule:
+  pattern: $A | undefined

@@ -1,0 +1,5 @@
+id: no-undefined-pipe
+valid:
+  - "const x = undefined"
+invalid:
+  - "const fn = (x: number) => x | undefined"

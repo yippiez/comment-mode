@@ -1,0 +1,5 @@
+id: no-is-record
+valid:
+  - "function checkValue(x: unknown) { return true; }"
+invalid:
+  - "isRecord(x)"

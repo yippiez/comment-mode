@@ -1,0 +1,8 @@
+id: no-undefined-pipe
+snapshots:
+  'const fn = (x: number) => x | undefined':
+    labels:
+    - source: x | undefined
+      style: primary
+      start: 26
+      end: 39

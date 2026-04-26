@@ -1,9 +1,16 @@
-# AGENTS.md
+# Agent Instructions
 
-- Never add or use `isRecord`; inline the object check or use a more specific guard.
-- Do not use inline `typeof value === "object"` / `typeof value !== "object"` guards unless explicitly requested.
+- Add JSDoc comment (`/** ... */`) to functions with at least one line describing purpose. Include example usage if helpful.
+  ```ts
+  /**
+   * Calculates the sum of two numbers.
+   * @param a - First number
+   * @param b - Second number
+   * @returns Sum of a and b
+   * @example sum(1, 2) // returns 3
+   */
+  ```
 - Prefer concrete domain types over loose raw bags; keep `unknown` only at JSON decode boundaries.
 - A decoder should return a complete valid object or `null`; do not partially coerce invalid shapes.
-- Avoid reusable generic object helpers like `asObject`; use specific parsers or guards for each shape.
 - Prefer one strict decoder boundary per file, then work with concrete typed values after decode.
-- Run `bun lint -- --fix` before committing to keep 4-space indentation consistent.
+- Run `./scripts/lint.sh` before committing.
