@@ -1,6 +1,6 @@
 /**
  * Main TUI app composition: wires controllers, renders content, and handles
- * keyboard/prompt/persistence interactions for browsing and prompting code.
+ * keyboard/prompt interactions for browsing and prompting code.
  */
 import {
     BoxRenderable,
@@ -46,15 +46,10 @@ import { AgentTimeline } from "./components/agent_timeline";
 import { DocumentBlocks } from "./components/document_blocks";
 import { AppRenderer } from "./renderer";
 import { VirtualCodeBlocks } from "./virtual_code_blocks";
-import {
-    type PersistedUiState,
-} from "../controllers/persistence";
 import { ChipSelectionController } from "../controllers/chip_selection";
-import { PersistedCursorController } from "../controllers/persisted_cursor";
 
 type CodeBrowserAppOptions = {
   workspaceRootDir?: string;
-  initialPersistedUiState?: PersistedUiState | null;
   initialAgentUpdates?: AgentUpdate[];
   onAgentUpdatesChanged?: (updates: AgentUpdate[]) => void;
 };
@@ -75,7 +70,6 @@ export class CodeBrowserApp {
     private readonly camera: Camera;
     private readonly navigation: NavigationController;
     private readonly chipSelection: ChipSelectionController;
-    private readonly persistedCursor: PersistedCursorController;
     private readonly agent: OpenCode;
     private readonly prompt: Prompt;
     private readonly appRenderer: AppRenderer;
@@ -154,12 +148,6 @@ export class CodeBrowserApp {
         });
         this.cursor = new Cursor({
             camera: this.camera,
-        });
-        this.persistedCursor = new PersistedCursorController({
-            cursor: this.cursor,
-            lineModel: this.lineModel,
-            fileExplorer: this.fileExplorer,
-            getEntries: () => this.entries,
         });
         this.agentTimeline = new AgentTimeline(this.renderer, this.scrollbox, this.lineModel);
         this.documentBlocks = new DocumentBlocks(
@@ -240,11 +228,7 @@ export class CodeBrowserApp {
         });
 
         this.enableLazyContentModeIfNeeded();
-        if (options.initialPersistedUiState) {
-            this.applyPersistedUiState(options.initialPersistedUiState);
-        } else {
-            this.recomputeTypesState();
-        }
+        this.recomputeTypesState();
         this.applyTheme();
     }
 
@@ -257,7 +241,6 @@ export class CodeBrowserApp {
         this.registerBindings();
         this.state.focusMode = "code";
         this.renderAll({ preferFirstAnchor: this.lazyContentModeEnabled });
-        void this.persistedCursor.restoreAfterRender(this.renderer);
         this.prompt.start();
     }
 
@@ -276,30 +259,6 @@ export class CodeBrowserApp {
 
     public getAgentUpdates(): AgentUpdate[] {
         return this.agent.getUpdates();
-    }
-
-    public getPersistenceSnapshot(): PersistedUiState {
-        const persistedCursor = this.persistedCursor.resolveCursorForPersistence();
-        const enabledTypeLabels: Record<string, boolean> = {};
-        const sortedEntries = [...this.enabledTypes.entries()].sort(([a], [b]) => a.localeCompare(b));
-        for (const [typeLabel, enabled] of sortedEntries) {
-            enabledTypeLabels[typeLabel] = enabled;
-        }
-
-        return {
-            chips: {
-                selectedChipIndex: this.state.selectedChipIndex,
-                chipWindowStartIndex: this.state.chipWindowStartIndex,
-                enabledTypeLabels,
-            },
-            files: {
-                collapsedPaths: this.fileExplorer.getCollapsedFiles(),
-                fileBlockCollapsed: this.fileExplorer.isFilePageCollapsed(),
-                directoryPath: this.fileExplorer.getDirectoryPath(),
-            },
-            cursor: persistedCursor,
-            prompt: this.prompt.getPersistedModelConfig(),
-        };
     }
 
     // ------------------------------------------
@@ -475,7 +434,6 @@ export class CodeBrowserApp {
         });
 
         this.onSignal(SIGNALS.cursorChanged, () => {
-            this.persistedCursor.updateLastCodeCursorSnapshot();
             this.applyLineHighlights();
             if (this.prompt.isVisible) {
                 this.prompt.refreshView();
@@ -1049,20 +1007,6 @@ export class CodeBrowserApp {
         this.renderChips();
     }
 
-    private applyPersistedUiState(persistedState: PersistedUiState): void {
-        this.prompt.applyPersistedModelConfig(persistedState.prompt);
-        this.state.selectedChipIndex = toNonNegativeInteger(persistedState.chips.selectedChipIndex);
-        this.state.chipWindowStartIndex = toNonNegativeInteger(persistedState.chips.chipWindowStartIndex);
-        this.enabledTypes = new Map(Object.entries(persistedState.chips.enabledTypeLabels));
-
-        this.fileExplorer.setCollapsedFiles(persistedState.files.collapsedPaths);
-        this.fileExplorer.setFilePageCollapsed(persistedState.files.fileBlockCollapsed);
-        this.fileExplorer.setDirectoryPath(persistedState.files.directoryPath);
-        this.persistedCursor.applyPersistedState(persistedState.cursor);
-        this.pruneCollapsedFiles();
-        this.recomputeTypesState();
-    }
-
     private toggleFilesExplorerMode(): void {
         this.enabledTypes.set(FileExplorer.FILE_PAGE_TYPE_LABEL, true);
         this.virtualCodeBlocks.setFileBlockCollapsed(false);
@@ -1275,7 +1219,6 @@ export class CodeBrowserApp {
             .then(() => {
                 this.pendingEntryLoads.delete(entry.relativePath);
                 this.renderContent();
-                this.persistedCursor.restore();
             })
             .catch((error: unknown) => {
                 this.pendingEntryLoads.delete(entry.relativePath);
@@ -1291,7 +1234,3 @@ export class CodeBrowserApp {
 
 }
 
-function toNonNegativeInteger(value: number): number {
-    if (!Number.isFinite(value)) { return 0; }
-    return Math.max(0, Math.floor(value));
-}

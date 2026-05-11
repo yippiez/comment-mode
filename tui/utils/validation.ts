@@ -1,6 +1,6 @@
 /**
- * Validation and normalization utilities used during workspace loading and
- * persistence hydration (path lists, numeric conversions, and missing-file detection).
+ * Validation and normalization utilities used during workspace loading
+ * (path lists, numeric conversions, and missing-file detection).
  */
 /**
  * Checks if an error represents a "file not found" error (ENOENT).

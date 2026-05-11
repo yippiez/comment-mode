@@ -1,12 +1,9 @@
-#!/usr/bin/env bun
-
 /**
  * CLI entrypoint for the terminal code browser.
- * Boots the TUI renderer, loads persisted state and workspace entries, and starts the app.
+ * Boots the TUI renderer, loads workspace entries, and starts the app.
  */
 import { createCliRenderer } from "@opentui/core";
 import { CodeBrowserApp } from "./app";
-import { PersistenceController } from "./controllers/persistence";
 import { loadCodeFileEntries } from "./utils/files";
 import { registerTreeSitterParsers } from "./integrations/treesitter";
 import { SIGNALS } from "./signals";
@@ -16,28 +13,12 @@ registerTreeSitterParsers();
 
 const renderer = await createCliRenderer({ exitOnCtrlC: true });
 const rootDir = process.cwd();
-const persistence = new PersistenceController();
-await persistence.load(rootDir);
-const persistedUiState = persistence.getUiState();
 const entries = await loadCodeFileEntries(rootDir);
-
-const savePersistence = (): void => {
-    void persistence.save().catch((error) => {
-        const message = error instanceof Error ? error.message : String(error);
-        console.error(`[persistence] failed to write state: ${message}`);
-    });
-};
 
 const app = new CodeBrowserApp(renderer, entries, {
     workspaceRootDir: rootDir,
-    initialPersistedUiState: persistedUiState,
 });
 app.start();
-
-const persistenceInterval = setInterval(() => {
-    persistence.setUiState(app.getPersistenceSnapshot());
-    savePersistence();
-}, 250);
 
 let refreshRunning = false;
 let refreshPending = false;
@@ -95,15 +76,7 @@ const watcher = await watchWorkspace(rootDir, ignoredDirs, () => {
 });
 
 renderer.on("destroy", () => {
-    clearInterval(persistenceInterval);
     clearRefreshRetryTimer();
-    persistence.setUiState(app.getPersistenceSnapshot());
-    try {
-        persistence.saveSync();
-    } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        console.error(`[persistence] failed to write state: ${message}`);
-    }
     app.shutdown();
     workspaceChangeUnsub();
     focusUnsub();
