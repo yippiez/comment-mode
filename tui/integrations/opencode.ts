@@ -2,6 +2,7 @@
  * OpenCode integration: launches OpenCode/headless runs, parses streaming
  * JSON line events, and updates the agent timeline via `SIGNALS`.
  */
+import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { SIGNALS } from "../signals";
 import type { AgentModel, AgentUpdate, ViewMode } from "../types";
@@ -183,7 +184,7 @@ export class OpenCode {
 
         if (!update) {
             update = {
-                id: `agent-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+                id: `agent-${randomUUID().slice(0, 8)}`,
                 contextMode: submission.viewMode,
                 filePath: submission.filePath,
                 selectionStartFileLine: submission.selectionStartFileLine,

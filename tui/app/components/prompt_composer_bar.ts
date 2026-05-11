@@ -13,15 +13,6 @@ import { theme } from "../../theme";
 import { clearChildren } from "../../utils/ui";
 import { displayWidth, estimateWrappedLines, truncateLeftLabel } from "../../utils/text";
 
-type RuntimeTextareaStyleApi = {
-  backgroundColor?: string;
-  focusedBackgroundColor?: string;
-  textColor?: string;
-  focusedTextColor?: string;
-  selectionBg?: string;
-  selectionFg?: string;
-};
-
 export type PromptComposerField = "prompt" | "model" | "thinking";
 
 export type PromptComposerViewState = {
@@ -375,12 +366,11 @@ export class PromptComposerBar {
 
     /** Applies theme colors to prompt textarea runtime style fields. */
     private applyTextareaTheme(): void {
-        const runtimeTextarea = this.input as unknown as RuntimeTextareaStyleApi;
-        runtimeTextarea.backgroundColor = theme.getPromptInputBackgroundColor();
-        runtimeTextarea.focusedBackgroundColor = theme.getPromptInputFocusedBackgroundColor();
-        runtimeTextarea.textColor = theme.getPromptTextColor();
-        runtimeTextarea.focusedTextColor = theme.getPromptFocusedTextColor();
-        runtimeTextarea.selectionBg = theme.getPromptSelectionBackgroundColor();
-        runtimeTextarea.selectionFg = theme.getPromptSelectionForegroundColor();
+        this.input.backgroundColor = theme.getPromptInputBackgroundColor();
+        this.input.focusedBackgroundColor = theme.getPromptInputFocusedBackgroundColor();
+        this.input.textColor = theme.getPromptTextColor();
+        this.input.focusedTextColor = theme.getPromptFocusedTextColor();
+        this.input.selectionBg = theme.getPromptSelectionBackgroundColor();
+        this.input.selectionFg = theme.getPromptSelectionForegroundColor();
     }
 }

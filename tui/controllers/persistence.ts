@@ -75,7 +75,10 @@ export class PersistenceController {
         this.rootDir = targetRootDir;
         const snapshot = structuredClone(this.state);
         this.writeQueue = this.writeQueue
-            .catch(() => undefined)
+            .catch((error: unknown) => {
+                const message = error instanceof Error ? error.message : String(error);
+                console.error(`[persistence] failed to flush previous write: ${message}`);
+            })
             .then(() => this.writeState(targetRootDir, snapshot));
         return this.writeQueue;
     }

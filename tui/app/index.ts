@@ -823,11 +823,11 @@ export class CodeBrowserApp {
         };
 
         this.renderer.keyInput.on("keypress", onKeypress);
-        (this.renderer.keyInput as unknown as { on: (event: string, handler: (event: PasteEvent) => void) => void }).on("paste", onPaste);
+        this.renderer.keyInput.on("paste", onPaste);
 
         return () => {
             this.renderer.keyInput.off("keypress", onKeypress);
-            (this.renderer.keyInput as unknown as { off: (event: string, handler: (event: PasteEvent) => void) => void }).off("paste", onPaste);
+            this.renderer.keyInput.off("paste", onPaste);
         };
     }
 

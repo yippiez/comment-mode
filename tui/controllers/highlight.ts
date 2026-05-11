@@ -6,15 +6,11 @@ import { CodeRenderable, LineNumberRenderable, RGBA, Selection } from "@opentui/
 import { theme } from "../theme";
 import type { RenderedLineBlock } from "../types";
 
-type RuntimeCodeSelectionApi = {
-  onSelectionChanged?: (selection: Selection | null) => boolean;
-  selectionFg?: string | RGBA;
-  selectionBg?: string | RGBA;
-};
-
-type RuntimeLineViewStyleApi = {
-  fg?: string | RGBA;
-};
+declare module "@opentui/core" {
+  interface LineNumberRenderable {
+    fg?: string | RGBA;
+  }
+}
 
 export class Highlight {
     private static readonly MAX_SELECTION_COL = 8192;
@@ -100,11 +96,10 @@ export class Highlight {
         overlapStart: number,
         overlapEnd: number,
     ): void {
-        const runtimeCodeView = codeView as unknown as RuntimeCodeSelectionApi;
-        if (typeof runtimeCodeView.onSelectionChanged !== "function") { return; }
+        if (typeof codeView.onSelectionChanged !== "function") { return; }
 
-        runtimeCodeView.selectionFg = undefined;
-        runtimeCodeView.selectionBg = theme.getTransparentColor();
+        codeView.selectionFg = undefined;
+        codeView.selectionBg = theme.getTransparentColor();
 
         const selectionStartLine = overlapStart - blockLineStart;
         const selectionEndLine = overlapEnd - blockLineStart;
@@ -120,18 +115,16 @@ export class Highlight {
         const selection = new Selection(codeView, anchor, focus);
         selection.isStart = true;
         selection.isDragging = false;
-        runtimeCodeView.onSelectionChanged(selection);
+        codeView.onSelectionChanged(selection);
     }
 
     private clearCodeSelection(codeView: CodeRenderable): void {
-        const runtimeCodeView = codeView as unknown as RuntimeCodeSelectionApi;
-        if (typeof runtimeCodeView.onSelectionChanged !== "function") { return; }
-        runtimeCodeView.onSelectionChanged(null);
+        if (typeof codeView.onSelectionChanged !== "function") { return; }
+        codeView.onSelectionChanged(null);
     }
 
     private setLineViewFg(lineView: LineNumberRenderable, fg: string | RGBA): void {
-        const runtimeLineView = lineView as unknown as RuntimeLineViewStyleApi;
-        runtimeLineView.fg = fg;
+        lineView.fg = fg;
         lineView.requestRender();
     }
 }
