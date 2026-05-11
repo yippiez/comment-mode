@@ -47,19 +47,14 @@ import { DocumentBlocks } from "./components/document_blocks";
 import { AppRenderer } from "./renderer";
 import { VirtualCodeBlocks } from "./virtual_code_blocks";
 import {
-    type PersistedUiGroup,
     type PersistedUiState,
 } from "../controllers/persistence";
-import { GroupNameModal } from "./components/group_name_modal";
 import { ChipSelectionController } from "../controllers/chip_selection";
-import { GroupManagementController } from "../controllers/group_management";
 import { PersistedCursorController } from "../controllers/persisted_cursor";
 
 type CodeBrowserAppOptions = {
   workspaceRootDir?: string;
   initialPersistedUiState?: PersistedUiState | null;
-  initialPersistedGroups?: PersistedUiGroup[];
-  onPersistedGroupsChanged?: (groups: PersistedUiGroup[]) => void;
   initialAgentUpdates?: AgentUpdate[];
   onAgentUpdatesChanged?: (updates: AgentUpdate[]) => void;
 };
@@ -76,12 +71,10 @@ export class CodeBrowserApp {
     private readonly chipsRow: BoxRenderable;
     private readonly scrollbox: ScrollBoxRenderable;
     private readonly promptComposer: PromptComposerBar;
-    private readonly groupNameModal: GroupNameModal;
     private readonly shortcutsModal: ShortcutsModal;
     private readonly camera: Camera;
     private readonly navigation: NavigationController;
     private readonly chipSelection: ChipSelectionController;
-    private readonly groupManagement: GroupManagementController;
     private readonly persistedCursor: PersistedCursorController;
     private readonly agent: OpenCode;
     private readonly prompt: Prompt;
@@ -140,11 +133,9 @@ export class CodeBrowserApp {
         this.root.add(this.scrollbox);
 
         this.promptComposer = new PromptComposerBar(renderer);
-        this.groupNameModal = new GroupNameModal(renderer);
         this.shortcutsModal = new ShortcutsModal(renderer);
 
         this.root.add(this.promptComposer.renderable);
-        this.root.add(this.groupNameModal.renderable);
         this.root.add(this.shortcutsModal.renderable);
         this.renderer.root.add(this.root);
         this.chipsRow.focusable = false;
@@ -195,43 +186,17 @@ export class CodeBrowserApp {
         this.hiddenTypeCounts = new Map();
         this.sortedTypes = [];
         this.enabledTypes = new Map();
-        this.groupManagement = new GroupManagementController({
-            initialGroups: options.initialPersistedGroups ?? [],
-            groupNameModal: this.groupNameModal,
-            onPersistedGroupsChanged: options.onPersistedGroupsChanged,
-            getTypeChipCount: () => this.sortedTypes.length,
-            getSelectedChipIndex: () => this.state.selectedChipIndex,
-            setSelectedChipIndex: (index) => {
-                this.state.selectedChipIndex = index;
-            },
-            getPersistenceSnapshot: () => this.getPersistenceSnapshot(),
-            applyPersistedUiState: (state) => this.applyPersistedUiState(state),
-            recomputeTypesState: () => this.recomputeTypesState(),
-            renderChips: () => this.renderChips(),
-            renderAll: () => this.renderAll(),
-            restorePersistedCursorState: () => this.persistedCursor.restore(),
-        });
         this.chipSelection = new ChipSelectionController({
-            getChipCount: () => this.sortedTypes.length + this.groupManagement.getGroups().length,
+            getChipCount: () => this.sortedTypes.length,
             getSelectedChipIndex: () => this.state.selectedChipIndex,
             setSelectedChipIndex: (index) => {
                 this.state.selectedChipIndex = index;
             },
-            resolveSelectedTarget: () => {
-                const selectedChipIndex = this.state.selectedChipIndex;
-                if (selectedChipIndex < this.sortedTypes.length) {
-                    const selectedType = this.sortedTypes[selectedChipIndex];
-                    return selectedType ? { kind: "type", type: selectedType } : null;
-                }
-
-                const selectedGroup = this.groupManagement.getSelectedGroup();
-                return selectedGroup ? { kind: "group", groupId: selectedGroup.id } : null;
-            },
+            getSelectedType: () => this.sortedTypes[this.state.selectedChipIndex] ?? null,
             isTypeEnabled: (type) => this.isTypeEnabled(type),
             setTypeEnabled: (type, enabled) => {
                 this.enabledTypes.set(type, enabled);
             },
-            applyGroupSnapshot: (groupId) => this.groupManagement.applyGroupSnapshot(groupId),
             renderChips: () => this.renderChips(),
             renderContent: () => this.renderContent(),
         });
@@ -252,7 +217,6 @@ export class CodeBrowserApp {
             documentBlocks: this.documentBlocks,
             getEntries: () => this.getVisibleEntries(),
             getSortedTypes: () => this.sortedTypes,
-            getGroupChips: () => this.groupManagement.getGroupChipDescriptors(),
             getTypeCounts: (type) => this.getTypeCounts(type),
             isTypeEnabled: (type) => this.isTypeEnabled(type),
             getFocusMode: () => this.state.focusMode,
@@ -446,22 +410,6 @@ export class CodeBrowserApp {
             this.resetVisibilityState();
         });
 
-        this.onSignal(SIGNALS.groupsSaveOrUpdate, () => {
-            this.groupManagement.saveOrUpdateSelectedGroup();
-        });
-
-        this.onSignal(SIGNALS.groupsDeleteSelected, () => {
-            this.groupManagement.deleteSelectedGroup();
-        });
-
-        this.onSignal(SIGNALS.groupsNameSubmit, () => {
-            this.groupManagement.submitName();
-        });
-
-        this.onSignal(SIGNALS.groupsNameCancel, () => {
-            this.groupManagement.cancelName();
-        });
-
         this.onSignal(SIGNALS.navJumpTop, () => {
             this.navigation.jumpToTop();
         });
@@ -580,27 +528,6 @@ export class CodeBrowserApp {
             const keyName = (key.name ?? "").toLowerCase();
             const rawKeyName = key.name;
             const state = this.getKeyboardStateSnapshot();
-
-            if (state.groupNamePromptVisible) {
-                if (keyName === "escape") {
-                    key.preventDefault?.();
-                    key.stopPropagation?.();
-                    SIGNALS.groupsNameCancel();
-                    return;
-                }
-                if (keyName === "return" || keyName === "enter") {
-                    key.preventDefault?.();
-                    key.stopPropagation?.();
-                    SIGNALS.groupsNameSubmit();
-                    return;
-                }
-                const handled = this.groupManagement.handleGroupNameInputKey(this.toAppKeyInput(key));
-                if (handled) {
-                    key.preventDefault?.();
-                    key.stopPropagation?.();
-                }
-                return;
-            }
 
             if (state.promptVisible) {
                 if (keyName === "escape") {
@@ -747,20 +674,7 @@ export class CodeBrowserApp {
                 return;
             }
 
-            if (keyName === "s") {
-                key.preventDefault?.();
-                key.stopPropagation?.();
-                SIGNALS.groupsSaveOrUpdate();
-                return;
-            }
-
             if (state.focusMode === "chips") {
-                if (keyName === "x") {
-                    key.preventDefault?.();
-                    key.stopPropagation?.();
-                    SIGNALS.groupsDeleteSelected();
-                    return;
-                }
                 if (keyName === "left") {
                     key.preventDefault?.();
                     key.stopPropagation?.();
@@ -901,13 +815,6 @@ export class CodeBrowserApp {
             if (!pastedText) { return; }
 
             const state = this.getKeyboardStateSnapshot();
-            if (state.groupNamePromptVisible) {
-                event.preventDefault?.();
-                event.stopPropagation?.();
-                this.groupNameModal.handlePasteText(pastedText);
-                return;
-            }
-
             if (!state.promptVisible) { return; }
 
             event.preventDefault?.();
@@ -1000,14 +907,12 @@ export class CodeBrowserApp {
     }
 
     private getKeyboardStateSnapshot(): {
-    groupNamePromptVisible: boolean;
     promptVisible: boolean;
     focusMode: FocusMode;
     promptField: PromptComposerField | null;
     shortcutsVisible: boolean;
     } {
         return {
-            groupNamePromptVisible: this.groupNameModal.isVisible,
             promptVisible: this.prompt.isVisible,
             focusMode: this.state.focusMode,
             promptField: this.prompt.isVisible ? this.prompt.currentField : null,
@@ -1175,7 +1080,6 @@ export class CodeBrowserApp {
     /** Applies active theme colors to always-mounted UI containers and overlays. */
     private applyTheme(): void {
         this.appRenderer.applyTheme();
-        this.groupNameModal.applyTheme();
         this.shortcutsModal.applyTheme();
     }
 
@@ -1277,9 +1181,6 @@ export class CodeBrowserApp {
 
     private renderAll(options: { cursorTargetFilePath?: string; preferFirstAnchor?: boolean } = {}): void {
         this.appRenderer.renderAll(options);
-        if (this.groupNameModal.isVisible) {
-            this.groupNameModal.refreshLayout();
-        }
         if (this.shortcutsModal.isVisible) {
             this.shortcutsModal.refreshLayout();
         }
@@ -1333,7 +1234,6 @@ export class CodeBrowserApp {
             this.entries,
             this.enabledTypes,
             this.state.selectedChipIndex,
-            this.groupManagement.getGroups().length,
             this.virtualCodeBlocks.getSupplementalTypes(),
         );
         this.typeCounts = nextState.typeCounts;

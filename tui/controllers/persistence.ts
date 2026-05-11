@@ -39,18 +39,9 @@ export type PersistedUiState = {
     prompt: PersistedPromptState;
 };
 
-export type PersistedUiGroup = {
-    id: string;
-    name: string;
-    snapshot: PersistedUiState;
-    createdAt: string;
-    updatedAt: string;
-};
-
 export type PersistedState = {
     version: typeof PERSISTED_STATE_VERSION;
     ui: PersistedUiState | null;
-    groups: PersistedUiGroup[];
 };
 
 const PERSISTENCE_DIRNAME = ".comment";
@@ -61,7 +52,6 @@ export class PersistenceController {
     private state: PersistedState = {
         version: PERSISTED_STATE_VERSION,
         ui: null,
-        groups: [],
     };
     private writeQueue: Promise<void> = Promise.resolve();
 
@@ -75,7 +65,6 @@ export class PersistenceController {
         this.state = loaded ?? {
             version: PERSISTED_STATE_VERSION,
             ui: null,
-            groups: [],
         };
     }
 
@@ -114,10 +103,6 @@ export class PersistenceController {
         this.state.ui = state ? structuredClone(state) : null;
     }
 
-    public setGroups(groups: readonly PersistedUiGroup[]): void {
-        this.state.groups = structuredClone([...groups]);
-    }
-
     // ------------------------------------------
     // Getters
     // ------------------------------------------
@@ -128,10 +113,6 @@ export class PersistenceController {
 
     public getUiState(): PersistedUiState | null {
         return this.state.ui ? structuredClone(this.state.ui) : null;
-    }
-
-    public getGroups(): readonly PersistedUiGroup[] {
-        return structuredClone(this.state.groups);
     }
 
     public getChipsState(): PersistedChipsState | null {
@@ -200,15 +181,9 @@ function parsePersistedState(value: unknown): PersistedState | null {
         return null;
     }
 
-    const groups = parsePersistedGroups(record.groups);
-    if (groups === null) {
-        return null;
-    }
-
     return {
         version: PERSISTED_STATE_VERSION,
         ui,
-        groups,
     };
 }
 
@@ -376,63 +351,6 @@ function parsePersistedPromptState(value: unknown): PersistedPromptState | null 
     return {
         model: record.model,
         thinkingLevel: record.thinkingLevel,
-    };
-}
-
-function parsePersistedGroups(value: unknown): PersistedUiGroup[] | null {
-    if (!Array.isArray(value)) {
-        return null;
-    }
-
-    const groups: PersistedUiGroup[] = [];
-    for (const groupValue of value) {
-        const group = parsePersistedUiGroup(groupValue);
-        if (!group) {
-            return null;
-        }
-        groups.push(group);
-    }
-
-    return groups;
-}
-
-function parsePersistedUiGroup(value: unknown): PersistedUiGroup | null {
-    if (Object.prototype.toString.call(value) !== "[object Object]") {
-        return null;
-    }
-
-    const record = value as {
-        id?: unknown;
-        name?: unknown;
-        snapshot?: unknown;
-        createdAt?: unknown;
-        updatedAt?: unknown;
-    };
-
-    if (typeof record.id !== "string" || record.id.length === 0) {
-        return null;
-    }
-    if (typeof record.name !== "string" || record.name.length === 0) {
-        return null;
-    }
-    if (typeof record.createdAt !== "string" || !isIsoTimestamp(record.createdAt)) {
-        return null;
-    }
-    if (typeof record.updatedAt !== "string" || !isIsoTimestamp(record.updatedAt)) {
-        return null;
-    }
-
-    const snapshot = parsePersistedUiState(record.snapshot);
-    if (!snapshot) {
-        return null;
-    }
-
-    return {
-        id: record.id,
-        name: record.name,
-        snapshot,
-        createdAt: record.createdAt,
-        updatedAt: record.updatedAt,
     };
 }
 

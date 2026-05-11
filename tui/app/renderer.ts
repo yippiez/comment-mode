@@ -28,11 +28,6 @@ import { resolveBlockKindPenalty } from "../utils/restore";
 import { normalizePersistedLineText } from "../utils/text";
 import { resolvePromptComposerLayout as resolvePromptComposerLayoutForSelection } from "./selection";
 
-type GroupChipDescriptor = {
-  id: string;
-  name: string;
-};
-
 type RestoreLineReference = {
   globalLine: number;
   filePath: string | null;
@@ -77,7 +72,6 @@ type AppRendererOptions = {
   documentBlocks: DocumentBlocks;
   getEntries: () => CodeFileEntry[];
   getSortedTypes: () => readonly string[];
-  getGroupChips: () => readonly GroupChipDescriptor[];
   getTypeCounts: (type: string) => { shown: number; hidden: number };
   isTypeEnabled: (type: string) => boolean;
   getFocusMode: () => FocusMode;
@@ -105,7 +99,6 @@ export class AppRenderer {
     private readonly documentBlocks: DocumentBlocks;
     private readonly getEntries: () => CodeFileEntry[];
     private readonly getSortedTypes: () => readonly string[];
-    private readonly getGroupChips: () => readonly GroupChipDescriptor[];
     private readonly getTypeCounts: (type: string) => { shown: number; hidden: number };
     private readonly isTypeEnabled: (type: string) => boolean;
     private readonly getFocusMode: () => FocusMode;
@@ -134,7 +127,6 @@ export class AppRenderer {
         this.documentBlocks = options.documentBlocks;
         this.getEntries = options.getEntries;
         this.getSortedTypes = options.getSortedTypes;
-        this.getGroupChips = options.getGroupChips;
         this.getTypeCounts = options.getTypeCounts;
         this.isTypeEnabled = options.isTypeEnabled;
         this.getFocusMode = options.getFocusMode;
@@ -174,7 +166,6 @@ export class AppRenderer {
             renderer: this.renderer,
             chipsRow: this.chipsRow,
             sortedTypes: this.getSortedTypes(),
-            groupChips: this.getGroupChips(),
             selectedChipIndex: this.state.selectedChipIndex,
             chipWindowStartIndex: this.state.chipWindowStartIndex,
             chipsFocused: this.getFocusMode() === "chips",

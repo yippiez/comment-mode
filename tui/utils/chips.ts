@@ -23,15 +23,10 @@ const CHIP_OVERFLOW_INDICATOR_WIDTH = 1;
 const CHIP_OVERFLOW_INDICATOR_FOOTPRINT = CHIP_OVERFLOW_INDICATOR_WIDTH + CHIP_GAP_WIDTH;
 const CHIP_OVERFLOW_INDICATOR_COLOR = "#00ffff";
 
-type GroupChipDescriptor = {
-    name: string;
-};
-
 export type RenderTypeChipsOptions = {
     renderer: CliRenderer;
     chipsRow: BoxRenderable;
     sortedTypes: readonly string[];
-    groupChips: readonly GroupChipDescriptor[];
     selectedChipIndex: number;
     chipWindowStartIndex: number;
     chipsFocused: boolean;
@@ -63,21 +58,18 @@ export type RenderTypeChipsOptions = {
 export function renderTypeChips(options: RenderTypeChipsOptions): number {
     clearChildren(options.chipsRow);
 
-    const typeChipCount = options.sortedTypes.length;
-    const totalChipCount = typeChipCount + options.groupChips.length;
+    const totalChipCount = options.sortedTypes.length;
 
     if (totalChipCount === 0) {
         return 0;
     }
 
-    const typeChipLabels = options.sortedTypes.map((type) => {
+    const chipLabels = options.sortedTypes.map((type) => {
         const counts = options.getTypeCounts(type);
         return counts.hidden > 0
             ? `${type} (${counts.shown}/${counts.hidden})`
             : `${type} (${counts.shown})`;
     });
-    const groupChipLabels = options.groupChips.map((group) => `@${group.name}`);
-    const chipLabels = [...typeChipLabels, ...groupChipLabels];
     const chipWidths = chipLabels.map((label) => Math.max(1, displayWidth(label) + 2));
     const selectedChipIndex = clamp(options.selectedChipIndex, 0, chipWidths.length - 1);
     const viewportWidth = resolveChipsViewportWidth(options);
@@ -103,11 +95,10 @@ export function renderTypeChips(options: RenderTypeChipsOptions): number {
     options.chipsRow.add(chipsViewport);
 
     for (let index = startIndex; index < endIndex; index += 1) {
-        const isTypeChip = index < typeChipCount;
-        const type = isTypeChip ? options.sortedTypes[index] : null;
-        if (isTypeChip && !type) { continue; }
+        const type = options.sortedTypes[index];
+        if (!type) { continue; }
 
-        const enabled = isTypeChip && type ? options.isTypeEnabled(type) : true;
+        const enabled = options.isTypeEnabled(type);
         const selected = index === selectedChipIndex;
 
         const chip = new BoxRenderable(options.renderer, {
@@ -128,7 +119,7 @@ export function renderTypeChips(options: RenderTypeChipsOptions): number {
                 fg: theme.getChipTextColor(selected, enabled),
                 attributes: selected
                     ? TextAttributes.BOLD | TextAttributes.UNDERLINE
-                    : isTypeChip && !enabled
+                    : !enabled
                         ? TextAttributes.DIM
                         : TextAttributes.BOLD,
             }),

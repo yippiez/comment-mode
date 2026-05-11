@@ -4,18 +4,13 @@
  */
 import { wrapIndex } from "../utils/math";
 
-export type SelectedChipTarget =
-  | { kind: "type"; type: string }
-  | { kind: "group"; groupId: string };
-
 type ChipSelectionControllerOptions = {
   getChipCount: () => number;
   getSelectedChipIndex: () => number;
   setSelectedChipIndex: (index: number) => void;
-  resolveSelectedTarget: () => SelectedChipTarget | null;
+  getSelectedType: () => string | null;
   isTypeEnabled: (type: string) => boolean;
   setTypeEnabled: (type: string, enabled: boolean) => void;
-  applyGroupSnapshot: (groupId: string) => void;
   renderChips: () => void;
   renderContent: () => void;
 };
@@ -41,19 +36,14 @@ export class ChipSelectionController {
     }
 
     public toggleSelected(): void {
-        const selectedTarget = this.options.resolveSelectedTarget();
-        if (!selectedTarget) { return; }
+        const selectedType = this.options.getSelectedType();
+        if (!selectedType) { return; }
 
-        if (selectedTarget.kind === "type") {
-            this.options.setTypeEnabled(
-                selectedTarget.type,
-                !this.options.isTypeEnabled(selectedTarget.type),
-            );
-            this.options.renderChips();
-            this.options.renderContent();
-            return;
-        }
-
-        this.options.applyGroupSnapshot(selectedTarget.groupId);
+        this.options.setTypeEnabled(
+            selectedType,
+            !this.options.isTypeEnabled(selectedType),
+        );
+        this.options.renderChips();
+        this.options.renderContent();
     }
 }

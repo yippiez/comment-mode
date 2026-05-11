@@ -19,7 +19,6 @@ const rootDir = process.cwd();
 const persistence = new PersistenceController();
 await persistence.load(rootDir);
 const persistedUiState = persistence.getUiState();
-const persistedGroups = [...persistence.getGroups()];
 const entries = await loadCodeFileEntries(rootDir);
 
 const savePersistence = (): void => {
@@ -32,12 +31,6 @@ const savePersistence = (): void => {
 const app = new CodeBrowserApp(renderer, entries, {
     workspaceRootDir: rootDir,
     initialPersistedUiState: persistedUiState,
-    initialPersistedGroups: persistedGroups,
-    onPersistedGroupsChanged: (groups) => {
-        persistence.setGroups(groups);
-        persistence.setUiState(app.getPersistenceSnapshot());
-        savePersistence();
-    },
 });
 app.start();
 

@@ -29,7 +29,6 @@ export function recomputeTypeState(
     entries: readonly CodeFileEntry[],
     previousEnabled: ReadonlyMap<string, boolean>,
     selectedChipIndex: number,
-    actionChipCount: number,
     supplementalTypes: readonly SupplementalTypeState[] = [],
 ): RecomputeTypeStateResult {
     const typeCounts = new Map<string, number>();
@@ -67,7 +66,7 @@ export function recomputeTypeState(
         typeCounts,
         sortedTypes,
         enabledTypes,
-        selectedChipIndex: clamp(selectedChipIndex, 0, Math.max(0, sortedTypes.length + actionChipCount - 1)),
+        selectedChipIndex: clamp(selectedChipIndex, 0, Math.max(0, sortedTypes.length - 1)),
     };
 }
 
