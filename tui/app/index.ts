@@ -604,6 +604,13 @@ export class CodeBrowserApp {
                 return;
             }
 
+            if (keyName === "q") {
+                key.preventDefault?.();
+                key.stopPropagation?.();
+                SIGNALS.appQuit();
+                return;
+            }
+
             if (keyName === "t") {
                 key.preventDefault?.();
                 key.stopPropagation?.();
