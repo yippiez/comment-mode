@@ -1,0 +1,20 @@
+id: no-forEach-array-mutation
+snapshots:
+  SHORTCUT_SECTIONS.forEach((section, i) => { render(section); });:
+    labels:
+    - source: SHORTCUT_SECTIONS.forEach((section, i) => { render(section); })
+      style: primary
+      start: 0
+      end: 63
+  items.forEach((item, index, arr) => arr[index] = item + 1);:
+    labels:
+    - source: items.forEach((item, index, arr) => arr[index] = item + 1)
+      style: primary
+      start: 0
+      end: 58
+  subscribers.forEach((listener) => listener(...args));:
+    labels:
+    - source: subscribers.forEach((listener) => listener(...args))
+      style: primary
+      start: 0
+      end: 52

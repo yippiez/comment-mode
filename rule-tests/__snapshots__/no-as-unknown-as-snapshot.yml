@@ -1,0 +1,20 @@
+id: no-as-unknown-as
+snapshots:
+  '(this.renderer.keyInput as unknown as { on: () => void }).on("paste", handler);':
+    labels:
+    - source: 'this.renderer.keyInput as unknown as { on: () => void }'
+      style: primary
+      start: 1
+      end: 56
+  const runtimeCodeView = codeView as unknown as RuntimeCodeSelectionApi;:
+    labels:
+    - source: codeView as unknown as RuntimeCodeSelectionApi
+      style: primary
+      start: 24
+      end: 70
+  const x = value as unknown as string;:
+    labels:
+    - source: value as unknown as string
+      style: primary
+      start: 10
+      end: 36

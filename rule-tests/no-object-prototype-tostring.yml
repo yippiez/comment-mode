@@ -1,0 +1,7 @@
+id: no-object-prototype-tostring
+valid:
+  - "function isPlainObject(value: unknown): boolean { return true; }"
+  - "if (isPlainObject(x)) { return; }"
+invalid:
+  - "Object.prototype.toString.call(value) !== '[object Object]'"
+  - "if (Object.prototype.toString.call(x) === '[object Object]') { return true; }"

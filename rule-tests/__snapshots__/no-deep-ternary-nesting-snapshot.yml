@@ -1,0 +1,20 @@
+id: no-deep-ternary-nesting
+snapshots:
+  'a ? b : c ? d : e':
+    labels:
+    - source: 'a ? b : c ? d : e'
+      style: primary
+      start: 0
+      end: 17
+  'a ? b ? c : d : e':
+    labels:
+    - source: 'a ? b ? c : d : e'
+      style: primary
+      start: 0
+      end: 17
+  'typeof x === ''number'' && typeof y === ''number'' ? Math.abs(x - y) : typeof x === ''number'' ? Number.MAX_SAFE_INTEGER : 0':
+    labels:
+    - source: 'typeof x === ''number'' && typeof y === ''number'' ? Math.abs(x - y) : typeof x === ''number'' ? Number.MAX_SAFE_INTEGER : 0'
+      style: primary
+      start: 0
+      end: 118

@@ -1,0 +1,9 @@
+id: no-deep-ternary-nesting
+valid:
+  - "const x = a ? b : c;"
+  - "const y = a ? (b ? c : d) : e;"
+  - "if (a) { return b ? c : d; } else { return e; }"
+invalid:
+  - "a ? b ? c : d : e"
+  - "a ? b : c ? d : e"
+  - "typeof x === 'number' && typeof y === 'number' ? Math.abs(x - y) : typeof x === 'number' ? Number.MAX_SAFE_INTEGER : 0"

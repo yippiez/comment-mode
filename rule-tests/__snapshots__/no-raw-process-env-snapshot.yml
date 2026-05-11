@@ -1,0 +1,26 @@
+id: no-raw-process-env
+snapshots:
+  const editor = process.env.EDITOR?.trim();:
+    labels:
+    - source: process.env.EDITOR
+      style: primary
+      start: 15
+      end: 33
+  const port = Number(process.env.PORT || '3000');:
+    labels:
+    - source: process.env.PORT
+      style: primary
+      start: 20
+      end: 36
+  if (!process.env.EDITOR?.trim()) { return; }:
+    labels:
+    - source: process.env.EDITOR
+      style: primary
+      start: 5
+      end: 23
+  process.env.EDITOR:
+    labels:
+    - source: process.env.EDITOR
+      style: primary
+      start: 0
+      end: 18

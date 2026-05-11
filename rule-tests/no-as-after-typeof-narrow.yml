@@ -1,0 +1,9 @@
+id: no-as-after-typeof-narrow
+valid:
+  - "const x = unknownValue as string;"
+  - "const y = data as JsonRecord;"
+  - "if (typeof signalArgs[0] === 'function') { const fn = signalArgs[0]; }"
+invalid:
+  - "signalArgs[0] as SignalListener<Args>"
+  - "signalArgs as Args"
+  - "subscribers.forEach((listener) => listener(...(signalArgs as Args)));"

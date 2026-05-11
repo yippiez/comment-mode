@@ -1,0 +1,14 @@
+id: no-catch-swallow
+snapshots:
+  promise.catch(() => undefined):
+    labels:
+    - source: promise.catch(() => undefined)
+      style: primary
+      start: 0
+      end: 30
+  this.writeQueue.catch(() => undefined):
+    labels:
+    - source: this.writeQueue.catch(() => undefined)
+      style: primary
+      start: 0
+      end: 38

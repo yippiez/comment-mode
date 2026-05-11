@@ -1,0 +1,9 @@
+id: no-as-unknown-as
+valid:
+  - "const x = value as string;"
+  - "const y = value as unknown;"
+  - "function f(a: unknown): string { return a as string; }"
+invalid:
+  - "const x = value as unknown as string;"
+  - "const runtimeCodeView = codeView as unknown as RuntimeCodeSelectionApi;"
+  - "(this.renderer.keyInput as unknown as { on: () => void }).on(\"paste\", handler);"

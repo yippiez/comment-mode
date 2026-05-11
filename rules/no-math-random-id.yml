@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/ast-grep/ast-grep/main/schemas/rule.json
+
+id: no-math-random-id
+message: "Do not use Math.random() for ID generation. Use crypto.randomUUID() or crypto.getRandomValues."
+severity: error
+language: TypeScript
+rule:
+  pattern: Math.random()

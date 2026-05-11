@@ -1,0 +1,14 @@
+id: no-splice-clear-array
+snapshots:
+  arr.splice(0, arr.length - 5):
+    labels:
+    - source: arr.splice(0, arr.length - 5)
+      style: primary
+      start: 0
+      end: 29
+  update.messages.splice(0, update.messages.length - 64):
+    labels:
+    - source: update.messages.splice(0, update.messages.length - 64)
+      style: primary
+      start: 0
+      end: 54

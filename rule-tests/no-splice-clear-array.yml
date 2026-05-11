@@ -1,0 +1,8 @@
+id: no-splice-clear-array
+valid:
+  - "arr.length = 0;"
+  - "arr = arr.slice(-64);"
+  - "const removed = arr.splice(0, 3);"
+invalid:
+  - "update.messages.splice(0, update.messages.length - 64)"
+  - "arr.splice(0, arr.length - 5)"

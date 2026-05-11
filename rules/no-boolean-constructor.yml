@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/ast-grep/ast-grep/main/schemas/rule.json
+
+id: no-boolean-constructor
+message: "Use `!!expr` or an explicit predicate instead of `Boolean(expr)`."
+severity: warning
+language: TypeScript
+rule:
+  pattern: Boolean($$$ARGS)

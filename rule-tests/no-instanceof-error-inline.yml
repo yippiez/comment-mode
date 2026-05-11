@@ -1,0 +1,8 @@
+id: no-instanceof-error-inline
+valid:
+  - "const message = toErrorMessage(error);"
+  - "if (error instanceof Error) { console.log(error.message); }"
+invalid:
+  - "error instanceof Error ? error.message : String(error)"
+  - "const message = error instanceof Error ? error.message : String(error);"
+  - "result = { ok: false, error: error instanceof Error ? error.message : 'Failed.' };"

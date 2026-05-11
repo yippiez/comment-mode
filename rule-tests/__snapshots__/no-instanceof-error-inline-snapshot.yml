@@ -1,0 +1,20 @@
+id: no-instanceof-error-inline
+snapshots:
+  'const message = error instanceof Error ? error.message : String(error);':
+    labels:
+    - source: 'error instanceof Error ? error.message : String(error)'
+      style: primary
+      start: 16
+      end: 70
+  'error instanceof Error ? error.message : String(error)':
+    labels:
+    - source: 'error instanceof Error ? error.message : String(error)'
+      style: primary
+      start: 0
+      end: 54
+  'result = { ok: false, error: error instanceof Error ? error.message : ''Failed.'' };':
+    labels:
+    - source: 'error instanceof Error ? error.message : ''Failed.'''
+      style: primary
+      start: 29
+      end: 79

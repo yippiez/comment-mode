@@ -1,0 +1,8 @@
+id: no-math-random-id
+valid:
+  - "const id = crypto.randomUUID();"
+  - "const bytes = crypto.getRandomValues(new Uint8Array(16));"
+  - "const x = Math.floor(3.14);"
+invalid:
+  - "Math.random()"
+  - "const id = `agent-${Date.now()}-${Math.random()}`;"

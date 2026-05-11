@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/ast-grep/ast-grep/main/schemas/rule.json
+
+id: no-as-unknown-as
+message: "Disallow double-cast through `as unknown as`. Prefer interface augmentation, proper typing, or runtime validation."
+severity: error
+language: TypeScript
+rule:
+  pattern: $X as unknown as $Y

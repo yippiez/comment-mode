@@ -1,0 +1,8 @@
+id: no-forEach-array-mutation
+valid:
+  - "for (const item of items) { console.log(item); }"
+  - "for (const [i, v] of arr.entries()) { console.log(v); }"
+invalid:
+  - "subscribers.forEach((listener) => listener(...args));"
+  - "SHORTCUT_SECTIONS.forEach((section, i) => { render(section); });"
+  - "items.forEach((item, index, arr) => arr[index] = item + 1);"

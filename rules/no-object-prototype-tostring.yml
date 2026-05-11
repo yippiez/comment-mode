@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/ast-grep/ast-grep/main/schemas/rule.json
+
+id: no-object-prototype-tostring
+message: "Extract a named `isPlainObject` helper instead of inline Object.prototype.toString.call."
+severity: warning
+language: TypeScript
+rule:
+  pattern: Object.prototype.toString.call($$$ARGS)

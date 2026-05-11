@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/ast-grep/ast-grep/main/schemas/rule.json
+
+id: no-instanceof-error-inline
+message: "Extract a `toErrorMessage(error)` helper instead of inline `instanceof Error ? ... : ...`."
+severity: warning
+language: TypeScript
+rule:
+  pattern: "$X instanceof Error ? $A : $B"

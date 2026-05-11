@@ -1,0 +1,14 @@
+id: no-sort-mutate-inplace
+snapshots:
+  blocks.sort((a, b) => a.priority - b.priority):
+    labels:
+    - source: blocks.sort((a, b) => a.priority - b.priority)
+      style: primary
+      start: 0
+      end: 46
+  catalog.map((item) => item.model).sort((a, b) => a.localeCompare(b)):
+    labels:
+    - source: catalog.map((item) => item.model).sort((a, b) => a.localeCompare(b))
+      style: primary
+      start: 0
+      end: 68

@@ -1,0 +1,20 @@
+id: no-as-after-typeof-narrow
+snapshots:
+  signalArgs as Args:
+    labels:
+    - source: signalArgs as Args
+      style: primary
+      start: 0
+      end: 18
+  signalArgs[0] as SignalListener<Args>:
+    labels:
+    - source: signalArgs[0] as SignalListener<Args>
+      style: primary
+      start: 0
+      end: 37
+  subscribers.forEach((listener) => listener(...(signalArgs as Args)));:
+    labels:
+    - source: signalArgs as Args
+      style: primary
+      start: 47
+      end: 65

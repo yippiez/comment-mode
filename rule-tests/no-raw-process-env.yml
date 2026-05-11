@@ -1,0 +1,8 @@
+id: no-raw-process-env
+valid:
+  - "const editor = getEnv('EDITOR');"
+invalid:
+  - "process.env.EDITOR"
+  - "if (!process.env.EDITOR?.trim()) { return; }"
+  - "const editor = process.env.EDITOR?.trim();"
+  - "const port = Number(process.env.PORT || '3000');"

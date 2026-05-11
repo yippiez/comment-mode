@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/ast-grep/ast-grep/main/schemas/rule.json
+
+id: no-deep-ternary-nesting
+message: "Avoid deeply nested ternaries. Extract variables or use if/else with early returns."
+severity: warning
+language: TypeScript
+rule:
+  any:
+    - pattern: "$A ? $B ? $C : $D : $E"
+    - pattern: "$A ? $B : $C ? $D : $E"

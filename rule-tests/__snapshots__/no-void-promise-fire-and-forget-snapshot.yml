@@ -1,0 +1,20 @@
+id: no-void-promise-fire-and-forget
+snapshots:
+  void persistence.save().catch((e) => { });:
+    labels:
+    - source: void persistence.save().catch((e) => { })
+      style: primary
+      start: 0
+      end: 41
+  void refreshEntries();:
+    labels:
+    - source: void refreshEntries()
+      style: primary
+      start: 0
+      end: 21
+  void this.persistedCursor.restoreAfterRender(this.renderer);:
+    labels:
+    - source: void this.persistedCursor.restoreAfterRender(this.renderer)
+      style: primary
+      start: 0
+      end: 59

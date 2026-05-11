@@ -1,0 +1,7 @@
+id: no-sort-mutate-inplace
+valid:
+  - "return [...catalog.values()].sort((a, b) => a.model.localeCompare(b.model));"
+  - "const sorted = [...blocks].sort((a, b) => a.priority - b.priority);"
+invalid:
+  - "blocks.sort((a, b) => a.priority - b.priority)"
+  - "catalog.map((item) => item.model).sort((a, b) => a.localeCompare(b))"

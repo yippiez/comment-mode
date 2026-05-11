@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/ast-grep/ast-grep/main/schemas/rule.json
+
+id: no-sort-mutate-inplace
+message: "Avoid mutating an array in-place with `.sort()`. Use `[...arr].sort()` to avoid side-effects."
+severity: info
+language: TypeScript
+rule:
+  pattern: $ARR.sort($$$ARGS)
+constraints:
+  ARR:
+    not:
+      regex: "^\\["

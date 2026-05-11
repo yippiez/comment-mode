@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/ast-grep/ast-grep/main/schemas/rule.json
+
+id: no-void-promise-fire-and-forget
+message: "Do not fire a promise with `void` without attaching `.catch()`. Unhandled rejections crash the process."
+severity: warning
+language: TypeScript
+rule:
+  pattern: void $CALL
+constraints:
+  CALL:
+    kind: call_expression

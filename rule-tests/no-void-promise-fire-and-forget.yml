@@ -1,0 +1,6 @@
+id: no-void-promise-fire-and-forget
+valid: []
+invalid:
+  - "void refreshEntries();"
+  - "void persistence.save().catch((e) => { });"
+  - "void this.persistedCursor.restoreAfterRender(this.renderer);"

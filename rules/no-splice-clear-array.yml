@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/ast-grep/ast-grep/main/schemas/rule.json
+
+id: no-splice-clear-array
+message: "Use `array.slice()` or `array.length = 0` instead of `.splice(0, array.length - N)`."
+severity: info
+language: TypeScript
+rule:
+  pattern: $ARR.splice(0, $ARR.length - $N)

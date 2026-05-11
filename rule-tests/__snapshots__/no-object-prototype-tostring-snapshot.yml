@@ -1,0 +1,14 @@
+id: no-object-prototype-tostring
+snapshots:
+  Object.prototype.toString.call(value) !== '[object Object]':
+    labels:
+    - source: Object.prototype.toString.call(value)
+      style: primary
+      start: 0
+      end: 37
+  if (Object.prototype.toString.call(x) === '[object Object]') { return true; }:
+    labels:
+    - source: Object.prototype.toString.call(x)
+      style: primary
+      start: 4
+      end: 37

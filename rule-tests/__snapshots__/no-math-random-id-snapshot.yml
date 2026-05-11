@@ -1,0 +1,14 @@
+id: no-math-random-id
+snapshots:
+  Math.random():
+    labels:
+    - source: Math.random()
+      style: primary
+      start: 0
+      end: 13
+  const id = `agent-${Date.now()}-${Math.random()}`;:
+    labels:
+    - source: Math.random()
+      style: primary
+      start: 34
+      end: 47

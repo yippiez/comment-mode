@@ -1,0 +1,8 @@
+id: no-catch-swallow
+valid:
+  - "promise.catch((error) => console.error(error));"
+  - "promise.catch(() => { return defaultValue; });"
+  - "promise.catch((e) => { throw e; });"
+invalid:
+  - "this.writeQueue.catch(() => undefined)"
+  - "promise.catch(() => undefined)"

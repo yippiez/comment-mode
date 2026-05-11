@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/ast-grep/ast-grep/main/schemas/rule.json
+
+id: no-raw-process-env
+message: "Access process.env through a typed helper with fallback instead of bare property access."
+severity: warning
+language: TypeScript
+rule:
+  pattern: process.env.$VAR

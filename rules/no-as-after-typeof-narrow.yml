@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/ast-grep/ast-grep/main/schemas/rule.json
+
+id: no-as-after-typeof-narrow
+message: "Remove redundant `as` assertion after a `typeof` guard already narrowed the type."
+severity: warning
+language: TypeScript
+rule:
+  any:
+    - pattern: signalArgs[$N] as $TYPE
+    - pattern: signalArgs as $TYPE

@@ -1,0 +1,9 @@
+id: no-boolean-constructor
+valid:
+  - "const ok = !!value;"
+  - "const visible = this.visible && this.target !== null;"
+  - "const ok = value === true;"
+invalid:
+  - "Boolean(value)"
+  - ".filter((row): row is FileTreeRow => Boolean(row))"
+  - "const visible = this.visible && Boolean(this.target);"

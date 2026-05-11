@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/ast-grep/ast-grep/main/schemas/rule.json
+
+id: no-forEach-array-mutation
+message: "Prefer `for...of` over `.forEach()` when not mutating the array itself."
+severity: info
+language: TypeScript
+rule:
+  pattern: $ARR.forEach($$$ARGS)
