@@ -4,9 +4,9 @@
  * updates through signals.
  */
 import { KeyEvent } from "@opentui/core";
-import { OpenCode } from "../integrations/opencode";
+import type { ModelCatalogItem } from "../integrations/agents/interface";
 import { SIGNALS } from "../signals";
-import type { AppKeyInput, ViewMode } from "../types";
+import type { AgentHarness, AppKeyInput, ViewMode } from "../types";
 import { readFromClipboard } from "../utils/clipboard";
 import { wrapIndex } from "../utils/math";
 import {
@@ -25,6 +25,7 @@ export type PromptTarget = {
   selectedText: string;
   prompt: string;
   model: string;
+  harness?: AgentHarness;
   thinkingLevel?: string;
 };
 
@@ -37,6 +38,7 @@ export type PromptSubmission = {
   selectedText: string;
   prompt: string;
   model: string;
+  harness?: AgentHarness;
   thinkingLevel?: string;
 };
 
@@ -52,6 +54,8 @@ type PromptOptions = {
     target: PromptTarget | null,
     fallbackAnchorLine: number | null,
   ) => PromptComposerLayout;
+  /** Load models from all configured harnesses. */
+  listAllModels: () => Promise<ModelCatalogItem[]>;
 };
 
 export class Prompt {
@@ -63,6 +67,7 @@ export class Prompt {
     target: PromptTarget | null,
     fallbackAnchorLine: number | null,
   ) => PromptComposerLayout;
+    private readonly listAllModels: () => Promise<ModelCatalogItem[]>;
 
     private visible = false;
     private field: PromptComposerField = "prompt";
@@ -81,6 +86,7 @@ export class Prompt {
         this.promptComposer = options.promptComposer;
         this.rootDir = options.rootDir ?? process.cwd();
         this.resolveLayout = options.resolveLayout;
+        this.listAllModels = options.listAllModels;
     }
 
     // ------------------------------------------
@@ -222,6 +228,7 @@ export class Prompt {
             selectedText: this.target.selectedText,
             prompt: this.target.prompt,
             model: this.target.model,
+            harness: this.resolveHarnessFromModel(this.target.model),
             thinkingLevel:
         this.target.thinkingLevel && this.target.thinkingLevel !== Prompt.DEFAULT_THINKING_LEVEL
             ? this.target.thinkingLevel
@@ -285,14 +292,23 @@ export class Prompt {
         return this.availableModels[0] ?? preferred;
     }
 
-    /** Refreshes model list and variant map from opencode metadata. */
+    /** Extracts the harness identifier from a model string. */
+    private resolveHarnessFromModel(model: string): AgentHarness {
+        if (model.startsWith("opencode/")) { return "opencode"; }
+        if (model.startsWith("pi:")) { return "pi"; }
+        if (model.startsWith("codex:")) { return "codex"; }
+        if (model.startsWith("claude:")) { return "claude_code"; }
+        return "opencode";
+    }
+
+    /** Refreshes model list and variant map from all configured harnesses. */
     private async refreshAvailableModels(): Promise<void> {
         if (this.modelListLoading) { return; }
         this.modelListLoading = true;
         this.render();
 
         try {
-            const catalog = await OpenCode.listModels(this.rootDir);
+            const catalog = await this.listAllModels();
             if (catalog.length > 0) {
                 this.availableModels = catalog.map((item) => item.model).sort((a, b) => a.localeCompare(b));
                 this.modelVariantsById = new Map(

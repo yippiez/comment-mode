@@ -63,7 +63,7 @@ export type BlockKind = "code" | "collapsed" | "agent" | "file";
 /**
  * Agent provider/runtime implementation used for prompt execution.
  */
-export type AgentHarness = "opencode";
+export type AgentHarness = "opencode" | "pi" | "codex" | "claude_code";
 
 /**
  * Resolved model identifier (for example `opencode/big-pickle`).

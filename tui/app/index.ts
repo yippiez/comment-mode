@@ -10,7 +10,11 @@ import {
     type PasteEvent,
 } from "@opentui/core";
 import { Camera } from "../controllers/camera";
-import { OpenCode, type OpenCodeSubmission } from "../integrations/opencode";
+import { OpenCode } from "../integrations/agents/opencode";
+import { Pi } from "../integrations/agents/pi";
+import { Codex } from "../integrations/agents/codex";
+import { ClaudeCode } from "../integrations/agents/claude_code";
+import { type BaseHarness, type ModelCatalogItem, type Submission } from "../integrations/agents/interface";
 import { Layout } from "../controllers/layout";
 import { hydrateCodeFileEntry, isMissingCodeFileError } from "../utils/files";
 import { NavigationController } from "../controllers/navigation";
@@ -70,7 +74,7 @@ export class CodeBrowserApp {
     private readonly camera: Camera;
     private readonly navigation: NavigationController;
     private readonly chipSelection: ChipSelectionController;
-    private readonly agent: OpenCode;
+    private readonly harnesses: Map<string, BaseHarness>;
     private readonly prompt: Prompt;
     private readonly appRenderer: AppRenderer;
     private readonly documentBlocks: DocumentBlocks;
@@ -157,17 +161,22 @@ export class CodeBrowserApp {
             this.fileExplorer,
         );
 
-        this.agent = new OpenCode({
-            rootDir: this.workspaceRootDir,
-            initialUpdates: options.initialAgentUpdates ?? [],
-            onUpdatesChanged: options.onAgentUpdatesChanged,
-        });
+        const initialUpdates = options.initialAgentUpdates ?? [];
+        const onUpdatesChanged = options.onAgentUpdatesChanged;
+
+        this.harnesses = new Map<string, BaseHarness>([
+            ["opencode", new OpenCode({ rootDir: this.workspaceRootDir, initialUpdates, onUpdatesChanged })],
+            ["pi", new Pi({ rootDir: this.workspaceRootDir, initialUpdates, onUpdatesChanged })],
+            ["codex", new Codex({ rootDir: this.workspaceRootDir, initialUpdates, onUpdatesChanged })],
+            ["claude_code", new ClaudeCode({ rootDir: this.workspaceRootDir, initialUpdates, onUpdatesChanged })],
+        ]);
 
         this.prompt = new Prompt({
             rootDir: this.workspaceRootDir,
             promptComposer: this.promptComposer,
             resolveLayout: (target, fallbackAnchorLine) =>
                 this.resolvePromptComposerLayout(target, fallbackAnchorLine),
+            listAllModels: () => this.listModelsForAllHarnesses(),
         });
 
         this.typeCounts = new Map();
@@ -258,7 +267,11 @@ export class CodeBrowserApp {
     // ------------------------------------------
 
     public getAgentUpdates(): AgentUpdate[] {
-        return this.agent.getUpdates();
+        const all: AgentUpdate[] = [];
+        for (const harness of this.harnesses.values()) {
+            all.push(...harness.getUpdates());
+        }
+        return all;
     }
 
     // ------------------------------------------
@@ -267,7 +280,9 @@ export class CodeBrowserApp {
 
     public shutdown(): void {
         this.unregisterBindings();
-        this.agent.shutdown();
+        for (const harness of this.harnesses.values()) {
+            harness.shutdown();
+        }
         if (this.prompt.isVisible) {
             this.prompt.close();
         }
@@ -982,7 +997,31 @@ export class CodeBrowserApp {
 
     /** Persists prompt submission and triggers agent run without moving cursor. */
     private async submitPromptToAgent(submission: PromptSubmission): Promise<void> {
-        const upsertPayload: OpenCodeSubmission = {
+        const harnessId = submission.harness ?? "opencode";
+        const harness = this.harnesses.get(harnessId);
+        if (!harness) {
+            // Unknown harness — fall back to opencode
+            const fallback = this.harnesses.get("opencode");
+            if (!fallback) { return; }
+            const upsertPayload: Submission = {
+                updateId: submission.updateId,
+                viewMode: submission.viewMode,
+                filePath: submission.filePath,
+                selectionStartFileLine: submission.selectionStartFileLine,
+                selectionEndFileLine: submission.selectionEndFileLine,
+                selectedText: submission.selectedText,
+                prompt: submission.prompt,
+                model: submission.model,
+                thinkingLevel: submission.thinkingLevel,
+            };
+            const update = fallback.upsertFromSubmission(upsertPayload);
+            this.cursor.disableVisualMode();
+            this.renderContent();
+            await fallback.launch(update);
+            return;
+        }
+
+        const upsertPayload: Submission = {
             updateId: submission.updateId,
             viewMode: submission.viewMode,
             filePath: submission.filePath,
@@ -993,16 +1032,20 @@ export class CodeBrowserApp {
             model: submission.model,
             thinkingLevel: submission.thinkingLevel,
         };
-        const update = this.agent.upsertFromSubmission(upsertPayload);
+        const update = harness.upsertFromSubmission(upsertPayload);
         this.cursor.disableVisualMode();
         this.renderContent();
-        await this.agent.launch(update);
+        await harness.launch(update);
     }
 
     private getAgentUpdateAtCursorLine(): AgentUpdate | undefined {
         const updateId = this.agentTimeline.getUpdateIdAtLine(this.cursor.cursorLine);
         if (!updateId) { return undefined; }
-        return this.agent.findById(updateId);
+        for (const harness of this.harnesses.values()) {
+            const found = harness.findById(updateId);
+            if (found) { return found; }
+        }
+        return undefined;
     }
 
     private isTypeEnabled(type: string): boolean {
@@ -1107,6 +1150,28 @@ export class CodeBrowserApp {
         }
     }
 
+    private async listModelsForAllHarnesses(): Promise<ModelCatalogItem[]> {
+        const all: ModelCatalogItem[] = [];
+        for (const harness of this.harnesses.values()) {
+            try {
+                const items = await harness.listModels();
+                // Prefix models with harness identifier for disambiguation
+                const prefix = harness.harnessId;
+                for (const item of items) {
+                    all.push({
+                        model: prefix === "opencode"
+                            ? item.model // opencode models already have the prefix (e.g. "opencode/big-pickle")
+                            : `${prefix}:${item.model}`,
+                        variants: item.variants,
+                    });
+                }
+            } catch {
+                // Skip harnesses that can't list models
+            }
+        }
+        return all;
+    }
+
     private resetVisibilityState(): void {
         this.fileExplorer.expandAll();
         this.recomputeTypesState();
@@ -1127,7 +1192,11 @@ export class CodeBrowserApp {
     }
 
     private getUpdatesForFile(filePath: string): AgentUpdate[] {
-        return Layout.getUpdatesForFile(this.agent.getMutableUpdates(), filePath);
+        const all: AgentUpdate[] = [];
+        for (const harness of this.harnesses.values()) {
+            all.push(...harness.getMutableUpdates());
+        }
+        return Layout.getUpdatesForFile(all, filePath);
     }
 
     private renderAll(options: { cursorTargetFilePath?: string; preferFirstAnchor?: boolean } = {}): void {
@@ -1160,7 +1229,10 @@ export class CodeBrowserApp {
     private deleteCurrentAgentPrompt(): void {
         const update = this.getAgentUpdateAtCursorLine();
         if (!update) { return; }
-        this.agent.remove(update.id);
+        const harness = this.harnesses.get(update.harness);
+        if (harness) {
+            harness.remove(update.id);
+        }
     }
 
     private getAnchorDividerDisplayRow(anchor: { filePath: string; dividerRow: number }): number {
@@ -1201,7 +1273,9 @@ export class CodeBrowserApp {
     private pruneAgentUpdates(): void {
         const existing = new Set(this.entries.map((entry) => entry.relativePath));
         existing.add(".");
-        this.agent.pruneForEntries(existing);
+        for (const harness of this.harnesses.values()) {
+            harness.pruneForEntries(existing);
+        }
     }
 
     private pruneCollapsedFiles(): void {
