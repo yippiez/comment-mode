@@ -81,4 +81,7 @@ export const SIGNALS = {
     onFocus: signalCreate(),
     workspaceChanged: signalCreate(),
     agentRenderRequested: signalCreate(),
+    diffViewCycleLayout: signalCreate(),
+    navJumpNextHunk: signalCreate(),
+    navJumpPrevHunk: signalCreate(),
 } as const;

@@ -27,6 +27,8 @@ import { renderTypeChips } from "../utils/chips";
 import { resolveBlockKindPenalty } from "../utils/restore";
 import { normalizePersistedLineText } from "../utils/text";
 import { resolvePromptComposerLayout as resolvePromptComposerLayoutForSelection } from "./selection";
+import { renderDiffList, type DiffLayoutMode, type DiffRenderResult } from "./components/diff_view";
+import type { DiffInfo, ChangedFile } from "../integrations/version_control/interface";
 
 type RestoreLineReference = {
   globalLine: number;
@@ -81,6 +83,9 @@ type AppRendererOptions = {
   scheduleFileContentLoad: (entry: CodeFileEntry) => void;
   isPromptVisible: () => boolean;
   refreshPromptView: () => void;
+  getDiffInfo: () => DiffInfo | null;
+  getDiffChangedFiles: () => readonly ChangedFile[];
+  getDiffLayoutMode: () => DiffLayoutMode;
 };
 
 export class AppRenderer {
@@ -109,6 +114,10 @@ export class AppRenderer {
     private readonly isPromptVisible: () => boolean;
     private readonly refreshPromptView: () => void;
 
+    private readonly getDiffInfo: () => DiffInfo | null;
+    private readonly getDiffChangedFiles: () => readonly ChangedFile[];
+    private readonly getDiffLayoutMode: () => DiffLayoutMode;
+
     private dividerByFilePath = new Map<string, TextRenderable>();
 
     constructor(options: AppRendererOptions) {
@@ -136,6 +145,9 @@ export class AppRenderer {
         this.scheduleFileContentLoad = options.scheduleFileContentLoad;
         this.isPromptVisible = options.isPromptVisible;
         this.refreshPromptView = options.refreshPromptView;
+        this.getDiffInfo = options.getDiffInfo;
+        this.getDiffChangedFiles = options.getDiffChangedFiles;
+        this.getDiffLayoutMode = options.getDiffLayoutMode;
     }
 
     // ------------------------------------------
@@ -188,6 +200,19 @@ export class AppRenderer {
             this.dividerByFilePath = new Map();
             this.agentTimeline.resetForRender();
             this.fileExplorer.clearRows();
+
+            // Check if diff view is enabled and has changed files
+            const diffInfo = this.getDiffInfo();
+            if (diffInfo && diffInfo.changedFiles.length > 0) {
+                this.renderDiffView(diffInfo.changedFiles);
+                return;
+            }
+
+            if (diffInfo && diffInfo.vcsType !== "none") {
+                this.renderEmptyState("No changes detected in repository.");
+                this.cursor.configure(0);
+                return;
+            }
 
             if (entries.length === 0) {
                 this.renderEmptyState("No code files found.");
@@ -883,5 +908,39 @@ export class AppRenderer {
             return candidate.globalLineDistance < currentBest.globalLineDistance;
         }
         return candidate.globalLine < currentBest.globalLine;
+    }
+
+    // ------------------------------------------
+    // Diff View
+    // ------------------------------------------
+
+    private renderDiffView(changedFiles: readonly ChangedFile[]): void {
+        const layoutMode = this.getDiffLayoutMode();
+        const viewportWidth = Math.max(80, this.renderer.width - 20);
+
+        const diffConfig = {
+            renderer: this.renderer,
+            scrollbox: this.scrollbox,
+            getViewportWidth: () => viewportWidth,
+            getTotalWidth: () => this.renderer.width,
+        };
+
+        const result: DiffRenderResult = renderDiffList(diffConfig, changedFiles, 1, 0);
+
+        // Register file anchors for cursor-based navigation
+        for (const anchor of result.fileAnchors) {
+            this.lineModel.markDivider(anchor.dividerRow);
+            this.lineModel.addFileAnchor({
+                line: anchor.line,
+                dividerRow: anchor.dividerRow,
+                filePath: anchor.filePath,
+            });
+        }
+
+        this.lineModel.setTotalLines(result.nextLineNumber - 1);
+        this.cursor.configure(this.lineModel.totalLines);
+
+        // Store hunk lines for hunk-based navigation (n/p)
+        this.state.diffHunkLines = result.hunkLines;
     }
 }

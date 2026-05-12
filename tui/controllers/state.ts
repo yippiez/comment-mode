@@ -5,11 +5,19 @@
 import type { CodeFileEntry, FocusMode } from "../types";
 import { clamp } from "../utils/math";
 import { getParentPosixPath } from "../utils/path";
+import type { DiffInfo } from "../integrations/version_control/interface";
+import type { DiffLayoutMode } from "../app/components/diff_view";
 
 export class AppStateStore {
     public focusMode: FocusMode = "code";
     public selectedChipIndex = 0;
     public chipWindowStartIndex = 0;
+
+    // Diff view state
+    public diffLayoutMode: DiffLayoutMode = "stacked";
+    public diffInfo: DiffInfo | null = null;
+    public diffHunkLines: readonly number[] = [];
+    public diffFileAnchors: ReadonlyArray<{ line: number; dividerRow: number; filePath: string }> = [];
 }
 
 export type SupplementalTypeState = {

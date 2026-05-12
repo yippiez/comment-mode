@@ -42,8 +42,8 @@ const SHORTCUT_SECTIONS: readonly ShortcutSection[] = [
             { keys: "PgUp", description: "Move cursor up by one page" },
             { keys: "gg", description: "Jump to top" },
             { keys: "G", description: "Jump to bottom" },
-            { keys: "n", description: "Jump to next file" },
-            { keys: "p", description: "Jump to previous file" },
+            { keys: "n / ]", description: "Jump to next file or diff hunk" },
+            { keys: "p / [", description: "Jump to previous file or diff hunk" },
             { keys: "a", description: "Jump to next agent update" },
             { keys: "Enter", description: "Open file/directory or open prompt" },
             { keys: "Backspace", description: "Go to parent directory" },
@@ -81,6 +81,12 @@ const SHORTCUT_SECTIONS: readonly ShortcutSection[] = [
             { keys: "Model: r", description: "Refresh model list" },
             { keys: "Thinking: Left/Up", description: "Previous reasoning level" },
             { keys: "Thinking: Right/Down", description: "Next reasoning level" },
+        ],
+    },
+    {
+        title: "Diff View",
+        shortcuts: [
+            { keys: "D", description: "Cycle diff layout (stacked/side-by-side)" },
         ],
     },
 ];

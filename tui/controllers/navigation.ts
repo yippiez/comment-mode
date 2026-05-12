@@ -60,6 +60,41 @@ export class NavigationController {
         this.jumpToNextAgentPrompt();
     }
 
+    /** Jumps cursor to the next hunk start line in the diff view. */
+    public jumpToNextHunk(hunkLines: readonly number[]): void {
+        if (hunkLines.length === 0 || this.bindings.lineModel.totalLines <= 0) { return; }
+        const currentLine = this.bindings.cursor.cursorLine;
+        // Find first hunk line greater than current cursor line
+        const next = hunkLines.find((line) => line > currentLine);
+        if (typeof next === "number") {
+            this.bindings.cursor.goToLine(next, "auto");
+        } else {
+            // Wrap around to first hunk
+            this.bindings.cursor.goToLine(hunkLines[0] ?? 1, "auto");
+        }
+    }
+
+    /** Jumps cursor to the previous hunk start line in the diff view. */
+    public jumpToPreviousHunk(hunkLines: readonly number[]): void {
+        if (hunkLines.length === 0 || this.bindings.lineModel.totalLines <= 0) { return; }
+        const currentLine = this.bindings.cursor.cursorLine;
+        // Find the nearest hunk line that is before the current cursor line
+        let prev: number | null = null;
+        for (const line of hunkLines) {
+            if (line >= currentLine) { break; }
+            prev = line;
+        }
+        if (prev !== null) {
+            this.bindings.cursor.goToLine(prev, "auto");
+        } else {
+            // Wrap around to last hunk
+            const last = hunkLines[hunkLines.length - 1];
+            if (typeof last === "number") {
+                this.bindings.cursor.goToLine(last, "auto");
+            }
+        }
+    }
+
     /** Moves cursor/camera to next file anchor and places divider near top band. */
     // ------------------------------------------
     // Private Helpers

@@ -18,7 +18,7 @@ const entries = await loadCodeFileEntries(rootDir);
 const app = new CodeBrowserApp(renderer, entries, {
     workspaceRootDir: rootDir,
 });
-app.start();
+await app.start();
 
 let refreshRunning = false;
 let refreshPending = false;
@@ -52,7 +52,7 @@ const refreshEntries = async () => {
         refreshPending = false;
         try {
             const nextEntries = await loadCodeFileEntries(rootDir);
-            app.refreshEntries(nextEntries);
+            await app.refreshEntries(nextEntries);
             refreshRetryArmed = true;
             clearRefreshRetryTimer();
         } catch {

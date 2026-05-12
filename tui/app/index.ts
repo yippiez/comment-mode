@@ -51,6 +51,8 @@ import { DocumentBlocks } from "./components/document_blocks";
 import { AppRenderer } from "./renderer";
 import { VirtualCodeBlocks } from "./virtual_code_blocks";
 import { ChipSelectionController } from "../controllers/chip_selection";
+import { collectDiffInfo, type DiffInfo, type ChangedFile } from "../integrations/version_control/interface";
+import { type DiffLayoutMode } from "./components/diff_view";
 
 type CodeBrowserAppOptions = {
   workspaceRootDir?: string;
@@ -226,6 +228,9 @@ export class CodeBrowserApp {
             scheduleFileContentLoad: (entry) => this.scheduleFileContentLoad(entry),
             isPromptVisible: () => this.prompt.isVisible,
             refreshPromptView: () => this.prompt.refreshView(),
+            getDiffInfo: () => this.state.diffInfo,
+            getDiffChangedFiles: () => this.getDiffChangedFiles(),
+            getDiffLayoutMode: () => this.state.diffLayoutMode,
         });
 
         this.navigation = new NavigationController({
@@ -245,20 +250,22 @@ export class CodeBrowserApp {
     // Actions
     // ------------------------------------------
 
-    public start(): void {
+    public async start(): Promise<void> {
         this.pruneAgentUpdates();
         this.registerBindings();
         this.state.focusMode = "code";
+        await this.loadDiffInfo();
         this.renderAll({ preferFirstAnchor: this.lazyContentModeEnabled });
         this.prompt.start();
     }
 
-    public refreshEntries(entries: CodeFileEntry[]): void {
+    public async refreshEntries(entries: CodeFileEntry[]): Promise<void> {
         this.entries = entries;
         this.enableLazyContentModeIfNeeded();
         this.pruneCollapsedFiles();
         this.pruneAgentUpdates();
         this.recomputeTypesState();
+        await this.loadDiffInfo();
         this.renderAll({ preferFirstAnchor: this.lazyContentModeEnabled });
     }
 
@@ -400,6 +407,14 @@ export class CodeBrowserApp {
             this.navigation.jumpToPreviousFile();
         });
 
+        this.onSignal(SIGNALS.navJumpNextHunk, () => {
+            this.navigation.jumpToNextHunk(this.state.diffHunkLines);
+        });
+
+        this.onSignal(SIGNALS.navJumpPrevHunk, () => {
+            this.navigation.jumpToPreviousHunk(this.state.diffHunkLines);
+        });
+
         this.onSignal(SIGNALS.navJumpNextAgent, () => {
             this.navigation.jumpToNextAgent();
         });
@@ -457,6 +472,10 @@ export class CodeBrowserApp {
 
         this.onSignal(SIGNALS.agentRenderRequested, () => {
             this.renderContent();
+        });
+
+        this.onSignal(SIGNALS.diffViewCycleLayout, () => {
+            this.cycleDiffLayout();
         });
 
         this.onSignal(SIGNALS.systemStdoutResize, () => {
@@ -647,6 +666,15 @@ export class CodeBrowserApp {
                 return;
             }
 
+            if (keyName === "d") {
+                key.preventDefault?.();
+                key.stopPropagation?.();
+                if (key.shift) {
+                    SIGNALS.diffViewCycleLayout();
+                }
+                return;
+            }
+
             if (keyName === "r") {
                 key.preventDefault?.();
                 key.stopPropagation?.();
@@ -744,14 +772,22 @@ export class CodeBrowserApp {
                 this.pendingGChordAt = null;
                 key.preventDefault?.();
                 key.stopPropagation?.();
-                SIGNALS.navJumpNextFile();
+                if (this.state.diffHunkLines.length > 0) {
+                    SIGNALS.navJumpNextHunk();
+                } else {
+                    SIGNALS.navJumpNextFile();
+                }
                 return;
             }
             if (keyName === "p") {
                 this.pendingGChordAt = null;
                 key.preventDefault?.();
                 key.stopPropagation?.();
-                SIGNALS.navJumpPrevFile();
+                if (this.state.diffHunkLines.length > 0) {
+                    SIGNALS.navJumpPrevHunk();
+                } else {
+                    SIGNALS.navJumpPrevFile();
+                }
                 return;
             }
             if (keyName === "a") {
@@ -766,6 +802,28 @@ export class CodeBrowserApp {
                 key.preventDefault?.();
                 key.stopPropagation?.();
                 SIGNALS.agentDeleteAtCursor();
+                return;
+            }
+            if (keyName === "]") {
+                this.pendingGChordAt = null;
+                key.preventDefault?.();
+                key.stopPropagation?.();
+                if (this.state.diffHunkLines.length > 0) {
+                    SIGNALS.navJumpNextHunk();
+                } else {
+                    SIGNALS.navJumpNextFile();
+                }
+                return;
+            }
+            if (keyName === "[") {
+                this.pendingGChordAt = null;
+                key.preventDefault?.();
+                key.stopPropagation?.();
+                if (this.state.diffHunkLines.length > 0) {
+                    SIGNALS.navJumpPrevHunk();
+                } else {
+                    SIGNALS.navJumpPrevFile();
+                }
                 return;
             }
             if (keyName === "e") {
@@ -1150,6 +1208,15 @@ export class CodeBrowserApp {
         }
     }
 
+    private cycleDiffLayout(): void {
+        this.state.diffLayoutMode = this.state.diffLayoutMode === "stacked" ? "side-by-side" : "stacked";
+        this.renderContent();
+    }
+
+    private async loadDiffInfo(): Promise<void> {
+        this.state.diffInfo = await collectDiffInfo(this.workspaceRootDir);
+    }
+
     private async listModelsForAllHarnesses(): Promise<ModelCatalogItem[]> {
         const all: ModelCatalogItem[] = [];
         for (const harness of this.harnesses.values()) {
@@ -1170,6 +1237,10 @@ export class CodeBrowserApp {
             }
         }
         return all;
+    }
+
+    private getDiffChangedFiles(): readonly ChangedFile[] {
+        return this.state.diffInfo?.changedFiles ?? [];
     }
 
     private resetVisibilityState(): void {
