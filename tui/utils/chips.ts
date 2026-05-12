@@ -18,6 +18,11 @@ const CHIP_SCROLL_RIGHT_TRIGGER_RATIO = 0.8;
 const CHIP_GAP_WIDTH = 1;
 const CHIP_OVERFLOW_LEFT_INDICATOR = "<";
 const CHIP_OVERFLOW_RIGHT_INDICATOR = ">";
+
+/** Gets the text attributes for a chip based on enabled state. */
+function getChipAttributes(disabled: boolean): number {
+    return disabled ? TextAttributes.DIM : TextAttributes.BOLD;
+}
 const CHIP_OVERFLOW_INDICATOR_WIDTH = 1;
 // The footprint is the width of the indicator and the gap to the next chip.
 const CHIP_OVERFLOW_INDICATOR_FOOTPRINT = CHIP_OVERFLOW_INDICATOR_WIDTH + CHIP_GAP_WIDTH;
@@ -119,9 +124,7 @@ export function renderTypeChips(options: RenderTypeChipsOptions): number {
                 fg: theme.getChipTextColor(selected, enabled),
                 attributes: selected
                     ? TextAttributes.BOLD | TextAttributes.UNDERLINE
-                    : !enabled
-                        ? TextAttributes.DIM
-                        : TextAttributes.BOLD,
+                    : getChipAttributes(!enabled),
             }),
         );
 
