@@ -22,6 +22,7 @@ import type { DocumentBlocks } from "./components/document_blocks";
 import type { VirtualCodeBlocks } from "./virtual_code_blocks";
 import { theme } from "../theme";
 import { clamp } from "../utils/math";
+import { computeFilesModeViewportWidth } from "../utils/viewport";
 import { clearChildren, makeSlashLine } from "../utils/ui";
 import { renderTypeChips } from "../utils/chips";
 import { resolveBlockKindPenalty } from "../utils/restore";
@@ -916,16 +917,20 @@ export class AppRenderer {
 
     private renderDiffView(changedFiles: readonly ChangedFile[]): void {
         const layoutMode = this.getDiffLayoutMode();
-        const viewportWidth = Math.max(80, this.renderer.width - 20);
+        const viewportWidth = computeFilesModeViewportWidth(
+            Math.floor(this.scrollbox.viewport.width),
+            Math.floor(this.scrollbox.width),
+            this.renderer.width,
+        );
 
         const diffConfig = {
             renderer: this.renderer,
             scrollbox: this.scrollbox,
             getViewportWidth: () => viewportWidth,
-            getTotalWidth: () => this.renderer.width,
+            getTotalWidth: () => viewportWidth,
         };
 
-        const result: DiffRenderResult = renderDiffList(diffConfig, changedFiles, 1, 0);
+        const result: DiffRenderResult = renderDiffList(diffConfig, changedFiles, 1, 0, layoutMode);
 
         // Register file anchors for cursor-based navigation
         for (const anchor of result.fileAnchors) {

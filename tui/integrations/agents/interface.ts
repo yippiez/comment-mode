@@ -121,15 +121,34 @@ export async function runProcessCapture(
     command: string,
     args: string[],
     cwd: string,
+    timeoutMs?: number,
 ): Promise<ProcessCaptureResult> {
     return new Promise((resolve) => {
         let stdout = "";
         let stderr = "";
         let settled = false;
+        let timeout: ReturnType<typeof setTimeout> | null = null;
         const child = spawn(command, args, {
             cwd,
             stdio: ["ignore", "pipe", "pipe"],
         });
+
+        const finish = (result: ProcessCaptureResult): void => {
+            if (settled) { return; }
+            settled = true;
+            if (timeout) {
+                clearTimeout(timeout);
+                timeout = null;
+            }
+            resolve(result);
+        };
+
+        if (typeof timeoutMs === "number" && timeoutMs > 0) {
+            timeout = setTimeout(() => {
+                child.kill("SIGTERM");
+                finish({ stdout, stderr, code: null, error: new Error(`${command} timed out`) });
+            }, timeoutMs);
+        }
 
         child.stdout?.on("data", (chunk: Buffer | string) => {
             stdout += String(chunk);
@@ -140,15 +159,11 @@ export async function runProcessCapture(
         });
 
         child.on("error", (error) => {
-            if (settled) { return; }
-            settled = true;
-            resolve({ stdout, stderr, code: null, error });
+            finish({ stdout, stderr, code: null, error });
         });
 
         child.on("close", (code) => {
-            if (settled) { return; }
-            settled = true;
-            resolve({ stdout, stderr, code });
+            finish({ stdout, stderr, code });
         });
     });
 }

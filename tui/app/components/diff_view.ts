@@ -12,6 +12,7 @@ import {
     type ScrollBoxRenderable,
 } from "@opentui/core";
 import { diffLines, type DiffHunk, getDiffStats, type DiffResult } from "../../utils/diff";
+import { resolveFileType } from "../../utils/files";
 import { theme } from "../../theme";
 import type { ChangedFile } from "../../integrations/version_control/interface";
 
@@ -52,6 +53,8 @@ type DiffRenderCursor = {
 };
 
 const SIDE_BY_SIDE_MIN_WIDTH = 120;
+const SIDE_BY_SIDE_SEPARATOR = " | ";
+const SIDE_BY_SIDE_SEPARATOR_WIDTH = SIDE_BY_SIDE_SEPARATOR.length;
 const LINE_NUMBER_WIDTH_BUFFER = 4;
 
 /**
@@ -64,10 +67,14 @@ export function renderDiffList(
     files: readonly ChangedFile[],
     nextLineNumber: number,
     nextDisplayRow: number,
+    preferredLayoutMode: DiffLayoutMode,
 ): DiffRenderResult {
     const { renderer, scrollbox, getViewportWidth } = config;
     const viewportWidth = getViewportWidth();
-    const layoutMode: DiffLayoutMode = viewportWidth >= SIDE_BY_SIDE_MIN_WIDTH ? "side-by-side" : "stacked";
+    const layoutMode: DiffLayoutMode =
+        preferredLayoutMode === "side-by-side" && viewportWidth >= SIDE_BY_SIDE_MIN_WIDTH
+            ? "side-by-side"
+            : "stacked";
 
     let lineCursor = nextLineNumber;
     let rowCursor = nextDisplayRow;
@@ -125,6 +132,9 @@ export function renderFileDiff(
     const { renderer, scrollbox, getTotalWidth } = config;
     const filePath = file.relativePath;
 
+    // Resolve syntax-highlighting filetype from path
+    const filetype = file.relativePath ? resolveFileType(file.relativePath) : undefined;
+
     // Compute diff
     const diffResult = file.status === "untracked"
         ? createUntrackedDiff(file.newContent)
@@ -134,15 +144,8 @@ export function renderFileDiff(
 
     // Render file header
     const headerResult = renderDiffHeader(
-        renderer,
-        scrollbox,
-        filePath,
-        file.status,
-        file.staged,
-        stats,
-        getTotalWidth(),
-        nextLineNumber,
-        nextDisplayRow,
+        renderer, scrollbox, filePath, file.status, file.staged, stats,
+        getTotalWidth(), nextLineNumber, nextDisplayRow,
     );
     let lineCursor = headerResult.nextLineNumber;
     let rowCursor = headerResult.nextDisplayRow;
@@ -151,7 +154,7 @@ export function renderFileDiff(
 
     // Render diff content based on layout mode
     if (layoutMode === "side-by-side") {
-        const result = renderSideBySideDiff(config, diffResult, lineCursor, rowCursor);
+        const result = renderSideBySideDiff(config, diffResult, filetype, lineCursor, rowCursor);
         lineCursor = result.nextLineNumber;
         rowCursor = result.nextDisplayRow;
         if (result.hunkLines) { hunkLines.push(...result.hunkLines); }
@@ -161,7 +164,7 @@ export function renderFileDiff(
         }
         blocks.push(...result.blocks);
     } else {
-        const result = renderStackedDiff(config, diffResult, lineCursor, rowCursor);
+        const result = renderStackedDiff(config, diffResult, filetype, lineCursor, rowCursor);
         lineCursor = result.nextLineNumber;
         rowCursor = result.nextDisplayRow;
         if (result.hunkLines) { hunkLines.push(...result.hunkLines); }
@@ -278,6 +281,7 @@ function renderDiffHeader(
 function renderStackedDiff(
     config: DiffRendererConfig,
     diffResult: DiffResult,
+    filetype: string | undefined,
     nextLineNumber: number,
     nextDisplayRow: number,
 ): DiffRenderCursor & { hunkLines: number[] } {
@@ -310,6 +314,7 @@ function renderStackedDiff(
                     contentWidth,
                     lineCursor,
                     rowCursor,
+                    filetype,
                 );
                 lineCursor = result.nextLineNumber;
                 rowCursor = result.nextDisplayRow;
@@ -329,6 +334,7 @@ function renderStackedDiff(
                     contentWidth,
                     lineCursor,
                     rowCursor,
+                    filetype,
                 );
                 lineCursor = result.nextLineNumber;
                 rowCursor = result.nextDisplayRow;
@@ -347,6 +353,7 @@ function renderStackedDiff(
                     contentWidth,
                     lineCursor,
                     rowCursor,
+                    filetype,
                 );
                 lineCursor = result.nextLineNumber;
                 rowCursor = result.nextDisplayRow;
@@ -371,15 +378,18 @@ function renderStackedDiff(
 function renderSideBySideDiff(
     config: DiffRendererConfig,
     diffResult: DiffResult,
+    filetype: string | undefined,
     nextLineNumber: number,
     nextDisplayRow: number,
 ): DiffRenderCursor & { hunkLines: number[] } {
     const { renderer, scrollbox, getViewportWidth } = config;
-    // Reserve space for gutter and padding
-    const halfWidth = Math.floor((getViewportWidth() - 10) / 2);
+    const viewportWidth = Math.max(SIDE_BY_SIDE_MIN_WIDTH, Math.floor(getViewportWidth()));
+    const halfWidth = Math.max(1, Math.floor((viewportWidth - SIDE_BY_SIDE_SEPARATOR_WIDTH) / 2));
 
     let lineCursor = nextLineNumber;
     let rowCursor = nextDisplayRow;
+    let oldLineNum = 1;
+    let newLineNum = 1;
     const hunkLines: number[] = [];
     const blocks: DiffBlockRecord[] = [];
 
@@ -395,35 +405,41 @@ function renderSideBySideDiff(
         if (pair.type === "unchanged") {
             const result = renderSideBySideUnchanged(
                 renderer, scrollbox, pair.old ?? "", pair.new ?? "",
-                halfWidth, lineCursor, rowCursor,
+                halfWidth, newLineNum, lineCursor, rowCursor, filetype,
             );
             lineCursor = result.nextLineNumber;
             rowCursor = result.nextDisplayRow;
             blocks.push(...result.blocks);
+            oldLineNum += 1;
+            newLineNum += 1;
         } else if (pair.type === "modified") {
             const result = renderSideBySideModified(
                 renderer, scrollbox, pair.old ?? "", pair.new ?? "",
-                halfWidth, lineCursor, rowCursor,
+                halfWidth, newLineNum, lineCursor, rowCursor, filetype,
             );
             lineCursor = result.nextLineNumber;
             rowCursor = result.nextDisplayRow;
             blocks.push(...result.blocks);
+            oldLineNum += 1;
+            newLineNum += 1;
         } else if (pair.type === "removed") {
             const result = renderSideBySideRemoved(
                 renderer, scrollbox, pair.old ?? "",
-                halfWidth, lineCursor, rowCursor,
+                halfWidth, oldLineNum, lineCursor, rowCursor, filetype,
             );
             lineCursor = result.nextLineNumber;
             rowCursor = result.nextDisplayRow;
             blocks.push(...result.blocks);
+            oldLineNum += 1;
         } else if (pair.type === "added") {
             const result = renderSideBySideAdded(
                 renderer, scrollbox, pair.new ?? "",
-                halfWidth, lineCursor, rowCursor,
+                halfWidth, newLineNum, lineCursor, rowCursor, filetype,
             );
             lineCursor = result.nextLineNumber;
             rowCursor = result.nextDisplayRow;
             blocks.push(...result.blocks);
+            newLineNum += 1;
         }
     }
 
@@ -490,24 +506,20 @@ function renderDiffLine(
     _contentWidth: number,
     nextLineNumber: number,
     nextDisplayRow: number,
+    filetype: string | undefined,
 ): DiffRenderCursor {
     const prefix = getDiffLinePrefix(changeType);
-    let fg: string;
-    if (changeType === "insert") {
-        fg = theme.getAgentStatusBackgroundColor("completed");
-    } else if (changeType === "delete") {
-        fg = theme.getAgentStatusBackgroundColor("failed");
-    } else {
-        fg = theme.getDividerForegroundColor();
-    }
+    const { fg, bg } = getDiffLineColors(changeType);
 
     const lineText = prefix + content;
     const code = new CodeRenderable(renderer, {
         width: "100%",
         content: lineText,
+        filetype,
+        fg,
         syntaxStyle: theme.getSyntaxStyle(),
         wrapMode: "none",
-        bg: theme.getTransparentColor(),
+        bg,
     });
     code.selectable = false;
 
@@ -552,19 +564,66 @@ function renderSideBySideUnchanged(
     oldContent: string,
     newContent: string,
     halfWidth: number,
+    newLineNum: number,
     nextLineNumber: number,
     nextDisplayRow: number,
+    filetype: string | undefined,
 ): DiffRenderCursor {
-    // For now, render as a simple text line with separator
-    const content = `${truncate(oldContent, halfWidth - 10)} | ${truncate(newContent, halfWidth - 10)}`;
-    const text = new TextRenderable(renderer, {
+    const leftText = truncate(oldContent, halfWidth);
+    const rightText = truncate(newContent, halfWidth);
+    const content = `${leftText}${SIDE_BY_SIDE_SEPARATOR}${rightText}`;
+
+    const row = new BoxRenderable(renderer, {
         width: "100%",
-        content,
+        flexDirection: "row",
+        flexWrap: "no-wrap",
+        gap: 0,
+    });
+
+    const leftBox = new BoxRenderable(renderer, {
+        width: halfWidth,
+        flexGrow: 0,
+    });
+    const leftCode = new CodeRenderable(renderer, {
+        width: "100%",
+        content: leftText,
+        filetype,
+        fg: theme.getDividerForegroundColor(),
+        syntaxStyle: theme.getSyntaxStyle(),
+        wrapMode: "none",
+        bg: theme.getTransparentColor(),
+    });
+    leftCode.selectable = false;
+    leftBox.add(leftCode);
+    row.add(leftBox);
+
+    const separator = new TextRenderable(renderer, {
+        width: SIDE_BY_SIDE_SEPARATOR_WIDTH,
+        content: SIDE_BY_SIDE_SEPARATOR,
         fg: theme.getDividerForegroundColor(),
         bg: theme.getTransparentColor(),
     });
-    text.selectable = false;
-    scrollbox.add(text);
+    separator.selectable = false;
+    row.add(separator);
+
+    const rightBox = new BoxRenderable(renderer, {
+        width: halfWidth,
+        flexGrow: 0,
+    });
+    const rightCode = new CodeRenderable(renderer, {
+        width: "100%",
+        content: rightText,
+        filetype,
+        fg: theme.getDividerForegroundColor(),
+        syntaxStyle: theme.getSyntaxStyle(),
+        wrapMode: "none",
+        bg: theme.getTransparentColor(),
+    });
+    rightCode.selectable = false;
+    rightBox.add(rightCode);
+    row.add(rightBox);
+
+    scrollbox.add(row);
 
     return {
         nextLineNumber: nextLineNumber + 1,
@@ -574,7 +633,7 @@ function renderSideBySideUnchanged(
             lineView: null,
             codeView: null,
             filePath: "",
-            fileLineStart: null,
+            fileLineStart: newLineNum,
             renderedLines: [content],
             lineStart: nextLineNumber,
             lineCount: 1,
@@ -592,11 +651,15 @@ function renderSideBySideModified(
     oldContent: string,
     newContent: string,
     halfWidth: number,
+    newLineNum: number,
     nextLineNumber: number,
     nextDisplayRow: number,
+    filetype: string | undefined,
 ): DiffRenderCursor {
-    const oldText = truncate(oldContent, halfWidth - 5);
-    const newText = truncate(newContent, halfWidth - 5);
+    const oldColors = getDiffLineColors("delete");
+    const newColors = getDiffLineColors("insert");
+    const oldText = truncate(oldContent, Math.max(1, halfWidth - 2));
+    const newText = truncate(newContent, Math.max(1, halfWidth - 2));
 
     const container = new BoxRenderable(renderer, {
         width: "100%",
@@ -607,29 +670,44 @@ function renderSideBySideModified(
 
     // Left side (old)
     const leftBox = new BoxRenderable(renderer, {
-        width: "50%",
+        width: halfWidth,
         flexGrow: 0,
     });
-    const leftOld = new TextRenderable(renderer, {
+    const leftOld = new CodeRenderable(renderer, {
         width: "100%",
         content: `~ ${oldText}`,
-        fg: theme.getAgentStatusBackgroundColor("failed"),
-        bg: theme.getTransparentColor(),
+        filetype,
+        fg: oldColors.fg,
+        syntaxStyle: theme.getSyntaxStyle(),
+        wrapMode: "none",
+        bg: oldColors.bg,
     });
     leftOld.selectable = false;
     leftBox.add(leftOld);
     container.add(leftBox);
 
+    const separator = new TextRenderable(renderer, {
+        width: SIDE_BY_SIDE_SEPARATOR_WIDTH,
+        content: SIDE_BY_SIDE_SEPARATOR,
+        fg: theme.getDividerForegroundColor(),
+        bg: theme.getTransparentColor(),
+    });
+    separator.selectable = false;
+    container.add(separator);
+
     // Right side (new)
     const rightBox = new BoxRenderable(renderer, {
-        width: "50%",
+        width: halfWidth,
         flexGrow: 0,
     });
-    const rightNew = new TextRenderable(renderer, {
+    const rightNew = new CodeRenderable(renderer, {
         width: "100%",
         content: `+ ${newText}`,
-        fg: theme.getAgentStatusBackgroundColor("completed"),
-        bg: theme.getTransparentColor(),
+        filetype,
+        fg: newColors.fg,
+        syntaxStyle: theme.getSyntaxStyle(),
+        wrapMode: "none",
+        bg: newColors.bg,
     });
     rightNew.selectable = false;
     rightBox.add(rightNew);
@@ -645,7 +723,7 @@ function renderSideBySideModified(
             lineView: null,
             codeView: null,
             filePath: "",
-            fileLineStart: null,
+            fileLineStart: newLineNum,
             renderedLines: [`~ ${oldText} | + ${newText}`],
             lineStart: nextLineNumber,
             lineCount: 1,
@@ -662,29 +740,63 @@ function renderSideBySideRemoved(
     scrollbox: ScrollBoxRenderable,
     content: string,
     halfWidth: number,
+    oldLineNum: number,
     nextLineNumber: number,
     nextDisplayRow: number,
+    filetype: string | undefined,
 ): DiffRenderCursor {
-    const text = truncate(content, halfWidth - 5);
-    const line = new TextRenderable(renderer, {
+    const colors = getDiffLineColors("delete");
+    const text = truncate(content, Math.max(1, halfWidth - 2));
+    const row = new BoxRenderable(renderer, {
+        width: "100%",
+        flexDirection: "row",
+        flexWrap: "no-wrap",
+        gap: 0,
+    });
+
+    const leftBox = new BoxRenderable(renderer, {
+        width: halfWidth,
+        flexGrow: 0,
+    });
+    const leftCode = new CodeRenderable(renderer, {
         width: "100%",
         content: `- ${text}`,
-        fg: theme.getAgentStatusBackgroundColor("failed"),
+        filetype,
+        fg: colors.fg,
+        syntaxStyle: theme.getSyntaxStyle(),
+        wrapMode: "none",
+        bg: colors.bg,
+    });
+    leftCode.selectable = false;
+    leftBox.add(leftCode);
+    row.add(leftBox);
+
+    const separator = new TextRenderable(renderer, {
+        width: SIDE_BY_SIDE_SEPARATOR_WIDTH,
+        content: SIDE_BY_SIDE_SEPARATOR,
+        fg: theme.getDividerForegroundColor(),
         bg: theme.getTransparentColor(),
     });
-    line.selectable = false;
-    scrollbox.add(line);
+    separator.selectable = false;
+    row.add(separator);
 
-    // Add empty placeholder on right
+    const rightBox = new BoxRenderable(renderer, {
+        width: halfWidth,
+        flexGrow: 0,
+    });
     const placeholder = new TextRenderable(renderer, {
         width: "100%",
         content: "",
         fg: theme.getDividerForegroundColor(),
         bg: theme.getTransparentColor(),
     });
-    scrollbox.add(placeholder);
+    placeholder.selectable = false;
+    rightBox.add(placeholder);
+    row.add(rightBox);
 
-    const combined = `- ${text}`;
+    scrollbox.add(row);
+
+    const combined = `- ${text}${SIDE_BY_SIDE_SEPARATOR}`;
     return {
         nextLineNumber: nextLineNumber + 1,
         nextDisplayRow: nextDisplayRow + 1,
@@ -693,7 +805,7 @@ function renderSideBySideRemoved(
             lineView: null,
             codeView: null,
             filePath: "",
-            fileLineStart: null,
+            fileLineStart: oldLineNum,
             renderedLines: [combined],
             lineStart: nextLineNumber,
             lineCount: 1,
@@ -710,29 +822,64 @@ function renderSideBySideAdded(
     scrollbox: ScrollBoxRenderable,
     content: string,
     halfWidth: number,
+    newLineNum: number,
     nextLineNumber: number,
     nextDisplayRow: number,
+    filetype: string | undefined,
 ): DiffRenderCursor {
-    // Add empty placeholder on left
+    const colors = getDiffLineColors("insert");
+    const text = truncate(content, Math.max(1, halfWidth - 2));
+
+    const row = new BoxRenderable(renderer, {
+        width: "100%",
+        flexDirection: "row",
+        flexWrap: "no-wrap",
+        gap: 0,
+    });
+
+    const leftBox = new BoxRenderable(renderer, {
+        width: halfWidth,
+        flexGrow: 0,
+    });
     const placeholder = new TextRenderable(renderer, {
         width: "100%",
         content: "",
         fg: theme.getDividerForegroundColor(),
         bg: theme.getTransparentColor(),
     });
-    scrollbox.add(placeholder);
+    placeholder.selectable = false;
+    leftBox.add(placeholder);
+    row.add(leftBox);
 
-    const text = truncate(content, halfWidth - 5);
-    const line = new TextRenderable(renderer, {
-        width: "100%",
-        content: `+ ${text}`,
-        fg: theme.getAgentStatusBackgroundColor("completed"),
+    const separator = new TextRenderable(renderer, {
+        width: SIDE_BY_SIDE_SEPARATOR_WIDTH,
+        content: SIDE_BY_SIDE_SEPARATOR,
+        fg: theme.getDividerForegroundColor(),
         bg: theme.getTransparentColor(),
     });
-    line.selectable = false;
-    scrollbox.add(line);
+    separator.selectable = false;
+    row.add(separator);
 
-    const combined = `+ ${text}`;
+    const rightBox = new BoxRenderable(renderer, {
+        width: halfWidth,
+        flexGrow: 0,
+    });
+    const line = new CodeRenderable(renderer, {
+        width: "100%",
+        content: `+ ${text}`,
+        filetype,
+        fg: colors.fg,
+        syntaxStyle: theme.getSyntaxStyle(),
+        wrapMode: "none",
+        bg: colors.bg,
+    });
+    line.selectable = false;
+    rightBox.add(line);
+    row.add(rightBox);
+
+    scrollbox.add(row);
+
+    const combined = `${SIDE_BY_SIDE_SEPARATOR}+ ${text}`;
     return {
         nextLineNumber: nextLineNumber + 1,
         nextDisplayRow: nextDisplayRow + 1,
@@ -741,7 +888,7 @@ function renderSideBySideAdded(
             lineView: null,
             codeView: null,
             filePath: "",
-            fileLineStart: null,
+            fileLineStart: newLineNum,
             renderedLines: [combined],
             lineStart: nextLineNumber,
             lineCount: 1,
@@ -787,6 +934,28 @@ function getDiffLinePrefix(changeType: "equal" | "insert" | "delete"): string {
     if (changeType === "insert") { return "+"; }
     if (changeType === "delete") { return "-"; }
     return " ";
+}
+
+/**
+ * Resolves fallback foreground and background colors for diff line rendering.
+ */
+function getDiffLineColors(changeType: "equal" | "insert" | "delete"): { fg: string; bg: string } {
+    if (changeType === "insert") {
+        return {
+            fg: theme.getHighlightedTextColor(),
+            bg: theme.getAgentStatusBackgroundColor("completed"),
+        };
+    }
+    if (changeType === "delete") {
+        return {
+            fg: theme.getHighlightedTextColor(),
+            bg: theme.getAgentStatusBackgroundColor("failed"),
+        };
+    }
+    return {
+        fg: theme.getDividerForegroundColor(),
+        bg: theme.getTransparentColor(),
+    };
 }
 
 /** Truncates text to fit within width. */

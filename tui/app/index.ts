@@ -519,6 +519,7 @@ export class CodeBrowserApp {
         const onKeypress = (key: KeyEvent): void => {
             const keyName = (key.name ?? "").toLowerCase();
             const rawKeyName = key.name;
+            const isEnterKey = this.isEnterKey(key);
             const state = this.getKeyboardStateSnapshot();
 
             if (state.promptVisible) {
@@ -553,7 +554,7 @@ export class CodeBrowserApp {
                         SIGNALS.promptModelsRefresh();
                         return;
                     }
-                    if (keyName === "return" || keyName === "enter") {
+                    if (isEnterKey) {
                         key.preventDefault?.();
                         key.stopPropagation?.();
                         SIGNALS.promptFieldCycle(1);
@@ -573,14 +574,14 @@ export class CodeBrowserApp {
                         SIGNALS.promptThinkingCycle(1);
                         return;
                     }
-                    if (keyName === "return" || keyName === "enter") {
+                    if (isEnterKey) {
                         key.preventDefault?.();
                         key.stopPropagation?.();
                         SIGNALS.promptFieldCycle(-2);
                         return;
                     }
                 }
-                if (keyName === "return" || keyName === "enter") {
+                if (isEnterKey) {
                     key.preventDefault?.();
                     key.stopPropagation?.();
                     SIGNALS.promptSubmit();
@@ -695,7 +696,7 @@ export class CodeBrowserApp {
                     SIGNALS.chipsMove(1);
                     return;
                 }
-                if (keyName === "space" || keyName === "enter" || keyName === "return") {
+                if (keyName === "space" || isEnterKey) {
                     key.preventDefault?.();
                     key.stopPropagation?.();
                     SIGNALS.chipsToggleSelected();
@@ -834,7 +835,7 @@ export class CodeBrowserApp {
                 return;
             }
             this.pendingGChordAt = null;
-            if (keyName === "enter" || keyName === "return") {
+            if (isEnterKey) {
                 key.preventDefault?.();
                 key.stopPropagation?.();
                 SIGNALS.filesEnterOrOpen();
@@ -920,6 +921,21 @@ export class CodeBrowserApp {
             focusCleanup?.();
             sigwinchCleanup?.();
         };
+    }
+
+    /** Returns true when a key event represents Enter/Return. */
+    private isEnterKey(key: KeyEvent): boolean {
+        const keyName = (key.name ?? "").toLowerCase();
+        if (keyName === "enter" || keyName === "return" || keyName === "linefeed") {
+            return true;
+        }
+
+        const keyCode = (key.code ?? "").toLowerCase();
+        if (keyCode === "enter") {
+            return true;
+        }
+
+        return key.sequence === "\r" || key.sequence === "\n";
     }
 
     private toAppKeyInput(key: KeyEvent): AppKeyInput {
@@ -1385,4 +1401,3 @@ export class CodeBrowserApp {
     }
 
 }
-

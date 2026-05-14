@@ -1,16 +1,17 @@
 {
   "name": "comment-mode",
   "bin": {
-    "comment": "tui/index.ts"
+    "comment": "cli.ts"
   },
-  "module": "tui/index.ts",
+  "module": "cli.ts",
   "type": "module",
   "private": true,
   "scripts": {
     "dev": "bun run --watch tui/index.ts",
-    "static": "bun install && comment tui/index.ts",
+    "static": "bun install && comment",
     "install": "bun link",
-    "lint": "eslint tui --ext .ts"
+    "lint": "eslint tui --ext .ts",
+    "profile:review-tui": "bun run scripts/profile-review-tui.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",

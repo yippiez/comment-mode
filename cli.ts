@@ -1,25 +1,4 @@
 #!/usr/bin/env bun
-/**
- * CLI interface for comment-mode: provides diff, staging, and status
- * commands without launching the full TUI.
- *
- * Usage:
- *   comment help                    Show help
- *   comment diff                    Show unified diff of changed files
- *   comment diff --name-only        List changed file paths only
- *   comment diff --stat             Show diff stats (added/removed)
- *   comment diff --staged           Show staged changes only
- *   comment files                   List changed files with staging info
- *   comment git stage <file>        Stage a file
- *   comment git unstage <file>      Unstage a file
- *   comment git status              Show git porcelain status
- *   comment jj status               Show jj workspace status
- *   comment jj diff                 Show jj diff of current change
- *   comment jj log                  Show recent jj commits
- *   comment agent models            List available models from all harnesses
- *   comment vcs                     Detect which VCS is in use
- */
-
 import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -78,6 +57,9 @@ function printHelp(): void {
     console.log();
     console.log(bold("Agent:"));
     console.log("  " + cyan("agent models") + "            List available models from all harnesses");
+    console.log("  " + cyan("agent run") + "               Run Pi/OpenCode with diff/range context");
+    console.log("                             --agent <pi|opencode> --model <id> --file <path>");
+    console.log("                             --start <line> --end <line> --prompt <text>");
     console.log();
     console.log(bold("Info:"));
     console.log("  " + cyan("vcs") + "                    Detect which VCS is in use (git/jj/none)");
@@ -90,7 +72,13 @@ function printHelp(): void {
 
 async function main(): Promise<void> {
     const args = process.argv.slice(2);
-    if (args.length === 0 || args[0] === "help" || args[0] === "--help" || args[0] === "-h") {
+    if (args.length === 0) {
+        const { startTui } = await import("./tui/index");
+        await startTui(process.cwd());
+        return;
+    }
+
+    if (args[0] === "help" || args[0] === "--help" || args[0] === "-h") {
         printHelp();
         return;
     }
@@ -397,8 +385,8 @@ function showJjLog(root: string): void {
 
 async function cmdAgent(args: string[]): Promise<void> {
     if (args.length === 0) {
-        console.error(red("Missing agent subcommand. Available: models"));
-        console.error("Usage: comment agent models");
+        console.error(red("Missing agent subcommand. Available: models, run"));
+        console.error("Usage: comment agent <models|run>");
         process.exit(1);
     }
 
@@ -408,11 +396,171 @@ async function cmdAgent(args: string[]): Promise<void> {
         case "models":
             await cmdAgentModels();
             break;
+        case "run":
+            await cmdAgentRun(args.slice(1));
+            break;
         default:
             console.error(red(`Unknown agent subcommand: ${subcommand}`));
-            console.error("Available: models");
+            console.error("Available: models, run");
             process.exit(1);
     }
+}
+
+type AgentRunCliOptions = {
+  agent: "opencode" | "pi";
+  model: string;
+  filePath: string | null;
+  startLine: number | null;
+  endLine: number | null;
+  prompt: string;
+};
+
+/**
+ * Runs an agent from CLI flags and streams normalized events for testing.
+ * @param args - CLI arguments after `comment agent run`
+ */
+async function cmdAgentRun(args: string[]): Promise<void> {
+    const { runAgent, DEFAULT_AGENT_MODEL } = await import("./tui/agents/runner");
+    const { buildPromptContext } = await import("./tui/domain/prompt_context");
+    const { formatAgentRunEvent } = await import("./tui/agents/events");
+    const options = parseAgentRunCliOptions(args, DEFAULT_AGENT_MODEL);
+    const root = process.cwd();
+    const selection = await buildCliReviewSelection(root, options);
+    const context = buildPromptContext({
+        selection,
+        userPrompt: options.prompt,
+        agent: options.agent,
+        model: options.model,
+    });
+
+    console.log(dim(`agent=${options.agent} model=${options.model}`));
+    console.log(dim(`context=${context.filePath}:${context.startLine}-${context.endLine}`));
+
+    await new Promise<void>((resolve) => {
+        runAgent({
+            agent: options.agent,
+            rootDir: root,
+            model: options.model,
+            prompt: context.message,
+            autoApproveEdits: true,
+        }, {
+            onEvent: (event) => {
+                const text = formatAgentRunEvent(event);
+                if (event.kind === "error") {
+                    console.error(red(text));
+                    return;
+                }
+                console.log(text);
+            },
+            onExit: (result) => {
+                if (result.success) {
+                    console.log(green("agent completed"));
+                } else {
+                    console.error(red(result.error ?? "agent failed"));
+                    process.exitCode = 1;
+                }
+                resolve();
+            },
+        });
+    });
+}
+
+/** Parses flags for `comment agent run`. */
+function parseAgentRunCliOptions(args: string[], defaultModel: string): AgentRunCliOptions {
+    const value = (name: string): string | null => {
+        const index = args.indexOf(name);
+        if (index < 0) { return null; }
+        return args[index + 1] ?? null;
+    };
+    const agentText = value("--agent") ?? "opencode";
+    const agent = agentText === "pi" ? "pi" : "opencode";
+    const startLine = parseOptionalLine(value("--start"));
+    const endLine = parseOptionalLine(value("--end"));
+    const prompt = value("--prompt") ?? collectAgentRunPositionals(args).join(" ");
+
+    return {
+        agent,
+        model: value("--model") ?? defaultModel,
+        filePath: value("--file"),
+        startLine,
+        endLine,
+        prompt: prompt.trim().length > 0 ? prompt : "Review the selected diff context and improve it.",
+    };
+}
+
+/** Collects positional prompt words while skipping flag values. */
+function collectAgentRunPositionals(args: string[]): string[] {
+    const result: string[] = [];
+    const flagsWithValues = new Set(["--agent", "--model", "--file", "--start", "--end", "--prompt"]);
+    for (let index = 0; index < args.length; index += 1) {
+        const arg = args[index] ?? "";
+        if (flagsWithValues.has(arg)) {
+            index += 1;
+            continue;
+        }
+        if (arg.startsWith("--")) { continue; }
+        result.push(arg);
+    }
+    return result;
+}
+
+/** Parses a positive line number flag. */
+function parseOptionalLine(value: string | null): number | null {
+    if (!value) { return null; }
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+/** Builds a Review Selection for CLI agent runs. */
+async function buildCliReviewSelection(
+    root: string,
+    options: AgentRunCliOptions,
+): Promise<import("./tui/domain/review_diff_feed").ReviewSelection> {
+    const diffInfo = await collectDiffInfo(root);
+    const file = options.filePath
+        ? diffInfo.changedFiles.find((entry) => entry.relativePath === options.filePath)
+        : diffInfo.changedFiles[0];
+
+    if (!file) {
+        console.error(red("No changed file available for agent context."));
+        process.exit(1);
+    }
+
+    const content = file.newContent || file.oldContent;
+    const lines = content.split("\n");
+    const startLine = options.startLine ?? 1;
+    const endLine = options.endLine ?? Math.max(startLine, Math.min(lines.length, startLine + 80));
+    const selectedText = lines.slice(startLine - 1, endLine).join("\n");
+    const diffText = renderFileDiffText(file);
+
+    return {
+        filePath: file.relativePath,
+        startLine,
+        endLine,
+        rowStart: 0,
+        rowEnd: 0,
+        selectedText,
+        diffText,
+        hunkId: null,
+    };
+}
+
+/** Renders one changed file as plain diff text for CLI Prompt Context. */
+function renderFileDiffText(file: ChangedFile): string {
+    const oldContent = file.oldContent;
+    const newContent = file.newContent;
+    const result = diffLines(oldContent, newContent);
+    const lines: string[] = [`${file.status.toUpperCase()} ${file.relativePath}`];
+    for (const hunk of result.hunks) {
+        if (hunk.kind === "equal") {
+            for (const line of hunk.newLines) { lines.push(` ${line}`); }
+        } else if (hunk.kind === "delete") {
+            for (const line of hunk.lines) { lines.push(`-${line}`); }
+        } else {
+            for (const line of hunk.lines) { lines.push(`+${line}`); }
+        }
+    }
+    return lines.join("\n");
 }
 
 async function cmdAgentModels(): Promise<void> {
@@ -446,7 +594,7 @@ async function cmdAgentModels(): Promise<void> {
                 }
             }
         } catch (error) {
-            console.log(red(`  error: ${error instanceof Error ? error.message : String(error)}`));
+            console.log(red(`  error: ${toErrorMessage(error)}`));
         }
         console.log();
     }
@@ -536,7 +684,13 @@ function printUnifiedDiff(result: import("./tui/utils/diff").DiffResult): void {
 // Entrypoint
 // ---------------------------------------------------------------------------
 
+/** Converts unknown thrown values into displayable error messages. */
+function toErrorMessage(error: unknown): string {
+    if (error instanceof Error) { return error.message; }
+    return String(error);
+}
+
 main().catch((error) => {
-    console.error(red(`Unexpected error: ${error instanceof Error ? error.message : String(error)}`));
+    console.error(red(`Unexpected error: ${toErrorMessage(error)}`));
     process.exit(1);
 });

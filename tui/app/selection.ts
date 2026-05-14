@@ -71,9 +71,7 @@ export function createPromptTargetFromSelection(
         };
     }
 
-    const selectedCodeLines = selection.filter(
-        (line) => line.blockKind === "code" && typeof line.fileLine === "number",
-    );
+    const selectedCodeLines = selection.filter(isCodeLikeSelectionLine);
     if (selectedCodeLines.length !== selection.length) { return null; }
 
     const uniquePath = resolveSinglePath(selectedCodeLines.map((line) => line.filePath));
@@ -82,7 +80,7 @@ export function createPromptTargetFromSelection(
     const last = selectedCodeLines[selectedCodeLines.length - 1];
     if (!last) { return null; }
 
-    const fileLines = selectedCodeLines.map((line) => line.fileLine as number);
+    const fileLines = selectedCodeLines.map((line) => line.fileLine);
     const selectionStartFileLine = Math.min(...fileLines);
     const selectionEndFileLine = Math.max(...fileLines);
     const selectedText = [
@@ -119,9 +117,7 @@ export function buildClipboardSelectionText(
         return selectedPaths.join("\n");
     }
 
-    const codeLines = selection.filter(
-        (line) => line.blockKind === "code" && typeof line.fileLine === "number",
-    );
+    const codeLines = selection.filter(isCodeLikeSelectionLine);
     if (codeLines.length !== selection.length) { return ""; }
     const uniquePath = resolveSinglePath(codeLines.map((line) => line.filePath));
     if (uniquePath === null) { return ""; }
@@ -149,6 +145,15 @@ function dedupePreserveOrder(values: readonly string[]): string[] {
 
 function normalizeSelectionPath(path: string, fallback: string): string {
     return path.length > 0 ? path : fallback;
+}
+
+/**
+ * Returns true when a selected line represents code content with a concrete file line.
+ */
+function isCodeLikeSelectionLine(
+    line: SelectionLineInfo,
+): line is SelectionLineInfo & { fileLine: number } {
+    return (line.blockKind === "code" || line.blockKind === "diff") && typeof line.fileLine === "number";
 }
 
 export function resolvePromptComposerLayout(options: {

@@ -453,7 +453,7 @@ describe("module compilation smoke", () => {
             agentHarness: AgentHarness;
         };
         // If this compiles, the type system is intact
-        const _check: CheckTypes = null as unknown as CheckTypes;
+        const _check: CheckTypes | null = null;
         expect(_check).toBeNull();
     });
 });

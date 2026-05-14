@@ -215,9 +215,9 @@ export class Prompt {
     private submit(): void {
         if (!this.target) { return; }
         const promptText = this.promptComposer.promptInput.plainText.trim();
-        if (!promptText) { return; }
-
-        this.target.prompt = promptText;
+        this.target.prompt = promptText.length > 0
+            ? promptText
+            : "Review the selected code and suggest the most important next improvement.";
         this.rememberCurrentModelConfig();
         const submission: PromptSubmission = {
             updateId: this.target.updateId,

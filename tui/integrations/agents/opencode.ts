@@ -103,7 +103,7 @@ export class OpenCode extends BaseHarness {
 // ---------------------------------------------------------------------------
 
 async function listOpencodeModelCatalogInternal(rootDir: string): Promise<ModelCatalogItem[]> {
-    const verboseResult = await runProcessCapture("opencode", ["models", "--verbose"], rootDir);
+    const verboseResult = await runProcessCapture("opencode", ["models", "--verbose"], rootDir, 1800);
     if (!verboseResult.error) {
         const verboseCatalog = parseVerboseModelCatalog(
             `${verboseResult.stdout ?? ""}\n${verboseResult.stderr ?? ""}`,
@@ -113,7 +113,7 @@ async function listOpencodeModelCatalogInternal(rootDir: string): Promise<ModelC
         }
     }
 
-    const result = await runProcessCapture("opencode", ["models"], rootDir);
+    const result = await runProcessCapture("opencode", ["models"], rootDir, 1800);
     if (result.error) { return []; }
 
     const merged = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
