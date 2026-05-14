@@ -15,6 +15,23 @@ import { diffLines, type DiffHunk, getDiffStats, type DiffResult } from "../../u
 import { theme } from "../../theme";
 import type { ChangedFile } from "../../integrations/version_control/interface";
 
+/**
+ * Block registration record for a single diff line or header.
+ * Used by the renderer to register blocks in the line model for cursor navigation.
+ */
+export type DiffBlockRecord = {
+  lineView: LineNumberRenderable | null;
+  codeView: CodeRenderable | null;
+  filePath: string;
+  fileLineStart: number | null;
+  renderedLines: string[];
+  lineStart: number;
+  lineCount: number;
+  displayRowStart: number;
+  /** True for visual separators (e.g. `─` lines) that cursor should skip. */
+  isDivider?: boolean;
+};
+
 /** Layout mode for diff display. */
 export type DiffLayoutMode = "stacked" | "side-by-side";
 
@@ -31,6 +48,7 @@ type DiffRenderCursor = {
     nextLineNumber: number;
     nextDisplayRow: number;
     blockStartLine: number;
+    blocks: DiffBlockRecord[];
 };
 
 const SIDE_BY_SIDE_MIN_WIDTH = 120;
@@ -39,7 +57,7 @@ const LINE_NUMBER_WIDTH_BUFFER = 4;
 /**
  * Renders a list of changed files as diffs.
  * Automatically chooses stacked or side-by-side based on available width.
- * @returns Updated cursor positions and hunk/anchors metadata
+ * @returns Updated cursor positions, hunk/anchors metadata, and block records
  */
 export function renderDiffList(
     config: DiffRendererConfig,
@@ -55,6 +73,7 @@ export function renderDiffList(
     let rowCursor = nextDisplayRow;
     const hunkLines: number[] = [];
     const fileAnchors: Array<{ line: number; dividerRow: number; filePath: string }> = [];
+    const allBlocks: DiffBlockRecord[] = [];
 
     for (const file of files) {
         // Record file anchor before rendering
@@ -67,6 +86,8 @@ export function renderDiffList(
         if (result.hunkLines) {
             hunkLines.push(...result.hunkLines);
         }
+        // Collect blocks from this file
+        allBlocks.push(...result.blocks);
         lineCursor = result.nextLineNumber;
         rowCursor = result.nextDisplayRow;
     }
@@ -77,15 +98,18 @@ export function renderDiffList(
         blockStartLine: nextLineNumber,
         hunkLines,
         fileAnchors,
+        blocks: allBlocks,
     };
 }
 
-/** Full diff render result with navigation metadata. */
+/** Full diff render result with navigation metadata and block records. */
 export type DiffRenderResult = DiffRenderCursor & {
     /** Line numbers where each non-equal hunk starts. */
     hunkLines: number[];
     /** File anchors for cursor navigation. */
     fileAnchors: Array<{ line: number; dividerRow: number; filePath: string }>;
+    /** Block records for line model registration. */
+    blocks: DiffBlockRecord[];
 };
 
 /**
@@ -99,6 +123,7 @@ export function renderFileDiff(
     nextDisplayRow: number,
 ): DiffRenderCursor & { hunkLines: number[] } {
     const { renderer, scrollbox, getTotalWidth } = config;
+    const filePath = file.relativePath;
 
     // Compute diff
     const diffResult = file.status === "untracked"
@@ -111,7 +136,7 @@ export function renderFileDiff(
     const headerResult = renderDiffHeader(
         renderer,
         scrollbox,
-        file.relativePath,
+        filePath,
         file.status,
         file.staged,
         stats,
@@ -121,6 +146,7 @@ export function renderFileDiff(
     );
     let lineCursor = headerResult.nextLineNumber;
     let rowCursor = headerResult.nextDisplayRow;
+    const blocks: DiffBlockRecord[] = [...headerResult.blocks];
     const hunkLines: number[] = [];
 
     // Render diff content based on layout mode
@@ -129,11 +155,21 @@ export function renderFileDiff(
         lineCursor = result.nextLineNumber;
         rowCursor = result.nextDisplayRow;
         if (result.hunkLines) { hunkLines.push(...result.hunkLines); }
+        // Fill in the filePath for all content blocks
+        for (const block of result.blocks) {
+            block.filePath = filePath;
+        }
+        blocks.push(...result.blocks);
     } else {
         const result = renderStackedDiff(config, diffResult, lineCursor, rowCursor);
         lineCursor = result.nextLineNumber;
         rowCursor = result.nextDisplayRow;
         if (result.hunkLines) { hunkLines.push(...result.hunkLines); }
+        // Fill in the filePath for all content blocks
+        for (const block of result.blocks) {
+            block.filePath = filePath;
+        }
+        blocks.push(...result.blocks);
     }
 
     // Add spacing after file
@@ -144,6 +180,18 @@ export function renderFileDiff(
         bg: theme.getDividerBackgroundColor(),
     });
     scrollbox.add(divider);
+    // Register divider as a block too
+    blocks.push({
+        lineView: null,
+        codeView: null,
+        filePath,
+        fileLineStart: null,
+        renderedLines: ["─"],
+        lineStart: lineCursor,
+        lineCount: 1,
+        displayRowStart: rowCursor,
+        isDivider: true,
+    });
     lineCursor += 1;
     rowCursor += 1;
 
@@ -152,6 +200,7 @@ export function renderFileDiff(
         nextDisplayRow: rowCursor,
         blockStartLine: nextLineNumber,
         hunkLines,
+        blocks,
     };
 }
 
@@ -198,6 +247,28 @@ function renderDiffHeader(
         nextLineNumber: nextLineNumber + 2,
         nextDisplayRow: nextDisplayRow + 2,
         blockStartLine: nextLineNumber,
+        blocks: [
+            {
+                lineView: null,
+                codeView: null,
+                filePath,
+                fileLineStart: null,
+                renderedLines: [headerText],
+                lineStart: nextLineNumber,
+                lineCount: 1,
+                displayRowStart: nextDisplayRow,
+            },
+            {
+                lineView: null,
+                codeView: null,
+                filePath,
+                fileLineStart: null,
+                renderedLines: [statsText],
+                lineStart: nextLineNumber + 1,
+                lineCount: 1,
+                displayRowStart: nextDisplayRow + 1,
+            },
+        ],
     };
 }
 
@@ -218,6 +289,7 @@ function renderStackedDiff(
     let oldLineNum = 1;
     let newLineNum = 1;
     const hunkLines: number[] = [];
+    const blocks: DiffBlockRecord[] = [];
 
     for (const hunk of diffResult.hunks) {
         if (hunk.kind !== "equal") {
@@ -241,6 +313,7 @@ function renderStackedDiff(
                 );
                 lineCursor = result.nextLineNumber;
                 rowCursor = result.nextDisplayRow;
+                blocks.push(...result.blocks);
                 oldLineNum += 1;
                 newLineNum += 1;
             }
@@ -259,6 +332,7 @@ function renderStackedDiff(
                 );
                 lineCursor = result.nextLineNumber;
                 rowCursor = result.nextDisplayRow;
+                blocks.push(...result.blocks);
                 oldLineNum += 1;
             }
         } else if (hunk.kind === "insert") {
@@ -276,6 +350,7 @@ function renderStackedDiff(
                 );
                 lineCursor = result.nextLineNumber;
                 rowCursor = result.nextDisplayRow;
+                blocks.push(...result.blocks);
                 newLineNum += 1;
             }
         }
@@ -286,6 +361,7 @@ function renderStackedDiff(
         nextDisplayRow: rowCursor,
         blockStartLine: nextLineNumber,
         hunkLines,
+        blocks,
     };
 }
 
@@ -305,6 +381,7 @@ function renderSideBySideDiff(
     let lineCursor = nextLineNumber;
     let rowCursor = nextDisplayRow;
     const hunkLines: number[] = [];
+    const blocks: DiffBlockRecord[] = [];
 
     // Interleave hunks for side-by-side display
     const paired = pairDiffHunks(diffResult.hunks);
@@ -322,6 +399,7 @@ function renderSideBySideDiff(
             );
             lineCursor = result.nextLineNumber;
             rowCursor = result.nextDisplayRow;
+            blocks.push(...result.blocks);
         } else if (pair.type === "modified") {
             const result = renderSideBySideModified(
                 renderer, scrollbox, pair.old ?? "", pair.new ?? "",
@@ -329,6 +407,7 @@ function renderSideBySideDiff(
             );
             lineCursor = result.nextLineNumber;
             rowCursor = result.nextDisplayRow;
+            blocks.push(...result.blocks);
         } else if (pair.type === "removed") {
             const result = renderSideBySideRemoved(
                 renderer, scrollbox, pair.old ?? "",
@@ -336,6 +415,7 @@ function renderSideBySideDiff(
             );
             lineCursor = result.nextLineNumber;
             rowCursor = result.nextDisplayRow;
+            blocks.push(...result.blocks);
         } else if (pair.type === "added") {
             const result = renderSideBySideAdded(
                 renderer, scrollbox, pair.new ?? "",
@@ -343,6 +423,7 @@ function renderSideBySideDiff(
             );
             lineCursor = result.nextLineNumber;
             rowCursor = result.nextDisplayRow;
+            blocks.push(...result.blocks);
         }
     }
 
@@ -351,6 +432,7 @@ function renderSideBySideDiff(
         nextDisplayRow: rowCursor,
         blockStartLine: nextLineNumber,
         hunkLines,
+        blocks,
     };
 }
 
@@ -396,7 +478,7 @@ function pairDiffHunks(hunks: readonly DiffHunk[]): PairedHunk[] {
 }
 
 /**
- * Renders a single diff line.
+ * Renders a single diff line as a LineNumberRenderable + CodeRenderable pair.
  */
 function renderDiffLine(
     renderer: CliRenderer,
@@ -429,7 +511,6 @@ function renderDiffLine(
     });
     code.selectable = false;
 
-    // Use first available line number for display
     const displayLineNum = oldLineNum ?? newLineNum ?? 1;
     const lineView = new LineNumberRenderable(renderer, {
         width: "auto",
@@ -449,6 +530,16 @@ function renderDiffLine(
         nextLineNumber: nextLineNumber + 1,
         nextDisplayRow: nextDisplayRow + 1,
         blockStartLine: nextLineNumber,
+        blocks: [{
+            lineView,
+            codeView: code,
+            filePath: "", // filled in by caller
+            fileLineStart: displayLineNum,
+            renderedLines: [lineText],
+            lineStart: nextLineNumber,
+            lineCount: 1,
+            displayRowStart: nextDisplayRow,
+        }],
     };
 }
 
@@ -479,6 +570,16 @@ function renderSideBySideUnchanged(
         nextLineNumber: nextLineNumber + 1,
         nextDisplayRow: nextDisplayRow + 1,
         blockStartLine: nextLineNumber,
+        blocks: [{
+            lineView: null,
+            codeView: null,
+            filePath: "",
+            fileLineStart: null,
+            renderedLines: [content],
+            lineStart: nextLineNumber,
+            lineCount: 1,
+            displayRowStart: nextDisplayRow,
+        }],
     };
 }
 
@@ -540,6 +641,16 @@ function renderSideBySideModified(
         nextLineNumber: nextLineNumber + 1,
         nextDisplayRow: nextDisplayRow + 1,
         blockStartLine: nextLineNumber,
+        blocks: [{
+            lineView: null,
+            codeView: null,
+            filePath: "",
+            fileLineStart: null,
+            renderedLines: [`~ ${oldText} | + ${newText}`],
+            lineStart: nextLineNumber,
+            lineCount: 1,
+            displayRowStart: nextDisplayRow,
+        }],
     };
 }
 
@@ -573,10 +684,21 @@ function renderSideBySideRemoved(
     });
     scrollbox.add(placeholder);
 
+    const combined = `- ${text}`;
     return {
         nextLineNumber: nextLineNumber + 1,
         nextDisplayRow: nextDisplayRow + 1,
         blockStartLine: nextLineNumber,
+        blocks: [{
+            lineView: null,
+            codeView: null,
+            filePath: "",
+            fileLineStart: null,
+            renderedLines: [combined],
+            lineStart: nextLineNumber,
+            lineCount: 1,
+            displayRowStart: nextDisplayRow,
+        }],
     };
 }
 
@@ -610,10 +732,21 @@ function renderSideBySideAdded(
     line.selectable = false;
     scrollbox.add(line);
 
+    const combined = `+ ${text}`;
     return {
         nextLineNumber: nextLineNumber + 1,
         nextDisplayRow: nextDisplayRow + 1,
         blockStartLine: nextLineNumber,
+        blocks: [{
+            lineView: null,
+            codeView: null,
+            filePath: "",
+            fileLineStart: null,
+            renderedLines: [combined],
+            lineStart: nextLineNumber,
+            lineCount: 1,
+            displayRowStart: nextDisplayRow,
+        }],
     };
 }
 

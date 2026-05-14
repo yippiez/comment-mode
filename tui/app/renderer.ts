@@ -27,7 +27,7 @@ import { renderTypeChips } from "../utils/chips";
 import { resolveBlockKindPenalty } from "../utils/restore";
 import { normalizePersistedLineText } from "../utils/text";
 import { resolvePromptComposerLayout as resolvePromptComposerLayoutForSelection } from "./selection";
-import { renderDiffList, type DiffLayoutMode, type DiffRenderResult } from "./components/diff_view";
+import { renderDiffList, type DiffBlockRecord, type DiffLayoutMode, type DiffRenderResult } from "./components/diff_view";
 import type { DiffInfo, ChangedFile } from "../integrations/version_control/interface";
 
 type RestoreLineReference = {
@@ -935,6 +935,29 @@ export class AppRenderer {
                 dividerRow: anchor.dividerRow,
                 filePath: anchor.filePath,
             });
+        }
+
+        // Register all diff blocks in the line model so cursor navigation,
+        // camera positioning, file path lookups, and text selection work
+        for (const block of result.blocks) {
+            this.lineModel.addBlock({
+                lineView: block.lineView,
+                codeView: block.codeView,
+                defaultLineNumberFg: theme.getCodeLineNumberColor(),
+                defaultLineSigns: new Map(),
+                blockKind: "diff",
+                fileLineStart: block.fileLineStart,
+                renderedLines: block.renderedLines,
+                lineStart: block.lineStart,
+                lineCount: block.lineCount,
+                displayRowStart: block.displayRowStart,
+                filePath: block.filePath,
+            });
+
+            // Mark visual separator rows so display-row lookups skip them
+            if (block.isDivider) {
+                this.lineModel.markDivider(block.displayRowStart);
+            }
         }
 
         this.lineModel.setTotalLines(result.nextLineNumber - 1);

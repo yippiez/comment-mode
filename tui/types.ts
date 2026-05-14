@@ -58,7 +58,7 @@ export type ViewMode = "code" | "virtual";
  *
  * Used for rendering decisions, selection behavior, and prompt-building rules.
  */
-export type BlockKind = "code" | "collapsed" | "agent" | "file";
+export type BlockKind = "code" | "collapsed" | "agent" | "file" | "diff";
 
 /**
  * Agent provider/runtime implementation used for prompt execution.

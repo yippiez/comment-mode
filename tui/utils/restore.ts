@@ -5,10 +5,11 @@
 import type { BlockKind } from "../types";
 
 const BLOCK_KIND_RESTORE_ORDER: Record<BlockKind, readonly BlockKind[]> = {
-    code: ["code", "collapsed", "file", "agent"],
-    collapsed: ["collapsed", "code", "file", "agent"],
-    file: ["file", "collapsed", "code", "agent"],
-    agent: ["agent", "code", "collapsed", "file"],
+    code: ["code", "collapsed", "file", "agent", "diff"],
+    collapsed: ["collapsed", "code", "file", "agent", "diff"],
+    file: ["file", "collapsed", "code", "agent", "diff"],
+    agent: ["agent", "code", "collapsed", "file", "diff"],
+    diff: ["diff", "code", "collapsed", "file", "agent"],
 };
 
 /**

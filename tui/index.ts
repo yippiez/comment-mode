@@ -1,3 +1,4 @@
+#!/usr/bin/env bun
 /**
  * CLI entrypoint for the terminal code browser.
  * Boots the TUI renderer, loads workspace entries, and starts the app.

@@ -353,6 +353,7 @@ describe("diff view types", () => {
             blockStartLine: 1,
             hunkLines: [5, 12, 20],
             fileAnchors: [{ line: 1, dividerRow: 0, filePath: "src/test.ts" }],
+            blocks: [],
         };
         expect(result.hunkLines.length).toBe(3);
         expect(result.fileAnchors.length).toBe(1);
